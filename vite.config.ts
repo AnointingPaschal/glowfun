@@ -12,6 +12,9 @@ export default defineConfig({
   define: {
     global: 'globalThis',
   },
+  optimizeDeps: {
+    include: ['@monaco-editor/react', 'qrcode.react'],
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,
@@ -23,5 +26,17 @@ export default defineConfig({
         rewrite: (p) => p.replace(/^\/api/, ''),
       },
     },
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          monaco: ['@monaco-editor/react'],
+          wagmi: ['wagmi', 'viem'],
+          react: ['react', 'react-dom'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 3000,
   },
 })

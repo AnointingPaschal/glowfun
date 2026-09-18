@@ -6,6 +6,7 @@ import { TokenPage } from '@/pages/TokenPage'
 import { TrendingPage } from '@/pages/TrendingPage'
 import { WalletPage } from '@/pages/WalletPage'
 import { AdminPage } from '@/pages/AdminPage'
+import { IDEPage } from '@/pages/IDEPage'
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
         <Route path="/token/:address" element={<TokenPage />} />
         <Route path="/wallet" element={<WalletPage />} />
         <Route path="/admin" element={<AdminPage />} />
+        <Route path="/ide" element={<IDEPage />} />
       </Routes>
     </Layout>
   )

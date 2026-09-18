@@ -38,3 +38,21 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
 
 /* ConnectKit button polish */
 [data-testid="connect-button"] { font-family: 'Space Grotesk', sans-serif !important; }
+
+/* ── Mobile bottom nav padding ────────────────────────────── */
+@media (max-width: 767px) {
+  main { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)) !important; }
+}
+
+/* ── Monaco editor overrides ──────────────────────────────── */
+.monaco-editor .suggest-widget { z-index: 9999 !important; }
+.monaco-editor .overflow-guard { border-radius: 0 !important; }
+
+/* ── Range input (IDE sliders/dropdowns) ─────────────────── */
+select option { background: #0a0a14; color: white; }
+
+/* ── Touch improvements ───────────────────────────────────── */
+@media (hover: none) and (pointer: coarse) {
+  button, a { -webkit-tap-highlight-color: transparent; }
+  input, select { font-size: 16px !important; } /* Prevent zoom on iOS */
+}
