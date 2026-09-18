@@ -94,7 +94,7 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
 
     error InvalidToken();
     error TokenAlreadyExists();
-    error TokenGraduated();
+    error TokenAlreadyGraduated();
     error InvalidAmount();
     error InvalidFeeBps();
     error InvalidAddress();
@@ -438,12 +438,12 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
 
     function _activeTokenState(address token) internal view returns (TokenState storage state) {
         state = _validTokenState(token);
-        if (state.graduated) revert TokenGraduated();
+        if (state.graduated) revert TokenAlreadyGraduated();
     }
 
     function _activeViewTokenState(address token) internal view returns (TokenState storage state) {
         state = _validTokenState(token);
-        if (state.graduated) revert TokenGraduated();
+        if (state.graduated) revert TokenAlreadyGraduated();
     }
 
     function _validTokenState(address token) internal view returns (TokenState storage state) {
