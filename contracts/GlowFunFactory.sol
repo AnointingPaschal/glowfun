@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
@@ -54,6 +55,7 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
 
     uint256 public constant BPS_DENOMINATOR = 10_000;
     uint256 public constant MAX_PROTOCOL_FEE_BPS = 500;
+    uint256 public constant MAX_PAUSE_DURATION = 7 days;
 
     uint256 public constant CURVE_TOKENS_FOR_SALE = 800_000_000e18;
     uint256 public constant GRADUATION_TOKEN_RESERVE = 200_000_000e18;
@@ -79,17 +81,22 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
         uint256 tokenGraduationThreshold;
     }
 
-    IERC20 public usdc;
+    IERC20 public immutable usdc;
 
     uint256 public creationFee;
     uint256 public protocolFeeBps;
     uint256 public graduationThreshold;
+    uint256 public pausedAt;
 
     address public feeRecipient;
     address public graduationRecipient;
+    address public pendingFeeRecipient;
+    address public pendingGraduationRecipient;
 
     mapping(address token => TokenState) public tokenStates;
     mapping(address token => bool) public isLaunchedToken;
+    mapping(address token => uint256) public pendingGraduationUsdc;
+    mapping(address token => uint256) public pendingGraduationTokens;
     address[] private _launchedTokens;
 
     error InvalidToken();
@@ -127,13 +134,15 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
         uint256 tokenAmount,
         uint256 timestamp
     );
+    event GraduationClaimed(address indexed token, address indexed recipient, uint256 usdc, uint256 tokens);
 
     event CreationFeeUpdated(uint256 fee);
     event ProtocolFeeUpdated(uint256 feeBps);
+    event FeeRecipientProposed(address recipient);
     event FeeRecipientUpdated(address recipient);
+    event GraduationRecipientProposed(address recipient);
     event GraduationRecipientUpdated(address recipient);
     event GraduationThresholdUpdated(uint256 threshold);
-    event UsdcAddressUpdated(address usdc);
 
     constructor(address _usdc, address _feeRecipient, address _graduationRecipient, address _owner) Ownable(_owner) {
         if (_usdc == address(0) || _feeRecipient == address(0) || _graduationRecipient == address(0) || _owner == address(0)) {
@@ -141,6 +150,10 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
         }
 
         usdc = IERC20(_usdc);
+        try IERC20Metadata(_usdc).decimals() returns (uint8 dec) {
+            if (dec != 6) revert InvalidAddress();
+        } catch {}
+
         feeRecipient = _feeRecipient;
         graduationRecipient = _graduationRecipient;
 
@@ -163,6 +176,10 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
     }
 
     function launchToken(LaunchParams calldata p) external nonReentrant whenNotPaused returns (address token) {
+        if (bytes(p.name).length == 0 || bytes(p.symbol).length == 0) revert InvalidToken();
+        if (bytes(p.name).length > 64 || bytes(p.symbol).length > 16) revert InvalidToken();
+        if (p.graduationThresholdUsdc != 0 && p.graduationThresholdUsdc < 1_000e6) revert InvalidAmount();
+
         uint256 supply = p.totalSupply == 0 ? 1_000_000_000e18 : p.totalSupply;
         if (supply < 1_000_000e18 || supply > 100_000_000_000e18) revert InvalidSupply();
 
@@ -313,6 +330,24 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
         );
     }
 
+    function claimGraduation(address token) external nonReentrant {
+        uint256 usdcAmt = pendingGraduationUsdc[token];
+        uint256 tokenAmt = pendingGraduationTokens[token];
+        if (usdcAmt == 0 && tokenAmt == 0) revert InvalidToken();
+
+        pendingGraduationUsdc[token] = 0;
+        pendingGraduationTokens[token] = 0;
+
+        if (usdcAmt > 0) {
+            usdc.safeTransfer(graduationRecipient, usdcAmt);
+        }
+        if (tokenAmt > 0) {
+            IERC20(token).safeTransfer(graduationRecipient, tokenAmt);
+        }
+
+        emit GraduationClaimed(token, graduationRecipient, usdcAmt, tokenAmt);
+    }
+
     function getTokenPrice(address token) external view returns (uint256) {
         TokenState storage state = _validTokenState(token);
         return _priceFromReserves(state.virtualUsdcReserves, state.virtualTokenReserves);
@@ -369,6 +404,18 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
         return _launchedTokens;
     }
 
+    function getTokensPaginated(uint256 offset, uint256 limit) external view returns (address[] memory result) {
+        uint256 total = _launchedTokens.length;
+        if (offset >= total) return new address[](0);
+
+        uint256 end = offset + limit > total ? total : offset + limit;
+        result = new address[](end - offset);
+
+        for (uint256 i = offset; i < end; i++) {
+            result[i - offset] = _launchedTokens[i];
+        }
+    }
+
     function tokenCount() external view returns (uint256) {
         return _launchedTokens.length;
     }
@@ -384,34 +431,52 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
         emit ProtocolFeeUpdated(bps);
     }
 
-    function setFeeRecipient(address recipient) external onlyOwner {
+    function proposeFeeRecipient(address recipient) external onlyOwner {
         if (recipient == address(0)) revert InvalidAddress();
-        feeRecipient = recipient;
-        emit FeeRecipientUpdated(recipient);
+        pendingFeeRecipient = recipient;
+        emit FeeRecipientProposed(recipient);
     }
 
-    function setGraduationRecipient(address recipient) external onlyOwner {
+    function acceptFeeRecipient() external {
+        if (msg.sender != pendingFeeRecipient) revert InvalidAddress();
+        feeRecipient = pendingFeeRecipient;
+        pendingFeeRecipient = address(0);
+        emit FeeRecipientUpdated(feeRecipient);
+    }
+
+    function proposeGraduationRecipient(address recipient) external onlyOwner {
         if (recipient == address(0)) revert InvalidAddress();
-        graduationRecipient = recipient;
-        emit GraduationRecipientUpdated(recipient);
+        pendingGraduationRecipient = recipient;
+        emit GraduationRecipientProposed(recipient);
+    }
+
+    function acceptGraduationRecipient() external {
+        if (msg.sender != pendingGraduationRecipient) revert InvalidAddress();
+        graduationRecipient = pendingGraduationRecipient;
+        pendingGraduationRecipient = address(0);
+        emit GraduationRecipientUpdated(graduationRecipient);
     }
 
     function setGraduationThreshold(uint256 threshold) external onlyOwner {
+        if (threshold < 1_000e6) revert InvalidAmount();
         graduationThreshold = threshold;
         emit GraduationThresholdUpdated(threshold);
     }
 
-    function setUsdcAddress(address usdcAddress) external onlyOwner {
-        if (usdcAddress == address(0)) revert InvalidAddress();
-        usdc = IERC20(usdcAddress);
-        emit UsdcAddressUpdated(usdcAddress);
-    }
-
     function pause() external onlyOwner {
+        pausedAt = block.timestamp;
         _pause();
     }
 
     function unpause() external onlyOwner {
+        pausedAt = 0;
+        _unpause();
+    }
+
+    function emergencyUnpause() external {
+        if (!paused()) revert InvalidAmount();
+        if (block.timestamp < pausedAt + MAX_PAUSE_DURATION) revert InvalidAmount();
+        pausedAt = 0;
         _unpause();
     }
 
@@ -423,17 +488,14 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
         state.graduated = true;
 
         uint256 pooledUsdc = state.realUsdcRaised;
-        if (pooledUsdc > 0) {
-            state.realUsdcRaised = 0;
-            usdc.safeTransfer(graduationRecipient, pooledUsdc);
-        }
+        state.realUsdcRaised = 0;
 
-        uint256 reserveTokens = state.graduationTokens;
-        if (reserveTokens > 0) {
-            IERC20(token).safeTransfer(graduationRecipient, reserveTokens);
-        }
+        uint256 totalTokensToSend = IERC20(token).balanceOf(address(this));
 
-        emit TokenGraduated(token, graduationRecipient, pooledUsdc, reserveTokens, block.timestamp);
+        pendingGraduationUsdc[token] = pooledUsdc;
+        pendingGraduationTokens[token] = totalTokensToSend;
+
+        emit TokenGraduated(token, graduationRecipient, pooledUsdc, totalTokensToSend, block.timestamp);
     }
 
     function _activeTokenState(address token) internal view returns (TokenState storage state) {
@@ -460,6 +522,7 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
         pure
         returns (uint256 tokensOut)
     {
+        // Rounds down in integer division, intentionally favoring contract-side conservatism.
         tokensOut = (tokenReserves * usdcIn) / (usdcReserves + usdcIn);
     }
 
@@ -468,6 +531,7 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
         pure
         returns (uint256 usdcOut)
     {
+        // Rounds down in integer division, intentionally favoring contract-side conservatism.
         usdcOut = (usdcReserves * tokensIn) / (tokenReserves + tokensIn);
     }
 
