@@ -1,10 +1,10 @@
 import { Link, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Flame, TrendingUp, Rocket, Wallet, Code2 } from 'lucide-react'
+import { Flame, TrendingUp, Rocket, Wallet, Code2, Layers } from 'lucide-react'
 
 const NAV = [
   { path: '/', label: 'Feed', icon: Flame },
-  { path: '/trending', label: 'Trending', icon: TrendingUp },
+  { path: '/trending', label: 'Dex', icon: Layers },
   { path: '/launch', label: 'Launch', icon: Rocket },
   { path: '/wallet', label: 'Wallet', icon: Wallet },
   { path: '/ide', label: 'IDE', icon: Code2 },

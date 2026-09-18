@@ -2,14 +2,14 @@ import { ReactNode, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { ConnectKitButton } from 'connectkit'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Flame, TrendingUp, Rocket, Wallet, Settings, Menu, X, Zap, Code2 } from 'lucide-react'
+import { Flame, TrendingUp, Rocket, Wallet, Settings, Menu, X, Zap, Code2, Layers } from 'lucide-react'
 import { MobileNav } from './MobileNav'
 
 const SPECTRAL = 'linear-gradient(90deg, #5fbeff, #af8ff4, #f05c6b, #ffcd83, #7ef1b3)'
 
 const NAV_ITEMS = [
   { path: '/', label: 'Feed', icon: Flame },
-  { path: '/trending', label: 'Trending', icon: TrendingUp },
+  { path: '/trending', label: 'Dex', icon: Layers },
   { path: '/launch', label: 'Launch', icon: Rocket },
   { path: '/wallet', label: 'Wallet', icon: Wallet },
   { path: '/ide', label: 'IDE', icon: Code2 },
@@ -144,7 +144,7 @@ export function Layout({ children }: LayoutProps) {
       <main
         className="relative z-10"
         style={isIDE
-          ? { paddingTop: 56, height: '100dvh', overflow: 'hidden' }
+          ? { position: "fixed", top: 56, left: 0, right: 0, bottom: 0, overflow: "hidden", display: "flex", flexDirection: "column" }
           : { paddingTop: 80, paddingBottom: 80, paddingLeft: 16, paddingRight: 16 }
         }
       >

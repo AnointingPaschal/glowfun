@@ -3,7 +3,7 @@ import { Layout } from '@/components/Layout'
 import { FeedPage } from '@/pages/FeedPage'
 import { LaunchPage } from '@/pages/LaunchPage'
 import { TokenPage } from '@/pages/TokenPage'
-import { TrendingPage } from '@/pages/TrendingPage'
+import { TrendingPage } from '@/pages/DexPage'
 import { WalletPage } from '@/pages/WalletPage'
 import { AdminPage } from '@/pages/AdminPage'
 import { IDEPage } from '@/pages/IDEPage'
@@ -14,6 +14,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<FeedPage />} />
         <Route path="/trending" element={<TrendingPage />} />
+        <Route path="/dex" element={<TrendingPage />} />
         <Route path="/launch" element={<LaunchPage />} />
         <Route path="/token/:address" element={<TokenPage />} />
         <Route path="/wallet" element={<WalletPage />} />

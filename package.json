@@ -23,6 +23,7 @@
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "framer-motion": "^12.6.2",
+    "lightweight-charts": "^5.2.1",
     "lucide-react": "^0.488.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.0.0",

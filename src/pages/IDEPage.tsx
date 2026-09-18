@@ -2,10 +2,10 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import Editor, { useMonaco, Monaco } from '@monaco-editor/react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  useAccount, useWriteContract, useWaitForTransactionReceipt, usePublicClient,
+  useAccount, useWriteContract, useWaitForTransactionReceipt, usePublicClient, useSendTransaction,
 } from 'wagmi'
 import { ConnectKitButton } from 'connectkit'
-import { parseAbi, encodeDeployData, isAddress } from 'viem'
+import { encodeDeployData, isAddress } from 'viem'
 import { toast } from 'sonner'
 import {
   Code2, Play, Rocket, ChevronRight, ChevronDown, AlertTriangle, CheckCircle2,
@@ -562,7 +562,7 @@ function DeployPanel({
   const [selected, setSelected] = useState(contracts[0]?.contractName ?? '')
   const [constructorArgs, setConstructorArgs] = useState<AbiInput[]>([])
   const [ethValue, setEthValue] = useState('')
-  const { writeContract, data: deployHash, isPending } = useWriteContract()
+  const { sendTransaction, data: deployHash, isPending } = useSendTransaction()
   const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash: deployHash })
 
   const contract = contracts.find(c => c.contractName === selected)
@@ -598,16 +598,13 @@ function DeployPanel({
       bytecode: `0x${contract.bytecode}` as `0x${string}`,
       args,
     })
-    writeContract({
-      abi: contract.abi,
-      bytecode: `0x${contract.bytecode}` as `0x${string}`,
-      functionName: '',
-      args: [],
-      chainId: CHAIN_ID as any,
-    } as any, {
-      // @ts-ignore
+    sendTransaction({
       data: calldata,
+      chainId: CHAIN_ID as any,
       value: ethValue ? BigInt(Math.floor(parseFloat(ethValue) * 1e18)) : 0n,
+    } as any, {
+      onSuccess: () => toast.info('Deploy transaction submitted…'),
+      onError: (e: any) => toast.error(e.shortMessage ?? e.message),
     })
   }
 
@@ -796,7 +793,7 @@ export function IDEPage() {
   const warnings = result?.errors.filter(e => e.severity === 'warning') ?? []
 
   return (
-    <div style={{ height: 'calc(100vh - 80px)', display: 'flex', flexDirection: 'column', gap: 0 }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Top bar */}
       <div className="flex items-center justify-between px-3 py-2 flex-shrink-0"
         style={{ background: 'rgba(10,10,20,0.9)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
