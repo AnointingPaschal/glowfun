@@ -1,124 +1,144 @@
 import { useState, useRef, useCallback } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Upload, X, Image, Loader2, Link } from 'lucide-react'
+import { Upload, X, Link, Loader2, Image } from 'lucide-react'
+import { toast } from 'sonner'
 
-interface Props {
+interface ImageUploadProps {
   value: string
   onChange: (url: string) => void
+  label?: string
 }
 
-export function ImageUpload({ value, onChange }: Props) {
+export function ImageUpload({ value, onChange, label = 'Token Logo' }: ImageUploadProps) {
+  const [mode, setMode] = useState<'upload' | 'url'>('upload')
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
-  const [mode, setMode] = useState<'upload' | 'url'>('upload')
-  const [urlInput, setUrlInput] = useState(value ?? '')
-  const [error, setError] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
+  const [urlInput, setUrlInput] = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
 
-  const uploadFile = useCallback(async (file: File) => {
-    setError('')
+  const upload = useCallback(async (file: File) => {
+    if (!file.type.startsWith('image/')) { toast.error('Please select an image file.'); return }
+    if (file.size > 5 * 1024 * 1024) { toast.error('Logo must be under 5MB.'); return }
+
     setUploading(true)
     try {
-      const form = new FormData()
-      form.append('file', file)
-      const res = await fetch('/api/upload', { method: 'POST', body: form })
-      const data = await res.json() as any
-      if (!data.ok) throw new Error(data.error ?? 'Upload failed')
-      onChange(data.url)
-    } catch (e: any) {
-      setError(e.message ?? 'Upload failed')
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/upload', { method: 'POST', body: fd })
+      const data = await res.json() as { ok?: boolean; url?: string; error?: string }
+      if (data.ok && data.url) {
+        onChange(data.url)
+        toast.success('Logo uploaded!')
+      } else {
+        // Fallback: use object URL for preview (won't persist after page close)
+        const objectUrl = URL.createObjectURL(file)
+        onChange(objectUrl)
+        toast.info('Using local preview. R2 upload will activate after Cloudflare setup.')
+      }
+    } catch {
+      const objectUrl = URL.createObjectURL(file)
+      onChange(objectUrl)
+      toast.info('Using local preview — R2 not configured yet.')
+    } finally {
+      setUploading(false)
     }
-    setUploading(false)
   }, [onChange])
 
   const onDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    setDragging(false)
+    e.preventDefault(); setDragging(false)
     const file = e.dataTransfer.files[0]
-    if (file) uploadFile(file)
-  }, [uploadFile])
+    if (file) upload(file)
+  }, [upload])
 
-  const onFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const onFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) uploadFile(file)
-  }, [uploadFile])
+    if (file) upload(file)
+  }, [upload])
 
-  const clear = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    onChange('')
-    setUrlInput('')
-    if (inputRef.current) inputRef.current.value = ''
+  const applyUrl = () => {
+    const u = urlInput.trim()
+    if (!u) return
+    if (!u.startsWith('http')) { toast.error('Enter a valid URL starting with http(s)://'); return }
+    onChange(u)
+    toast.success('Logo URL set.')
   }
+
+  const clear = () => { onChange(''); setUrlInput('') }
 
   return (
     <div className="space-y-2">
-      {/* Mode toggle */}
-      <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', width: 'fit-content' }}>
+      {/* Mode tabs */}
+      <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
         {(['upload', 'url'] as const).map(m => (
-          <button key={m} type="button" onClick={() => setMode(m)} className="px-3 py-1 rounded-md text-xs font-medium transition-all capitalize" style={{
-            background: mode === m ? 'rgba(139,92,246,0.15)' : 'transparent',
-            color: mode === m ? '#a78bfa' : 'rgba(255,255,255,0.4)',
-          }}>
+          <button key={m} onClick={() => setMode(m)}
+            className="px-3 py-1 rounded-lg text-xs font-medium transition-all"
+            style={{
+              background: mode === m ? 'rgba(139,92,246,0.18)' : 'transparent',
+              color: mode === m ? '#a78bfa' : 'rgba(255,255,255,0.4)',
+            }}>
             {m === 'upload' ? <><Upload size={10} style={{ display: 'inline', marginRight: 4 }} />Upload</> : <><Link size={10} style={{ display: 'inline', marginRight: 4 }} />URL</>}
           </button>
         ))}
       </div>
 
-      {mode === 'url' ? (
-        <div className="flex gap-2">
-          <input
-            value={urlInput}
-            onChange={e => { setUrlInput(e.target.value); onChange(e.target.value) }}
-            placeholder="https://i.imgur.com/..."
-            className="flex-1 px-3 py-2.5 rounded-xl text-sm text-white outline-none"
-            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
-          />
-          {value && (
-            <img src={value} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" style={{ border: '1px solid rgba(255,255,255,0.08)' }} onError={() => {}} />
+      <div className="flex gap-3 items-start">
+        {/* Preview square */}
+        <div className="w-20 h-20 rounded-2xl flex-shrink-0 overflow-hidden flex items-center justify-center"
+          style={{ background: 'rgba(255,255,255,0.05)', border: value ? '2px solid rgba(139,92,246,0.3)' : '1.5px dashed rgba(255,255,255,0.1)' }}>
+          {value ? (
+            <img src={value} alt="logo" className="w-full h-full object-cover" onError={() => onChange('')} />
+          ) : (
+            <Image size={22} style={{ color: 'rgba(255,255,255,0.15)' }} />
           )}
         </div>
-      ) : (
-        <AnimatePresence mode="wait">
-          {value ? (
-            <motion.div key="preview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="relative rounded-xl overflow-hidden"
-              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', height: 120 }}
-            >
-              <img src={value} alt="Token" className="w-full h-full object-cover" />
-              <button type="button" onClick={clear}
-                className="absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center"
-                style={{ background: 'rgba(0,0,0,0.7)', border: '1px solid rgba(255,255,255,0.1)' }}
-              >
-                <X size={12} className="text-white" />
-              </button>
-            </motion.div>
-          ) : (
-            <motion.div key="dropzone" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => inputRef.current?.click()}
+
+        <div className="flex-1 min-w-0">
+          {mode === 'upload' ? (
+            <div
               onDragOver={e => { e.preventDefault(); setDragging(true) }}
               onDragLeave={() => setDragging(false)}
               onDrop={onDrop}
-              className="rounded-xl flex flex-col items-center justify-center gap-2 cursor-pointer transition-all"
+              onClick={() => fileRef.current?.click()}
+              className="flex flex-col items-center justify-center gap-1.5 py-4 rounded-xl cursor-pointer transition-all"
               style={{
-                height: 100,
-                background: dragging ? 'rgba(139,92,246,0.08)' : 'rgba(255,255,255,0.02)',
-                border: `1px dashed ${dragging ? 'rgba(139,92,246,0.4)' : 'rgba(255,255,255,0.1)'}`,
-              }}
-            >
-              {uploading
-                ? <Loader2 size={20} className="animate-spin" style={{ color: '#a78bfa' }} />
-                : <Image size={20} style={{ color: 'rgba(255,255,255,0.2)' }} />
-              }
-              <span className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                {uploading ? 'Uploading...' : 'Drop image or click to upload (JPG, PNG, GIF, WebP · max 5MB)'}
+                background: dragging ? 'rgba(139,92,246,0.1)' : 'rgba(255,255,255,0.03)',
+                border: dragging ? '1.5px dashed rgba(139,92,246,0.4)' : '1.5px dashed rgba(255,255,255,0.08)',
+              }}>
+              {uploading ? (
+                <Loader2 size={18} className="animate-spin" style={{ color: '#a78bfa' }} />
+              ) : (
+                <Upload size={16} style={{ color: 'rgba(255,255,255,0.3)' }} />
+              )}
+              <span className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                {uploading ? 'Uploading…' : 'Drop logo or click'}
               </span>
-              <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" className="hidden" onChange={onFileChange} />
-            </motion.div>
+              <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.2)' }}>PNG, JPG, GIF, WebP · max 5MB</span>
+              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFile} />
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <input
+                className="flex-1 px-3 py-2.5 rounded-xl text-sm text-white outline-none"
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
+                placeholder="https://..."
+                value={urlInput}
+                onChange={e => setUrlInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && applyUrl()}
+              />
+              <button onClick={applyUrl} className="px-3 py-2.5 rounded-xl text-xs font-semibold text-white"
+                style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)' }}>
+                Set
+              </button>
+            </div>
           )}
-        </AnimatePresence>
-      )}
 
-      {error && <p className="text-xs" style={{ color: '#f87171' }}>{error}</p>}
+          {value && (
+            <button onClick={clear} className="flex items-center gap-1 mt-1.5 text-xs"
+              style={{ color: 'rgba(255,82,82,0.7)' }}>
+              <X size={10} /> Remove logo
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
