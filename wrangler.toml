@@ -5,14 +5,13 @@ pages_build_output_dir = "dist"
 # KV namespace for app config / env variables
 [[kv_namespaces]]
 binding = "CONFIG"
-id = "REPLACE_WITH_YOUR_KV_ID"
-preview_id = "REPLACE_WITH_YOUR_KV_PREVIEW_ID"
+id = "82b5f9b3c9d64a8eb56d2d6727611b59"
 
 # D1 database for comments, token metadata, user data
 [[d1_databases]]
 binding = "DB"
 database_name = "glowfun-db"
-database_id = "REPLACE_WITH_YOUR_D1_ID"
+database_id = "357e2e26-d90c-4dfb-8f96-d65b69e07320"
 
 # R2 bucket for token images
 [[r2_buckets]]
