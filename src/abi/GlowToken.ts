@@ -1,0 +1,18 @@
+export const GLOW_TOKEN_ABI = [
+  { name: 'name', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'string' }] },
+  { name: 'symbol', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'string' }] },
+  { name: 'decimals', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint8' }] },
+  { name: 'totalSupply', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
+  { name: 'balanceOf', type: 'function', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ name: '', type: 'uint256' }] },
+  { name: 'allowance', type: 'function', stateMutability: 'view', inputs: [{ name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }], outputs: [{ name: '', type: 'uint256' }] },
+  { name: 'approve', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ name: '', type: 'bool' }] },
+  { name: 'transfer', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'to', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ name: '', type: 'bool' }] },
+  { name: 'description', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'string' }] },
+  { name: 'imageUri', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'string' }] },
+  { name: 'twitter', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'string' }] },
+  { name: 'telegram', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'string' }] },
+  { name: 'website', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'string' }] },
+  { name: 'creator', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'address' }] },
+  { name: 'createdAt', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
+  { name: 'factory', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'address' }] },
+] as const

@@ -1,0 +1,50 @@
+{
+  "name": "glowfun",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "oxlint src/",
+    "typecheck": "tsc --noEmit",
+    "check": "bun run lint && bun run typecheck",
+    "server": "bun server/index.ts",
+    "start": "bun run server"
+  },
+  "dependencies": {
+    "@circle-fin/user-controlled-wallets": "^10.8.0",
+    "@circle-fin/w3s-pw-web-sdk": "^1.0.9",
+    "@tanstack/react-query": "^5.74.4",
+    "connectkit": "^1.8.2",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "framer-motion": "^12.6.2",
+    "lucide-react": "^0.488.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.4.0",
+    "recharts": "^2.15.2",
+    "sonner": "^2.0.3",
+    "viem": "^2.29.2",
+    "wagmi": "^2.15.4",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.2.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.1",
+    "@types/node": "^22.14.1",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.1",
+    "@vitejs/plugin-react": "^4.4.1",
+    "autoprefixer": "^10.4.21",
+    "oxlint": "^0.16.6",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.3",
+    "vite": "^6.3.1",
+    "vite-plugin-node-polyfills": "^0.23.1"
+  }
+}
