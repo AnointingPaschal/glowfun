@@ -13,7 +13,8 @@ export default defineConfig({
     global: 'globalThis',
   },
   optimizeDeps: {
-    include: ['@monaco-editor/react', 'qrcode.react'],
+    include: ['qrcode.react'],
+    exclude: ['monaco-editor'],
   },
   server: {
     host: '0.0.0.0',
@@ -31,12 +32,11 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          monaco: ['@monaco-editor/react'],
           wagmi: ['wagmi', 'viem'],
           react: ['react', 'react-dom'],
         },
       },
     },
-    chunkSizeWarningLimit: 3000,
+    chunkSizeWarningLimit: 4000,
   },
 })

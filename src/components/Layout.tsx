@@ -144,7 +144,7 @@ export function Layout({ children }: LayoutProps) {
       <main
         className="relative z-10"
         style={isIDE
-          ? { position: "fixed", top: 56, left: 0, right: 0, bottom: 0, overflow: "hidden", display: "flex", flexDirection: "column" }
+          ? { position: 'fixed' as const, top: 0, left: 0, right: 0, bottom: 0, paddingTop: 56, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' }
           : { paddingTop: 80, paddingBottom: 80, paddingLeft: 16, paddingRight: 16 }
         }
       >
