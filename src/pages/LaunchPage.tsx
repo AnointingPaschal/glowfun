@@ -7,8 +7,9 @@ import { GlassCard } from '@/components/GlassCard'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
 import { FACTORY_ADDRESS, CHAIN_ID, EXPLORER_BASE } from '@/constants'
 import { parseOnchainError } from '@/utils/errors'
-import { Rocket, Image, Twitter, Send, Globe, Info, ExternalLink } from 'lucide-react'
+import { Rocket, Twitter, Send, Globe, Info, ExternalLink } from 'lucide-react'
 import { ConnectKitButton } from 'connectkit'
+import { ImageUpload } from '@/components/ImageUpload'
 
 const SPECTRAL = 'linear-gradient(90deg, #5fbeff, #af8ff4, #f05c6b, #ffcd83, #7ef1b3)'
 
@@ -143,10 +144,10 @@ export function LaunchPage() {
                 <textarea style={{ ...inputStyle, resize: 'none', minHeight: 72 }} placeholder="What is this token about?" value={form.description} onChange={update('description') as any} maxLength={500} />
               </div>
 
-              {/* Image URL */}
+              {/* Image Upload */}
               <div>
-                <label style={labelStyle}><Image size={10} style={{ display: 'inline', marginRight: 4 }} />Image URL</label>
-                <input style={inputStyle} placeholder="https://..." value={form.imageUri} onChange={update('imageUri')} />
+                <label style={labelStyle}>Token Image</label>
+                <ImageUpload value={form.imageUri} onChange={url => setForm(f => ({ ...f, imageUri: url }))} />
               </div>
 
               {/* Social links */}

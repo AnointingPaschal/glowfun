@@ -1,0 +1,23 @@
+name = "glowfun"
+compatibility_date = "2024-09-23"
+pages_build_output_dir = "dist"
+
+# KV namespace for app config / env variables
+[[kv_namespaces]]
+binding = "CONFIG"
+id = "REPLACE_WITH_YOUR_KV_ID"
+preview_id = "REPLACE_WITH_YOUR_KV_PREVIEW_ID"
+
+# D1 database for comments, token metadata, user data
+[[d1_databases]]
+binding = "DB"
+database_name = "glowfun-db"
+database_id = "REPLACE_WITH_YOUR_D1_ID"
+
+# R2 bucket for token images
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "glowfun-images"
+
+[vars]
+ENVIRONMENT = "production"

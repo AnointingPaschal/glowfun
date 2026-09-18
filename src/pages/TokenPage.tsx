@@ -7,6 +7,7 @@ import { erc20Abi } from 'viem'
 import { toast } from 'sonner'
 import { ArrowLeft, Twitter, Send, Globe, ExternalLink, Trophy, TrendingUp, Users, DollarSign, Loader2, ChevronRight, AlertTriangle, Copy, Check } from 'lucide-react'
 import { GlassCard } from '@/components/GlassCard'
+import { Comments } from '@/components/Comments'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
 import { FACTORY_ADDRESS, USDC_ADDRESS, CHAIN_ID, EXPLORER_BASE } from '@/constants'
 import { useTokenData, useTokenBalance } from '@/hooks/useTokenData'
@@ -403,6 +404,11 @@ export function TokenPage() {
             </motion.div>
           )}
         </div>
+      </div>
+
+      {/* Comments / Chat */}
+      <div className="mt-6 max-w-5xl mx-auto">
+        <Comments tokenAddress={tokenAddr!} />
       </div>
     </div>
   )
