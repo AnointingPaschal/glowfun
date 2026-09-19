@@ -9,6 +9,25 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
+// ---------------------------------------------------------------------------
+// File-level struct so both GlowToken and GlowFunFactory can reference it
+// without cross-contract type gymnastics.
+// Bundling the 7 string fields here means _deployToken only pushes 1 pointer
+// onto the stack instead of 14 slots (7 strings × 2 slots each).
+// ---------------------------------------------------------------------------
+struct TokenMetadata {
+    string name;
+    string symbol;
+    string description;
+    string imageUri;
+    string twitter;
+    string telegram;
+    string website;
+}
+
+// ===========================================================================
+//  GlowToken
+// ===========================================================================
 contract GlowToken is ERC20 {
     address public immutable factory;
     address public immutable creator;
@@ -22,83 +41,81 @@ contract GlowToken is ERC20 {
 
     error ZeroAddress();
 
+    // Constructor now takes 4 parameters instead of 10 — the 7 strings are
+    // bundled in `meta`, cutting the caller's stack pressure dramatically.
     constructor(
-        string memory name_,
-        string memory symbol_,
-        string memory description_,
-        string memory imageUri_,
-        string memory twitter_,
-        string memory telegram_,
-        string memory website_,
+        TokenMetadata memory meta,
         address creator_,
         address factory_,
         uint256 totalSupply_
-    ) ERC20(name_, symbol_) {
+    ) ERC20(meta.name, meta.symbol) {
         if (creator_ == address(0) || factory_ == address(0)) revert ZeroAddress();
 
         creator   = creator_;
         factory   = factory_;
         createdAt = block.timestamp;
 
-        description = description_;
-        imageUri    = imageUri_;
-        twitter     = twitter_;
-        telegram    = telegram_;
-        website     = website_;
+        description = meta.description;
+        imageUri    = meta.imageUri;
+        twitter     = meta.twitter;
+        telegram    = meta.telegram;
+        website     = meta.website;
 
         _mint(factory_, totalSupply_);
     }
 }
 
+// ===========================================================================
+//  GlowFunFactory
+// ===========================================================================
 contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    uint256 public constant BPS_DENOMINATOR           = 10_000;
-    uint256 public constant MAX_PROTOCOL_FEE_BPS      = 500;
-    uint256 public constant MAX_PAUSE_DURATION         = 7 days;
+    // ── Constants ─────────────────────────────────────────────────────
+    uint256 public constant BPS_DENOMINATOR            = 10_000;
+    uint256 public constant MAX_PROTOCOL_FEE_BPS       = 500;
+    uint256 public constant MAX_PAUSE_DURATION          = 7 days;
 
-    uint256 public constant CURVE_TOKENS_FOR_SALE     = 800_000_000e18;
-    uint256 public constant GRADUATION_TOKEN_RESERVE   = 200_000_000e18;
+    uint256 public constant CURVE_TOKENS_FOR_SALE      = 800_000_000e18;
+    uint256 public constant GRADUATION_TOKEN_RESERVE    = 200_000_000e18;
 
-    uint256 public constant INITIAL_VIRTUAL_USDC_RESERVES  = 30_000e6;
-    uint256 public constant INITIAL_VIRTUAL_TOKEN_RESERVES  = 1_073_000_191e18;
+    uint256 public constant INITIAL_VIRTUAL_USDC_RESERVES   = 30_000e6;
+    uint256 public constant INITIAL_VIRTUAL_TOKEN_RESERVES   = 1_073_000_191e18;
 
     uint256 public constant DEFAULT_GRADUATION_THRESHOLD = 69_000e6;
     uint256 public constant DEFAULT_PROTOCOL_FEE_BPS     = 100;
 
-    // ── Structs ──────────────────────────────────────────────────────
-
+    // ── Structs ───────────────────────────────────────────────────────
     struct TokenState {
-        address  creator;
-        uint256  virtualUsdcReserves;
-        uint256  virtualTokenReserves;
-        uint256  realUsdcRaised;
-        uint256  realTokensSold;
-        bool     graduated;
-        uint256  createdAt;
-        uint256  curveTokens;
-        uint256  graduationTokens;
-        uint256  creatorTokens;
-        uint256  totalSupply;
-        uint256  tokenGraduationThreshold;
+        address creator;
+        uint256 virtualUsdcReserves;
+        uint256 virtualTokenReserves;
+        uint256 realUsdcRaised;
+        uint256 realTokensSold;
+        bool    graduated;
+        uint256 createdAt;
+        uint256 curveTokens;
+        uint256 graduationTokens;
+        uint256 creatorTokens;
+        uint256 totalSupply;
+        uint256 tokenGraduationThreshold;
     }
 
     struct LaunchParams {
-        string   name;
-        string   symbol;
-        string   description;
-        string   imageUri;
-        string   twitter;
-        string   telegram;
-        string   website;
-        uint256  totalSupply;
-        uint256  curveAllocationBps;
-        uint256  creatorAllocationBps;
-        uint256  graduationThresholdUsdc;
+        string  name;
+        string  symbol;
+        string  description;
+        string  imageUri;
+        string  twitter;
+        string  telegram;
+        string  website;
+        uint256 totalSupply;
+        uint256 curveAllocationBps;
+        uint256 creatorAllocationBps;
+        uint256 graduationThresholdUsdc;
     }
 
-    /// @dev Intermediate result from _validateAndCompute — keeps launchToken's
-    ///      stack frame shallow enough for the EVM (avoids "stack too deep").
+    // Intermediate computation result — keeps launchToken's frame shallow.
     struct LaunchAllocations {
         uint256 supply;
         uint256 curveTokens;
@@ -108,7 +125,6 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
     }
 
     // ── State ─────────────────────────────────────────────────────────
-
     IERC20 public immutable usdc;
 
     uint256 public creationFee;
@@ -121,14 +137,13 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
     address public pendingFeeRecipient;
     address public pendingGraduationRecipient;
 
-    mapping(address token => TokenState)  public tokenStates;
-    mapping(address token => bool)        public isLaunchedToken;
-    mapping(address token => uint256)     public pendingGraduationUsdc;
-    mapping(address token => uint256)     public pendingGraduationTokens;
+    mapping(address => TokenState) public tokenStates;
+    mapping(address => bool)       public isLaunchedToken;
+    mapping(address => uint256)    public pendingGraduationUsdc;
+    mapping(address => uint256)    public pendingGraduationTokens;
     address[] private _launchedTokens;
 
     // ── Errors ────────────────────────────────────────────────────────
-
     error InvalidToken();
     error TokenAlreadyExists();
     error TokenAlreadyGraduated();
@@ -143,22 +158,39 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
     error InvalidAllocation();
 
     // ── Events ────────────────────────────────────────────────────────
-
-    event TokenLaunched(address indexed token, address indexed creator, string name, string symbol, uint256 timestamp);
+    event TokenLaunched(
+        address indexed token,
+        address indexed creator,
+        string name,
+        string symbol,
+        uint256 timestamp
+    );
     event TokenLaunchedV2(
         address indexed token,
         address indexed creator,
-        string   name,
-        string   symbol,
-        uint256  totalSupply,
-        uint256  curveTokens,
-        uint256  graduationTokens,
-        uint256  creatorTokens,
-        uint256  graduationThreshold,
-        uint256  timestamp
+        string  name,
+        string  symbol,
+        uint256 totalSupply,
+        uint256 curveTokens,
+        uint256 graduationTokens,
+        uint256 creatorTokens,
+        uint256 graduationThreshold,
+        uint256 timestamp
     );
-    event TokensBought(address indexed token, address indexed buyer,  uint256 usdcIn,   uint256 tokensOut, uint256 price);
-    event TokensSold  (address indexed token, address indexed seller, uint256 tokensIn,  uint256 usdcOut,   uint256 price);
+    event TokensBought(
+        address indexed token,
+        address indexed buyer,
+        uint256 usdcIn,
+        uint256 tokensOut,
+        uint256 price
+    );
+    event TokensSold(
+        address indexed token,
+        address indexed seller,
+        uint256 tokensIn,
+        uint256 usdcOut,
+        uint256 price
+    );
     event TokenGraduated(
         address indexed token,
         address indexed recipient,
@@ -166,8 +198,12 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
         uint256 tokenAmount,
         uint256 timestamp
     );
-    event GraduationClaimed(address indexed token, address indexed recipient, uint256 usdc, uint256 tokens);
-
+    event GraduationClaimed(
+        address indexed token,
+        address indexed recipient,
+        uint256 usdc,
+        uint256 tokens
+    );
     event CreationFeeUpdated(uint256 fee);
     event ProtocolFeeUpdated(uint256 feeBps);
     event FeeRecipientProposed(address recipient);
@@ -177,7 +213,6 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
     event GraduationThresholdUpdated(uint256 threshold);
 
     // ── Constructor ───────────────────────────────────────────────────
-
     constructor(
         address _usdc,
         address _feeRecipient,
@@ -185,10 +220,10 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
         address _owner
     ) Ownable(_owner) {
         if (
-            _usdc               == address(0) ||
-            _feeRecipient       == address(0) ||
+            _usdc                == address(0) ||
+            _feeRecipient        == address(0) ||
             _graduationRecipient == address(0) ||
-            _owner              == address(0)
+            _owner               == address(0)
         ) revert InvalidAddress();
 
         usdc = IERC20(_usdc);
@@ -204,50 +239,45 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
 
     // ── Launch ────────────────────────────────────────────────────────
 
-    /// @notice Launch a new meme token on the bonding curve.
     function launchToken(LaunchParams calldata p)
         external
         nonReentrant
         whenNotPaused
         returns (address token)
     {
-        // Input validation (short strings are cheap on stack)
-        if (bytes(p.name).length == 0 || bytes(p.symbol).length == 0) revert InvalidToken();
-        if (bytes(p.name).length > 64 || bytes(p.symbol).length > 16)  revert InvalidToken();
+        if (bytes(p.name).length   == 0 || bytes(p.symbol).length == 0) revert InvalidToken();
+        if (bytes(p.name).length   > 64 || bytes(p.symbol).length > 16) revert InvalidToken();
         if (p.graduationThresholdUsdc != 0 && p.graduationThresholdUsdc < 1_000e6) revert InvalidAmount();
 
-        // Compute allocations in a separate frame to stay under stack limit
+        // Validate + compute allocations in a separate frame (avoids stack overflow)
         LaunchAllocations memory a = _validateAndCompute(p);
 
-        // Charge creation fee before deployment
         if (creationFee > 0) {
             usdc.safeTransferFrom(msg.sender, feeRecipient, creationFee);
         }
 
-        // Deploy token in a separate frame (10-param constructor would overflow stack here)
+        // Deploy token in a separate frame (struct pointer = 1 stack slot)
         token = _deployToken(p, a.supply);
 
         if (isLaunchedToken[token]) revert TokenAlreadyExists();
 
-        // Creator allocation
         if (a.creatorTokens > 0) {
             IERC20(token).safeTransfer(msg.sender, a.creatorTokens);
         }
 
-        // Register state
         tokenStates[token] = TokenState({
-            creator:                  msg.sender,
-            virtualUsdcReserves:      INITIAL_VIRTUAL_USDC_RESERVES,
-            virtualTokenReserves:     INITIAL_VIRTUAL_TOKEN_RESERVES,
-            realUsdcRaised:           0,
-            realTokensSold:           0,
-            graduated:                false,
-            createdAt:                block.timestamp,
-            curveTokens:              a.curveTokens,
-            graduationTokens:         a.graduationTokens,
-            creatorTokens:            a.creatorTokens,
-            totalSupply:              a.supply,
-            tokenGraduationThreshold: a.gradThresh
+            creator:                   msg.sender,
+            virtualUsdcReserves:       INITIAL_VIRTUAL_USDC_RESERVES,
+            virtualTokenReserves:      INITIAL_VIRTUAL_TOKEN_RESERVES,
+            realUsdcRaised:            0,
+            realTokensSold:            0,
+            graduated:                 false,
+            createdAt:                 block.timestamp,
+            curveTokens:               a.curveTokens,
+            graduationTokens:          a.graduationTokens,
+            creatorTokens:             a.creatorTokens,
+            totalSupply:               a.supply,
+            tokenGraduationThreshold:  a.gradThresh
         });
 
         isLaunchedToken[token] = true;
@@ -284,9 +314,9 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
         uint256 usdcForCurve = usdcIn - fee;
 
         tokensOut = _getBuyAmount(state.virtualUsdcReserves, state.virtualTokenReserves, usdcForCurve);
-        if (tokensOut < minTokensOut) revert SlippageExceeded();
+        if (tokensOut < minTokensOut)                          revert SlippageExceeded();
         if (state.realTokensSold + tokensOut > state.curveTokens) revert CurveSupplyExceeded();
-        if (IERC20(token).balanceOf(address(this)) < tokensOut) revert InsufficientTokenLiquidity();
+        if (IERC20(token).balanceOf(address(this)) < tokensOut)   revert InsufficientTokenLiquidity();
 
         state.virtualUsdcReserves  += usdcForCurve;
         state.virtualTokenReserves -= tokensOut;
@@ -298,10 +328,7 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
         IERC20(token).safeTransfer(msg.sender, tokensOut);
 
         emit TokensBought(
-            token,
-            msg.sender,
-            usdcIn,
-            tokensOut,
+            token, msg.sender, usdcIn, tokensOut,
             _priceFromReserves(state.virtualUsdcReserves, state.virtualTokenReserves)
         );
 
@@ -318,15 +345,14 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
     {
         TokenState storage state = _activeTokenState(token);
 
-        if (tokensIn == 0)                       revert InvalidAmount();
-        if (tokensIn > state.realTokensSold)     revert InvalidAmount();
+        if (tokensIn == 0 || tokensIn > state.realTokensSold) revert InvalidAmount();
 
         uint256 usdcOutGross = _getSellAmount(state.virtualUsdcReserves, state.virtualTokenReserves, tokensIn);
-        if (usdcOutGross == 0)                   revert InvalidAmount();
-        if (usdcOutGross > state.realUsdcRaised) revert InsufficientUsdcLiquidity();
+        if (usdcOutGross == 0)                    revert InvalidAmount();
+        if (usdcOutGross > state.realUsdcRaised)  revert InsufficientUsdcLiquidity();
 
-        uint256 fee  = (usdcOutGross * protocolFeeBps) / BPS_DENOMINATOR;
-        usdcOutNet   = usdcOutGross - fee;
+        uint256 fee = (usdcOutGross * protocolFeeBps) / BPS_DENOMINATOR;
+        usdcOutNet  = usdcOutGross - fee;
 
         if (usdcOutNet < minUsdcOut) revert SlippageExceeded();
 
@@ -340,10 +366,7 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
         usdc.safeTransfer(msg.sender, usdcOutNet);
 
         emit TokensSold(
-            token,
-            msg.sender,
-            tokensIn,
-            usdcOutNet,
+            token, msg.sender, tokensIn, usdcOutNet,
             _priceFromReserves(state.virtualUsdcReserves, state.virtualTokenReserves)
         );
     }
@@ -367,45 +390,37 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
     // ── Views ─────────────────────────────────────────────────────────
 
     function getTokenPrice(address token) external view returns (uint256) {
-        TokenState storage state = _validTokenState(token);
-        return _priceFromReserves(state.virtualUsdcReserves, state.virtualTokenReserves);
+        TokenState storage s = _validTokenState(token);
+        return _priceFromReserves(s.virtualUsdcReserves, s.virtualTokenReserves);
     }
 
     function getBuyQuote(address token, uint256 usdcIn) external view returns (uint256 tokensOut) {
-        TokenState storage state = _activeViewTokenState(token);
+        TokenState storage s = _activeViewTokenState(token);
         if (usdcIn == 0) return 0;
-
-        uint256 fee          = (usdcIn * protocolFeeBps) / BPS_DENOMINATOR;
-        uint256 usdcForCurve = usdcIn - fee;
-
-        tokensOut = _getBuyAmount(state.virtualUsdcReserves, state.virtualTokenReserves, usdcForCurve);
-
-        uint256 remaining = state.curveTokens - state.realTokensSold;
+        uint256 usdcForCurve = usdcIn - (usdcIn * protocolFeeBps) / BPS_DENOMINATOR;
+        tokensOut = _getBuyAmount(s.virtualUsdcReserves, s.virtualTokenReserves, usdcForCurve);
+        uint256 remaining = s.curveTokens - s.realTokensSold;
         if (tokensOut > remaining) tokensOut = remaining;
     }
 
     function getSellQuote(address token, uint256 tokensIn) external view returns (uint256 usdcOutNet) {
-        TokenState storage state = _activeViewTokenState(token);
-        if (tokensIn == 0 || tokensIn > state.realTokensSold) return 0;
-
-        uint256 usdcOutGross = _getSellAmount(state.virtualUsdcReserves, state.virtualTokenReserves, tokensIn);
-        if (usdcOutGross > state.realUsdcRaised) usdcOutGross = state.realUsdcRaised;
-
-        uint256 fee  = (usdcOutGross * protocolFeeBps) / BPS_DENOMINATOR;
-        usdcOutNet   = usdcOutGross - fee;
+        TokenState storage s = _activeViewTokenState(token);
+        if (tokensIn == 0 || tokensIn > s.realTokensSold) return 0;
+        uint256 gross = _getSellAmount(s.virtualUsdcReserves, s.virtualTokenReserves, tokensIn);
+        if (gross > s.realUsdcRaised) gross = s.realUsdcRaised;
+        usdcOutNet = gross - (gross * protocolFeeBps) / BPS_DENOMINATOR;
     }
 
     function getMarketCap(address token) external view returns (uint256 marketCapUsdc6) {
-        TokenState storage state = _validTokenState(token);
-        uint256 price = _priceFromReserves(state.virtualUsdcReserves, state.virtualTokenReserves);
-        marketCapUsdc6 = (state.realTokensSold * price) / 1e30;
+        TokenState storage s = _validTokenState(token);
+        marketCapUsdc6 = (s.realTokensSold * _priceFromReserves(s.virtualUsdcReserves, s.virtualTokenReserves)) / 1e30;
     }
 
     function getProgress(address token) external view returns (uint256) {
-        TokenState storage state = _validTokenState(token);
+        TokenState storage s = _validTokenState(token);
         if (graduationThreshold == 0) return 1e18;
-        uint256 progress = (state.realUsdcRaised * 1e18) / graduationThreshold;
-        return progress > 1e18 ? 1e18 : progress;
+        uint256 p = (s.realUsdcRaised * 1e18) / graduationThreshold;
+        return p > 1e18 ? 1e18 : p;
     }
 
     function getTokenState(address token) external view returns (TokenState memory) {
@@ -423,7 +438,6 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
     {
         uint256 total = _launchedTokens.length;
         if (offset >= total) return new address[](0);
-
         uint256 end = offset + limit > total ? total : offset + limit;
         result = new address[](end - offset);
         for (uint256 i = offset; i < end; i++) {
@@ -499,8 +513,8 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
 
     // ── Internal helpers ──────────────────────────────────────────────
 
-    /// @dev Validates LaunchParams and computes token allocations.
-    ///      Extracted into its own frame to keep launchToken's stack shallow.
+    /// @dev Validates BPS constraints and computes token allocations.
+    ///      Own call frame keeps launchToken's stack shallow.
     function _validateAndCompute(LaunchParams calldata p)
         internal
         view
@@ -511,41 +525,41 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
 
         uint256 curveBps   = p.curveAllocationBps   == 0 ? 8000 : p.curveAllocationBps;
         uint256 creatorBps = p.creatorAllocationBps;
-        if (curveBps < 5000 || curveBps > 9500)        revert InvalidAllocation();
-        if (creatorBps > 1000)                           revert InvalidAllocation();
-        if (curveBps + creatorBps > 9500)               revert InvalidAllocation();
 
-        uint256 curveTokens   = (supply * curveBps)   / BPS_DENOMINATOR;
-        uint256 creatorTokens = (supply * creatorBps)  / BPS_DENOMINATOR;
+        if (curveBps < 5000 || curveBps > 9500)  revert InvalidAllocation();
+        if (creatorBps > 1000)                     revert InvalidAllocation();
+        if (curveBps + creatorBps > 9500)          revert InvalidAllocation();
 
-        a.supply          = supply;
-        a.curveTokens     = curveTokens;
-        a.creatorTokens   = creatorTokens;
+        uint256 curveTokens   = (supply * curveBps)  / BPS_DENOMINATOR;
+        uint256 creatorTokens = (supply * creatorBps) / BPS_DENOMINATOR;
+
+        a.supply           = supply;
+        a.curveTokens      = curveTokens;
+        a.creatorTokens    = creatorTokens;
         a.graduationTokens = supply - curveTokens - creatorTokens;
-        a.gradThresh      = p.graduationThresholdUsdc == 0
+        a.gradThresh       = p.graduationThresholdUsdc == 0
             ? graduationThreshold
             : p.graduationThresholdUsdc;
     }
 
-    /// @dev Deploys a GlowToken.  Extracted so the 10-param constructor
-    ///      arguments live in their own call frame, not in launchToken's.
+    /// @dev Deploys a GlowToken.
+    ///      Key fix: build TokenMetadata field-by-field so only 2–3 stack
+    ///      slots are live at any moment, then pass the struct pointer (1 slot)
+    ///      to the constructor instead of 10 individual arguments (17+ slots).
     function _deployToken(LaunchParams calldata p, uint256 supply)
         internal
         returns (address)
     {
-        GlowToken t = new GlowToken(
-            p.name,
-            p.symbol,
-            p.description,
-            p.imageUri,
-            p.twitter,
-            p.telegram,
-            p.website,
-            msg.sender,
-            address(this),
-            supply
-        );
-        return address(t);
+        TokenMetadata memory meta;
+        meta.name        = p.name;
+        meta.symbol      = p.symbol;
+        meta.description = p.description;
+        meta.imageUri    = p.imageUri;
+        meta.twitter     = p.twitter;
+        meta.telegram    = p.telegram;
+        meta.website     = p.website;
+
+        return address(new GlowToken(meta, msg.sender, address(this), supply));
     }
 
     function _graduateToken(address token, TokenState storage state) internal {
@@ -558,11 +572,11 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
         uint256 pooledUsdc   = state.realUsdcRaised;
         state.realUsdcRaised = 0;
 
-        uint256 totalTokensToSend           = IERC20(token).balanceOf(address(this));
-        pendingGraduationUsdc[token]         = pooledUsdc;
-        pendingGraduationTokens[token]       = totalTokensToSend;
+        uint256 tokenAmt                   = IERC20(token).balanceOf(address(this));
+        pendingGraduationUsdc[token]        = pooledUsdc;
+        pendingGraduationTokens[token]      = tokenAmt;
 
-        emit TokenGraduated(token, graduationRecipient, pooledUsdc, totalTokensToSend, block.timestamp);
+        emit TokenGraduated(token, graduationRecipient, pooledUsdc, tokenAmt, block.timestamp);
     }
 
     function _activeTokenState(address token) internal view returns (TokenState storage state) {
@@ -580,33 +594,21 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
         state = tokenStates[token];
     }
 
-    function _priceFromReserves(uint256 usdcReserves, uint256 tokenReserves)
-        internal
-        pure
-        returns (uint256)
-    {
-        return (usdcReserves * 1e30) / tokenReserves;
+    function _priceFromReserves(uint256 uR, uint256 tR) internal pure returns (uint256) {
+        return (uR * 1e30) / tR;
     }
 
-    function _getBuyAmount(
-        uint256 usdcReserves,
-        uint256 tokenReserves,
-        uint256 usdcIn
-    ) internal pure returns (uint256 tokensOut) {
-        tokensOut = (tokenReserves * usdcIn) / (usdcReserves + usdcIn);
+    function _getBuyAmount(uint256 uR, uint256 tR, uint256 uIn) internal pure returns (uint256) {
+        return (tR * uIn) / (uR + uIn);
     }
 
-    function _getSellAmount(
-        uint256 usdcReserves,
-        uint256 tokenReserves,
-        uint256 tokensIn
-    ) internal pure returns (uint256 usdcOut) {
-        usdcOut = (usdcReserves * tokensIn) / (tokenReserves + tokensIn);
+    function _getSellAmount(uint256 uR, uint256 tR, uint256 tIn) internal pure returns (uint256) {
+        return (uR * tIn) / (tR + tIn);
     }
 
     function _spendableUsdc(address buyer) internal view returns (uint256) {
-        uint256 allowance = usdc.allowance(buyer, address(this));
-        uint256 balance   = usdc.balanceOf(buyer);
-        return allowance < balance ? allowance : balance;
+        uint256 a = usdc.allowance(buyer, address(this));
+        uint256 b = usdc.balanceOf(buyer);
+        return a < b ? a : b;
     }
 }
