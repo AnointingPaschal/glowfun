@@ -1,16 +1,4 @@
 // SPDX-License-Identifier: MIT
-// ─────────────────────────────────────────────────────────────────────────────
-//  GlowFunFactory — TEST / STAGING VERSION
-//
-//  Differences from production contract:
-//    • Minimum graduation threshold: $1 USDC  (vs $1,000 in production)
-//    • Per-token graduation threshold minimum: $1 USDC
-//    • DEFAULT_GRADUATION_THRESHOLD: $1 USDC  (vs $69,000 in production)
-//    • Contract is labelled "GlowFunFactoryTest" to avoid name collision
-//
-//  Deploy this to test the full graduation flow cheaply.
-//  DO NOT use for production — use GlowFunFactory.sol for mainnet.
-// ─────────────────────────────────────────────────────────────────────────────
 pragma solidity ^0.8.24;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
@@ -20,10 +8,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-// ---------------------------------------------------------------------------
-// Shared metadata struct — keeps constructor stack shallow
-// ---------------------------------------------------------------------------
-struct TestTokenMetadata {
+struct TokenMetadata {
     string name;
     string symbol;
     string description;
@@ -34,9 +19,9 @@ struct TestTokenMetadata {
 }
 
 // ===========================================================================
-//  GlowTokenTest — same as GlowToken, different name to avoid collision
+//  GlowToken
 // ===========================================================================
-contract GlowTokenTest is ERC20 {
+contract GlowToken is ERC20 {
     address public immutable factory;
     address public immutable creator;
     uint256 public immutable createdAt;
@@ -50,46 +35,44 @@ contract GlowTokenTest is ERC20 {
     error ZeroAddress();
 
     constructor(
-        TestTokenMetadata memory meta,
+        TokenMetadata memory meta,
         address creator_,
         address factory_,
         uint256 totalSupply_
     ) ERC20(meta.name, meta.symbol) {
         if (creator_ == address(0) || factory_ == address(0)) revert ZeroAddress();
-
         creator   = creator_;
         factory   = factory_;
         createdAt = block.timestamp;
-
         description = meta.description;
         imageUri    = meta.imageUri;
         twitter     = meta.twitter;
         telegram    = meta.telegram;
         website     = meta.website;
-
         _mint(factory_, totalSupply_);
     }
 }
 
 // ===========================================================================
-//  GlowFunFactoryTest
+//  GlowFunFactory
 // ===========================================================================
 contract GlowFunFactoryTest is Ownable, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    // ── Constants ─────────────────────────────────────────────────────────
-    uint256 internal constant BPS_DENOMINATOR      = 10_000;
-    uint256 internal constant MAX_PROTOCOL_FEE_BPS = 500;
-    uint256 private  constant MAX_PAUSE_DURATION   = 7 days;
+    // ── Constants ──────────────────────────────────────────────────────
+    uint256 internal constant BPS_DENOMINATOR            = 10_000;
+    uint256 internal constant MAX_PROTOCOL_FEE_BPS       = 500;   // 5%
+    uint256 internal constant MAX_CREATOR_GRAD_FEE_BPS   = 2_000; // 20%
+    uint256 private  constant MAX_PAUSE_DURATION          = 7 days;
 
     uint256 private constant INITIAL_VIRTUAL_USDC_RESERVES = 30_000e6;
     uint256 private constant INITIAL_VIRTUAL_TOKEN_RESERVES = 1_073_000_191e18;
 
-    // ─── TEST: default graduation threshold is $1 USDC ──────────────────
-    uint256 private constant DEFAULT_GRADUATION_THRESHOLD = 1e6; // $1 USDC
-    uint256 private constant DEFAULT_PROTOCOL_FEE_BPS     = 100; // 1%
+    uint256 private constant DEFAULT_GRADUATION_THRESHOLD  = 1e6; // $1 for testing
+    uint256 private constant DEFAULT_PROTOCOL_FEE_BPS      = 100;   // 1%
+    uint256 private constant DEFAULT_CREATOR_GRAD_FEE_BPS  = 500;   // 5%
 
-    // ── Structs ───────────────────────────────────────────────────────────
+    // ── Structs ────────────────────────────────────────────────────────
     struct TokenState {
         address creator;
         uint256 virtualUsdcReserves;
@@ -127,12 +110,13 @@ contract GlowFunFactoryTest is Ownable, Pausable, ReentrancyGuard {
         uint256 gradThresh;
     }
 
-    // ── State ─────────────────────────────────────────────────────────────
+    // ── State ──────────────────────────────────────────────────────────
     IERC20 public immutable usdc;
 
-    uint256 public creationFee;
-    uint256 public protocolFeeBps;
-    uint256 public graduationThreshold;
+    uint256 public creationFee;           // USDC (6 dec) per token launch
+    uint256 public protocolFeeBps;        // fee on each buy/sell (bps)
+    uint256 public graduationThreshold;   // global default USDC to graduate
+    uint256 public creatorGraduationFeeBps; // % of graduation USDC to creator
     uint256 public pausedAt;
 
     address public feeRecipient;
@@ -146,7 +130,7 @@ contract GlowFunFactoryTest is Ownable, Pausable, ReentrancyGuard {
     mapping(address => uint256)    public pendingGraduationTokens;
     address[] private _launchedTokens;
 
-    // ── Errors ────────────────────────────────────────────────────────────
+    // ── Errors ─────────────────────────────────────────────────────────
     error InvalidToken();
     error TokenAlreadyExists();
     error TokenAlreadyGraduated();
@@ -160,7 +144,7 @@ contract GlowFunFactoryTest is Ownable, Pausable, ReentrancyGuard {
     error InvalidSupply();
     error InvalidAllocation();
 
-    // ── Events ────────────────────────────────────────────────────────────
+    // ── Events ─────────────────────────────────────────────────────────
     event TokenLaunchedV2(
         address indexed token,
         address indexed creator,
@@ -194,19 +178,22 @@ contract GlowFunFactoryTest is Ownable, Pausable, ReentrancyGuard {
     );
     event GraduationClaimed(
         address indexed token,
-        address indexed recipient,
-        uint256 usdcAmount,
-        uint256 tokenAmount
+        address indexed graduationRecipient,
+        address indexed creator,
+        uint256 usdcToRecipient,
+        uint256 usdcToCreator,
+        uint256 tokens
     );
     event CreationFeeUpdated(uint256 fee);
     event ProtocolFeeUpdated(uint256 feeBps);
+    event CreatorGraduationFeeUpdated(uint256 feeBps);
     event FeeRecipientProposed(address recipient);
     event FeeRecipientUpdated(address recipient);
     event GraduationRecipientProposed(address recipient);
     event GraduationRecipientUpdated(address recipient);
     event GraduationThresholdUpdated(uint256 threshold);
 
-    // ── Constructor ───────────────────────────────────────────────────────
+    // ── Constructor ────────────────────────────────────────────────────
     constructor(
         address _usdc,
         address _feeRecipient,
@@ -220,14 +207,15 @@ contract GlowFunFactoryTest is Ownable, Pausable, ReentrancyGuard {
             _owner               == address(0)
         ) revert InvalidAddress();
 
-        usdc                = IERC20(_usdc);
-        feeRecipient        = _feeRecipient;
-        graduationRecipient = _graduationRecipient;
-        protocolFeeBps      = DEFAULT_PROTOCOL_FEE_BPS;
-        graduationThreshold = DEFAULT_GRADUATION_THRESHOLD; // $1 USDC
+        usdc                   = IERC20(_usdc);
+        feeRecipient           = _feeRecipient;
+        graduationRecipient    = _graduationRecipient;
+        protocolFeeBps         = DEFAULT_PROTOCOL_FEE_BPS;
+        graduationThreshold    = DEFAULT_GRADUATION_THRESHOLD;
+        creatorGraduationFeeBps = DEFAULT_CREATOR_GRAD_FEE_BPS;
     }
 
-    // ── Launch ────────────────────────────────────────────────────────────
+    // ── Launch ─────────────────────────────────────────────────────────
 
     function launchToken(LaunchParams calldata p)
         external
@@ -237,8 +225,6 @@ contract GlowFunFactoryTest is Ownable, Pausable, ReentrancyGuard {
     {
         if (bytes(p.name).length   == 0 || bytes(p.symbol).length == 0) revert InvalidToken();
         if (bytes(p.name).length   > 64 || bytes(p.symbol).length > 16) revert InvalidToken();
-
-        // ─── TEST: minimum per-token threshold is $1 (1e6), not $1,000 ──
         if (p.graduationThresholdUsdc != 0 && p.graduationThresholdUsdc < 1e6) revert InvalidAmount();
 
         LaunchAllocations memory a = _validateAndCompute(p);
@@ -248,7 +234,6 @@ contract GlowFunFactoryTest is Ownable, Pausable, ReentrancyGuard {
         }
 
         token = _deployToken(p, a.supply);
-
         if (isLaunchedToken[token]) revert TokenAlreadyExists();
 
         if (a.creatorTokens > 0) {
@@ -274,18 +259,13 @@ contract GlowFunFactoryTest is Ownable, Pausable, ReentrancyGuard {
         _launchedTokens.push(token);
 
         emit TokenLaunchedV2(
-            token,
-            msg.sender,
-            a.supply,
-            a.curveTokens,
-            a.graduationTokens,
-            a.creatorTokens,
-            a.gradThresh,
-            block.timestamp
+            token, msg.sender,
+            a.supply, a.curveTokens, a.graduationTokens, a.creatorTokens,
+            a.gradThresh, block.timestamp
         );
     }
 
-    // ── Trade ─────────────────────────────────────────────────────────────
+    // ── Trade ──────────────────────────────────────────────────────────
 
     function buyTokens(address token, uint256 minTokensOut)
         external
@@ -359,23 +339,43 @@ contract GlowFunFactoryTest is Ownable, Pausable, ReentrancyGuard {
         );
     }
 
-    // ── Graduation claim ──────────────────────────────────────────────────
+    // ── Graduation claim ───────────────────────────────────────────────
 
+    /// @notice Anyone can call this once a token has graduated.
+    ///         Splits USDC: creatorGraduationFeeBps% to the token creator,
+    ///         remainder to graduationRecipient (DEX / platform wallet).
+    ///         All remaining tokens go entirely to graduationRecipient for DEX LP.
     function claimGraduation(address token) external nonReentrant {
         uint256 usdcAmt  = pendingGraduationUsdc[token];
         uint256 tokenAmt = pendingGraduationTokens[token];
         if (usdcAmt == 0 && tokenAmt == 0) revert InvalidToken();
 
+        // Zero out before transfers (CEI)
         pendingGraduationUsdc[token]   = 0;
         pendingGraduationTokens[token] = 0;
 
-        if (usdcAmt  > 0) usdc.safeTransfer(graduationRecipient, usdcAmt);
+        address creator = tokenStates[token].creator;
+
+        // Split USDC: creator gets creatorGraduationFeeBps%, platform gets rest
+        uint256 creatorShare = (usdcAmt * creatorGraduationFeeBps) / BPS_DENOMINATOR;
+        uint256 platformShare = usdcAmt - creatorShare;
+
+        if (creatorShare > 0 && creator != address(0)) {
+            usdc.safeTransfer(creator, creatorShare);
+        } else {
+            // If creator is zero or no fee, give it all to platform
+            platformShare = usdcAmt;
+            creatorShare  = 0;
+        }
+        if (platformShare > 0) usdc.safeTransfer(graduationRecipient, platformShare);
+
+        // All tokens go to graduation recipient for DEX LP seeding
         if (tokenAmt > 0) IERC20(token).safeTransfer(graduationRecipient, tokenAmt);
 
-        emit GraduationClaimed(token, graduationRecipient, usdcAmt, tokenAmt);
+        emit GraduationClaimed(token, graduationRecipient, creator, platformShare, creatorShare, tokenAmt);
     }
 
-    // ── Views ─────────────────────────────────────────────────────────────
+    // ── Views ──────────────────────────────────────────────────────────
 
     function getTokenPrice(address token) external view returns (uint256) {
         TokenState storage s = _validTokenState(token);
@@ -436,17 +436,35 @@ contract GlowFunFactoryTest is Ownable, Pausable, ReentrancyGuard {
         }
     }
 
-    // ── Admin ─────────────────────────────────────────────────────────────
+    // ── Admin ──────────────────────────────────────────────────────────
 
+    /// @notice Set the USDC fee charged per token launch. 0 = free.
     function setCreationFee(uint256 fee) external onlyOwner {
         creationFee = fee;
         emit CreationFeeUpdated(fee);
     }
 
+    /// @notice Set protocol fee on buy/sell trades. Max 5% (500 bps).
     function setProtocolFeeBps(uint256 bps) external onlyOwner {
         if (bps > MAX_PROTOCOL_FEE_BPS) revert InvalidFeeBps();
         protocolFeeBps = bps;
         emit ProtocolFeeUpdated(bps);
+    }
+
+    /// @notice Set the % of graduation USDC that goes to the token creator.
+    ///         Max 20% (2000 bps). Default 5% (500 bps).
+    ///         The remainder goes to graduationRecipient for DEX LP seeding.
+    function setCreatorGraduationFeeBps(uint256 bps) external onlyOwner {
+        if (bps > MAX_CREATOR_GRAD_FEE_BPS) revert InvalidFeeBps();
+        creatorGraduationFeeBps = bps;
+        emit CreatorGraduationFeeUpdated(bps);
+    }
+
+    /// @notice Set global graduation threshold (min $1,000 USDC).
+    function setGraduationThreshold(uint256 threshold) external onlyOwner {
+        if (threshold < 1e6) revert InvalidAmount(); // $0.000001 min for testing
+        graduationThreshold = threshold;
+        emit GraduationThresholdUpdated(threshold);
     }
 
     function proposeFeeRecipient(address recipient) external onlyOwner {
@@ -475,13 +493,6 @@ contract GlowFunFactoryTest is Ownable, Pausable, ReentrancyGuard {
         emit GraduationRecipientUpdated(graduationRecipient);
     }
 
-    // ─── TEST: minimum threshold is $1 (1e6), not $1,000 ────────────────
-    function setGraduationThreshold(uint256 threshold) external onlyOwner {
-        if (threshold < 1e6) revert InvalidAmount(); // min $1 USDC
-        graduationThreshold = threshold;
-        emit GraduationThresholdUpdated(threshold);
-    }
-
     function pause() external onlyOwner {
         pausedAt = block.timestamp;
         _pause();
@@ -499,7 +510,7 @@ contract GlowFunFactoryTest is Ownable, Pausable, ReentrancyGuard {
         _unpause();
     }
 
-    // ── Internal helpers ──────────────────────────────────────────────────
+    // ── Internal ───────────────────────────────────────────────────────
 
     function _validateAndCompute(LaunchParams calldata p)
         internal view returns (LaunchAllocations memory a)
@@ -523,10 +534,8 @@ contract GlowFunFactoryTest is Ownable, Pausable, ReentrancyGuard {
             : p.graduationThresholdUsdc;
     }
 
-    function _deployToken(LaunchParams calldata p, uint256 supply)
-        internal returns (address)
-    {
-        TestTokenMetadata memory meta;
+    function _deployToken(LaunchParams calldata p, uint256 supply) internal returns (address) {
+        TokenMetadata memory meta;
         meta.name        = p.name;
         meta.symbol      = p.symbol;
         meta.description = p.description;
@@ -534,7 +543,7 @@ contract GlowFunFactoryTest is Ownable, Pausable, ReentrancyGuard {
         meta.twitter     = p.twitter;
         meta.telegram    = p.telegram;
         meta.website     = p.website;
-        return address(new GlowTokenTest(meta, msg.sender, address(this), supply));
+        return address(new GlowToken(meta, msg.sender, address(this), supply));
     }
 
     function _graduateToken(address token, TokenState storage state) internal {
@@ -547,9 +556,9 @@ contract GlowFunFactoryTest is Ownable, Pausable, ReentrancyGuard {
         uint256 pooledUsdc   = state.realUsdcRaised;
         state.realUsdcRaised = 0;
 
-        uint256 tokenAmt              = IERC20(token).balanceOf(address(this));
-        pendingGraduationUsdc[token]  = pooledUsdc;
-        pendingGraduationTokens[token]= tokenAmt;
+        uint256 tokenAmt               = IERC20(token).balanceOf(address(this));
+        pendingGraduationUsdc[token]   = pooledUsdc;
+        pendingGraduationTokens[token] = tokenAmt;
 
         emit TokenGraduated(token, graduationRecipient, pooledUsdc, tokenAmt, block.timestamp);
     }
@@ -565,23 +574,22 @@ contract GlowFunFactoryTest is Ownable, Pausable, ReentrancyGuard {
     }
 
     function _priceFromReserves(uint256 uR, uint256 tR) internal pure returns (uint256) {
-        // Rounds down — intentionally favours the contract, not the user
         return (uR * 1e30) / tR;
     }
 
+    // Rounds down — always favours the contract, never the user
     function _getBuyAmount(uint256 uR, uint256 tR, uint256 uIn) internal pure returns (uint256) {
-        // Constant product: tokensOut = tR * uIn / (uR + uIn)  — rounds down
         return (tR * uIn) / (uR + uIn);
     }
 
+    // Rounds down — always favours the contract, never the user
     function _getSellAmount(uint256 uR, uint256 tR, uint256 tIn) internal pure returns (uint256) {
-        // Constant product: usdcOut = uR * tIn / (tR + tIn)  — rounds down
         return (uR * tIn) / (tR + tIn);
     }
 
     function _spendableUsdc(address buyer) internal view returns (uint256) {
-        uint256 allowance = usdc.allowance(buyer, address(this));
-        uint256 balance   = usdc.balanceOf(buyer);
-        return allowance < balance ? allowance : balance;
+        uint256 a = usdc.allowance(buyer, address(this));
+        uint256 b = usdc.balanceOf(buyer);
+        return a < b ? a : b;
     }
 }

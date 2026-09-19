@@ -76,6 +76,7 @@ export function AdminPage() {
   const { data: feeBps } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'protocolFeeBps', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
   const { data: creationFee } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'creationFee', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
   const { data: gradThresh } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'graduationThreshold', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
+  const { data: creatorGradFeeBps } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'creatorGraduationFeeBps', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
   const { data: paused } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'paused', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
   const { data: tokenCount } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'tokenCount', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
   const { data: allTokens } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'allTokens', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
@@ -83,6 +84,7 @@ export function AdminPage() {
   // Onchain input state
   const [creationFeeInput, setCreationFeeInput] = useState('')
   const [feeBpsInput, setFeeBpsInput] = useState('')
+  const [creatorGradFeeInput, setCreatorGradFeeInput] = useState('')
   const [feeRecipInput, setFeeRecipInput] = useState('')
   const [gradRecipInput, setGradRecipInput] = useState('')
   const [gradThreshInput, setGradThreshInput] = useState('')
@@ -348,9 +350,10 @@ export function AdminPage() {
                   </div>
                   <div className="space-y-4">
                     {[
-                      { label: 'Creation Fee (USDC)', value: creationFeeInput, setValue: setCreationFeeInput, current: creationFee !== undefined ? `Current: ${Number(creationFee as bigint) / 1e6} USDC` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setCreationFee', args: [BigInt(Math.round(parseFloat(creationFeeInput) * 1e6))], chainId: CHAIN_ID as any }), valid: !!creationFeeInput },
-                      { label: 'Protocol Fee (basis points, max 500)', value: feeBpsInput, setValue: setFeeBpsInput, current: feeBps !== undefined ? `Current: ${Number(feeBps as bigint)} bps (${Number(feeBps as bigint) / 100}%)` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setProtocolFeeBps', args: [BigInt(feeBpsInput)], chainId: CHAIN_ID as any }), valid: !!feeBpsInput && Number(feeBpsInput) <= 500 },
-                      { label: 'Graduation Threshold (USDC)', value: gradThreshInput, setValue: setGradThreshInput, current: gradThresh !== undefined ? `Current: ${Number(gradThresh as bigint) / 1e6} USDC` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setGraduationThreshold', args: [BigInt(Math.round(parseFloat(gradThreshInput) * 1e6))], chainId: CHAIN_ID as any }), valid: !!gradThreshInput },
+                      { label: 'Creation Fee (USDC, 0 = free)', value: creationFeeInput, setValue: setCreationFeeInput, current: creationFee !== undefined ? `Current: ${Number(creationFee as bigint) / 1e6} USDC` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setCreationFee', args: [BigInt(Math.round(parseFloat(creationFeeInput || '0') * 1e6))], chainId: CHAIN_ID as any }), valid: creationFeeInput !== '' },
+                      { label: 'Protocol Fee on Trades (bps, max 500 = 5%)', value: feeBpsInput, setValue: setFeeBpsInput, current: feeBps !== undefined ? `Current: ${Number(feeBps as bigint)} bps = ${Number(feeBps as bigint) / 100}%` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setProtocolFeeBps', args: [BigInt(feeBpsInput || '0')], chainId: CHAIN_ID as any }), valid: feeBpsInput !== '' && Number(feeBpsInput) <= 500 },
+                      { label: 'Creator Graduation Bonus (bps, max 2000 = 20%)', value: creatorGradFeeInput, setValue: setCreatorGradFeeInput, current: creatorGradFeeBps !== undefined ? `Current: ${Number(creatorGradFeeBps as bigint)} bps = ${Number(creatorGradFeeBps as bigint) / 100}% of graduation USDC to creator` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setCreatorGraduationFeeBps', args: [BigInt(creatorGradFeeInput || '0')], chainId: CHAIN_ID as any }), valid: creatorGradFeeInput !== '' && Number(creatorGradFeeInput) <= 2000 },
+                      { label: 'Graduation Threshold (USDC, min $1,000)', value: gradThreshInput, setValue: setGradThreshInput, current: gradThresh !== undefined ? `Current: $${(Number(gradThresh as bigint) / 1e6).toLocaleString()} USDC` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setGraduationThreshold', args: [BigInt(Math.round(parseFloat(gradThreshInput || '0') * 1e6))], chainId: CHAIN_ID as any }), valid: !!gradThreshInput && parseFloat(gradThreshInput) >= 1000 },
                     ].map(({ label, value, setValue, current, fn, valid }) => (
                       <div key={label} className="flex gap-3 items-end">
                         <label className="flex-1 space-y-1.5">
@@ -373,8 +376,8 @@ export function AdminPage() {
                   </div>
                   <div className="space-y-4">
                     {[
-                      { label: 'Fee Recipient', value: feeRecipInput, setValue: setFeeRecipInput, current: feeRecipient ? `Current: ${formatAddress(feeRecipient as string)}` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setFeeRecipient', args: [feeRecipInput as `0x${string}`], chainId: CHAIN_ID as any }) },
-                      { label: 'Graduation Recipient', value: gradRecipInput, setValue: setGradRecipInput, current: gradRecipient ? `Current: ${formatAddress(gradRecipient as string)}` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setGraduationRecipient', args: [gradRecipInput as `0x${string}`], chainId: CHAIN_ID as any }) },
+                      { label: 'Fee Recipient (propose — new address must call acceptFeeRecipient)', value: feeRecipInput, setValue: setFeeRecipInput, current: feeRecipient ? `Current: ${formatAddress(feeRecipient as string)}` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'proposeFeeRecipient', args: [feeRecipInput as `0x${string}`], chainId: CHAIN_ID as any }) },
+                      { label: 'Graduation Recipient (propose — new address must call acceptGraduationRecipient)', value: gradRecipInput, setValue: setGradRecipInput, current: gradRecipient ? `Current: ${formatAddress(gradRecipient as string)}` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'proposeGraduationRecipient', args: [gradRecipInput as `0x${string}`], chainId: CHAIN_ID as any }) },
                     ].map(({ label, value, setValue, current, fn }) => (
                       <div key={label} className="flex gap-3 items-end">
                         <label className="flex-1 space-y-1.5">
