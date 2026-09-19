@@ -3,7 +3,6 @@ pragma solidity ^0.8.24;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
@@ -215,9 +214,8 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
         ) revert InvalidAddress();
 
         usdc = IERC20(_usdc);
-        try IERC20Metadata(_usdc).decimals() returns (uint8 dec) {
-            if (dec != 6) revert InvalidAddress();
-        } catch {}
+        // Note: decimals check removed — Arc EVM returns 0 for EOA calls,
+        // triggering false reverts. Pass the correct USDC address (6 decimals).
 
         feeRecipient        = _feeRecipient;
         graduationRecipient = _graduationRecipient;
