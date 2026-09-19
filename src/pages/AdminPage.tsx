@@ -120,7 +120,10 @@ export function AdminPage() {
     try {
       const res = await fetch('/api/config', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Token': pw,
+        },
         body: JSON.stringify({ key, value }),
       })
       const data = await res.json() as any
