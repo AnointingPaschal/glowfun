@@ -104,7 +104,20 @@ export function CustomChart({ data, height = 380, loading = false }: Props) {
     ctx.fillStyle = C.bg
     ctx.fillRect(0, 0, w, height)
 
-    if (!data.length) return
+    if (!data.length) {
+      ctx.fillStyle = C.bg
+      ctx.fillRect(0, 0, w, height)
+      // Draw placeholder grid
+      ctx.strokeStyle = 'rgba(255,255,255,0.04)'; ctx.lineWidth = 1
+      for (let i = 1; i <= 5; i++) {
+        const y = (height / 6) * i
+        ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(w - PAD.right, y); ctx.stroke()
+      }
+      ctx.fillStyle = 'rgba(255,255,255,0.18)'
+      ctx.font = '11px "Space Grotesk",system-ui'; ctx.textAlign = 'center'
+      ctx.fillText('Loading chart…', w/2, height/2)
+      return
+    }
 
     const visible = data.slice(startIdx, startIdx + count)
     if (!visible.length) return
