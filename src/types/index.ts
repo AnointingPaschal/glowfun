@@ -21,11 +21,25 @@ export interface TokenState {
   createdAt: bigint
 }
 
+export interface MarketData {
+  priceUsd: number
+  mcapUsd: number
+  volumeUsd: number
+  liquidityUsd: number
+  change5m?: number
+  change1h?: number
+  change6h?: number
+  change24h?: number
+  pairAddress?: string
+  source: string
+}
+
 export interface TokenInfo extends TokenMeta {
   state: TokenState
   price: bigint
   marketCap: bigint
   progress: bigint
+  market?: MarketData   // live external market data overlay (from DexScreener/GeckoTerminal)
 }
 
 export type TradeMode = 'buy' | 'sell'

@@ -1,18 +1,18 @@
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useTokenData } from '@/hooks/useTokenData'
+import { useMarketPrice } from '@/hooks/useMarketPrice'
 import { GlassCard } from './GlassCard'
-import { formatUsdc, formatPrice, formatProgress, formatAddress, timeAgo } from '@/utils/format'
-import { ExternalLink, Flame } from 'lucide-react'
+import { formatUsdc, formatProgress, formatAddress, timeAgo, formatPriceNumber } from '@/utils/format'
+import { Flame, TrendingUp } from 'lucide-react'
 import { useConfig } from '@/context/ConfigContext'
 
 interface Props { address: `0x${string}`; index?: number }
 
-const GRADUATION_THRESHOLD = 69_000
-
 export function TokenCard({ address, index = 0 }: Props) {
   const { EXPLORER_BASE } = useConfig()
   const { token, isLoading } = useTokenData(address)
+  const { market } = useMarketPrice(address)
 
   if (isLoading || !token) {
     return (
@@ -35,6 +35,20 @@ export function TokenCard({ address, index = 0 }: Props) {
 
   const progress = formatProgress(token.progress)
   const graduated = token.state?.graduated
+
+  // Use external market price/mcap when available, fall back to bonding curve
+  const displayPriceUsd  = market?.priceUsd   ?? (Number(token.price ?? 0n) / 1e42)
+  const displayMcapUsd   = market?.mcapUsd    ?? (Number(token.marketCap ?? 0n) / 1e6)
+  const hasMarketPrice   = !!market && market.priceUsd > 0
+  const change24h        = market?.change24h
+
+  function fmtMcap(n: number): string {
+    if (!n || n === 0) return '$0'
+    if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(1)}B`
+    if (n >= 1_000_000)     return `$${(n / 1_000_000).toFixed(2)}M`
+    if (n >= 1_000)         return `$${(n / 1_000).toFixed(1)}K`
+    return `$${n.toFixed(2)}`
+  }
 
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04, duration: 0.3 }}>
@@ -70,11 +84,27 @@ export function TokenCard({ address, index = 0 }: Props) {
                     <span className="text-sm font-bold text-white truncate" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>{token.name}</span>
                     {graduated && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ background: 'rgba(250,204,21,0.1)', color: '#fbbf24' }}>GRAD</span>}
                   </div>
-                  <span className="text-xs" style={{ color: '#a78bfa' }}>${token.symbol}</span>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-xs" style={{ color: '#a78bfa' }}>${token.symbol}</span>
+                    {/* Live market price badge */}
+                    {hasMarketPrice && (
+                      <span className="flex items-center gap-0.5 text-[8px] px-1 py-0.5 rounded-full font-medium"
+                        style={{ background: 'rgba(52,211,153,0.1)', color: '#34d399', border: '1px solid rgba(52,211,153,0.15)' }}>
+                        <TrendingUp size={7} />Live
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="text-right flex-shrink-0">
-                  <div className="text-xs font-semibold text-white tabular-nums">{formatUsdc(token.marketCap)}</div>
-                  <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.35)' }}>mktcap</div>
+                  <div className="text-xs font-semibold text-white tabular-nums">{fmtMcap(displayMcapUsd)}</div>
+                  <div className="flex items-center justify-end gap-1 mt-0.5">
+                    <div className="text-[9px]" style={{ color: 'rgba(255,255,255,0.3)' }}>mktcap</div>
+                    {change24h !== undefined && (
+                      <div className="text-[9px] font-medium tabular-nums" style={{ color: change24h >= 0 ? '#34d399' : '#f87171' }}>
+                        {change24h >= 0 ? '+' : ''}{change24h.toFixed(1)}%
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -86,7 +116,10 @@ export function TokenCard({ address, index = 0 }: Props) {
               {!graduated && (
                 <div className="mt-1.5">
                   <div className="flex justify-between text-[10px] mb-1" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                    <span className="flex items-center gap-1"><Flame size={9} style={{ color: '#f97316' }} />{progress.toFixed(1)}% to grad</span>
+                    <span className="flex items-center gap-1">
+                      <Flame size={9} style={{ color: '#f97316' }} />
+                      {progress.toFixed(1)}% to grad
+                    </span>
                     <span className="tabular-nums">{formatUsdc(token.state?.realUsdcRaised)} / $69K</span>
                   </div>
                   <div className="h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>

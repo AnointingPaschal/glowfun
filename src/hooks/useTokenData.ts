@@ -2,6 +2,7 @@ import { useReadContracts } from 'wagmi'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
 import { GLOW_TOKEN_ABI } from '@/abi/GlowToken'
 import { useConfig } from '@/context/ConfigContext'
+import { useMarketPrice } from '@/hooks/useMarketPrice'
 import type { TokenInfo, TokenState } from '@/types'
 
 export function useTokenData(tokenAddress: `0x${string}` | undefined) {
@@ -57,7 +58,24 @@ export function useTokenData(tokenAddress: `0x${string}` | undefined) {
     }
   })() : null
 
-  return { token, isLoading, refetch }
+  const { market } = useMarketPrice(tokenAddress)
+
+  // Overlay external market price on top of bonding curve values when available
+  const tokenWithMarket: TokenInfo | null = token ? {
+    ...token,
+    // If there's a live market price, override price + marketCap so all
+    // downstream displays (TokenCard, TokenPage, feed) show consistent numbers
+    price: market?.priceUsd && market.priceUsd > 0
+      ? BigInt(Math.round(market.priceUsd * 1e42))
+      : token.price,
+    marketCap: market?.mcapUsd && market.mcapUsd > 0
+      ? BigInt(Math.round(market.mcapUsd * 1e6))
+      : token.marketCap,
+    // Attach market data for change % display
+    market: market ?? undefined,
+  } : null
+
+  return { token: tokenWithMarket, isLoading, refetch }
 }
 
 export function useTokenBalance(tokenAddress: `0x${string}` | undefined, userAddress: `0x${string}` | undefined) {
