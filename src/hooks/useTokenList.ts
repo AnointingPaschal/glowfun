@@ -1,17 +1,15 @@
 import { useReadContract } from 'wagmi'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
-import { FACTORY_ADDRESS, CHAIN_ID } from '@/constants'
-
-const factoryContract = {
-  address: FACTORY_ADDRESS,
-  abi: FACTORY_ABI,
-  chainId: CHAIN_ID as any,
-} as const
+import { useConfig } from '@/context/ConfigContext'
 
 export function useTokenList() {
+  const { FACTORY_ADDRESS, CHAIN_ID } = useConfig()
+
   const { data: addresses, isLoading, refetch } = useReadContract({
-    ...factoryContract,
+    address: FACTORY_ADDRESS,
+    abi: FACTORY_ABI,
     functionName: 'allTokens',
+    chainId: CHAIN_ID as any,
     query: { enabled: !!FACTORY_ADDRESS, refetchInterval: 15_000 },
   })
 
@@ -23,9 +21,13 @@ export function useTokenList() {
 }
 
 export function useTokenCount() {
+  const { FACTORY_ADDRESS, CHAIN_ID } = useConfig()
+
   const { data } = useReadContract({
-    ...factoryContract,
+    address: FACTORY_ADDRESS,
+    abi: FACTORY_ABI,
     functionName: 'tokenCount',
+    chainId: CHAIN_ID as any,
     query: { enabled: !!FACTORY_ADDRESS },
   })
   return data as bigint | undefined

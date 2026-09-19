@@ -13,7 +13,8 @@ import { CandlestickChart, generateSyntheticOHLCV, OHLCV } from '@/components/Ca
 import { useTokenList } from '@/hooks/useTokenList'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
 import { GLOW_TOKEN_ABI } from '@/abi/GlowToken'
-import { FACTORY_ADDRESS, CHAIN_ID, EXPLORER_BASE, GRADUATION_THRESHOLD, USDC_ADDRESS } from '@/constants'
+import { useConfig } from '@/context/ConfigContext'
+import { FACTORY_ADDRESS, CHAIN_ID, EXPLORER_BASE, GRADUATION_THRESHOLD } from '@/constants'
 import { formatUsdc, formatPrice, formatProgress, formatAddress, timeAgo } from '@/utils/format'
 import type { TokenInfo } from '@/types'
 

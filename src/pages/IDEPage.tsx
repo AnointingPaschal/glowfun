@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { GlassCard } from '@/components/GlassCard'
 import { useSolcCompiler, SOLC_VERSIONS, CompileResult, ContractOutput } from '@/hooks/useSolcCompiler'
+import { useConfig } from '@/context/ConfigContext'
 import { CHAIN_ID, EXPLORER_BASE } from '@/constants'
 
 const SPECTRAL = 'linear-gradient(90deg, #5fbeff, #af8ff4, #f05c6b, #ffcd83, #7ef1b3)'

@@ -8,6 +8,7 @@ import { Toaster } from 'sonner'
 import { BrowserRouter } from 'react-router-dom'
 import { config } from './config'
 import App from './App'
+import { ConfigProvider } from './context/ConfigContext'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -31,11 +32,13 @@ createRoot(document.getElementById('root')!).render(
           }}
         >
           <BrowserRouter>
+            <ConfigProvider>
             <App />
             <Toaster
               position="top-right"
               toastOptions={{ duration: 5000 }}
             />
+            </ConfigProvider>
           </BrowserRouter>
         </ConnectKitProvider>
       </QueryClientProvider>

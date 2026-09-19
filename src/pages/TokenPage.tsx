@@ -9,7 +9,7 @@ import { ArrowLeft, Twitter, Send, Globe, ExternalLink, Trophy, TrendingUp, User
 import { GlassCard } from '@/components/GlassCard'
 import { Comments } from '@/components/Comments'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
-import { FACTORY_ADDRESS, USDC_ADDRESS, CHAIN_ID, EXPLORER_BASE } from '@/constants'
+import { useConfig } from '@/context/ConfigContext'
 import { useTokenData, useTokenBalance } from '@/hooks/useTokenData'
 import { formatUsdc, formatTokens, formatPrice, formatProgress, formatAddress, timeAgo, parseUsdc, parseTokens } from '@/utils/format'
 import { parseOnchainError } from '@/utils/errors'
@@ -24,6 +24,7 @@ export function TokenPage() {
   const { address: tokenAddr } = useParams<{ address: string }>()
   const { address: wallet, chainId: walletChain } = useAccount()
   const { switchChain } = useSwitchChain()
+  const { FACTORY_ADDRESS, USDC_ADDRESS, CHAIN_ID, EXPLORER_BASE } = useConfig()
 
   const { token, isLoading, refetch } = useTokenData(tokenAddr as `0x${string}` | undefined)
   const { balance: tokenBalance, allowance: tokenAllowance, refetch: refetchBal } = useTokenBalance(tokenAddr as `0x${string}` | undefined, wallet)

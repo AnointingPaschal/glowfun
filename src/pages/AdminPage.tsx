@@ -5,7 +5,7 @@ import { ConnectKitButton } from 'connectkit'
 import { toast } from 'sonner'
 import { GlassCard } from '@/components/GlassCard'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
-import { FACTORY_ADDRESS, USDC_ADDRESS, CHAIN_ID, EXPLORER_BASE } from '@/constants'
+import { useConfig } from '@/context/ConfigContext'
 import { formatUsdc, formatAddress } from '@/utils/format'
 import {
   Shield, Settings, Key, Database, Globe, Loader2, Check, Eye, EyeOff,
@@ -62,6 +62,7 @@ export function AdminPage() {
   const [tab, setTab] = useState<Tab>('config')
 
   // Onchain admin
+  const { FACTORY_ADDRESS, CHAIN_ID, EXPLORER_BASE } = useConfig()
   const { address, chainId, isConnected } = useAccount()
   const { switchChain } = useSwitchChain()
   const wrong = isConnected && chainId !== CHAIN_ID

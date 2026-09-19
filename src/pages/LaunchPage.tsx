@@ -10,7 +10,7 @@ import { toast } from 'sonner'
 import { GlassCard } from '@/components/GlassCard'
 import { ImageUpload } from '@/components/ImageUpload'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
-import { FACTORY_ADDRESS, CHAIN_ID, EXPLORER_BASE, USDC_ADDRESS } from '@/constants'
+import { useConfig } from '@/context/ConfigContext'
 import { parseOnchainError } from '@/utils/errors'
 import {
   Rocket, Twitter, Send, Globe, Info, ExternalLink, ChevronDown,
@@ -260,6 +260,7 @@ export function LaunchPage() {
   const nav = useNavigate()
   const { address, chainId, isConnected } = useAccount()
   const { switchChain } = useSwitchChain()
+  const { FACTORY_ADDRESS, USDC_ADDRESS, CHAIN_ID, EXPLORER_BASE } = useConfig()
 
   const [form, setForm]             = useState<FormState>(INITIAL)
   const [step, setStep]             = useState<Step>('form')

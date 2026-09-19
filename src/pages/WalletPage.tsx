@@ -13,12 +13,12 @@ import {
 } from 'lucide-react'
 import { GlassCard } from '@/components/GlassCard'
 import { useCircleWallet } from '@/hooks/useCircleWallet'
-import { USDC_ADDRESS, CHAIN_ID, EXPLORER_BASE } from '@/constants'
+import { useConfig } from '@/context/ConfigContext'
 import { formatUsdc, formatTokens, formatAddress, formatPrice, timeAgo } from '@/utils/format'
 import { useTokenList } from '@/hooks/useTokenList'
 import { GLOW_TOKEN_ABI } from '@/abi/GlowToken'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
-import { FACTORY_ADDRESS } from '@/constants'
+import { FACTORY_ADDRESS, USDC_ADDRESS, CHAIN_ID, EXPLORER_BASE } from '@/constants'
 
 const SPECTRAL = 'linear-gradient(90deg, #5fbeff, #af8ff4, #f05c6b, #ffcd83, #7ef1b3)'
 

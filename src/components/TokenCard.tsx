@@ -4,13 +4,14 @@ import { useTokenData } from '@/hooks/useTokenData'
 import { GlassCard } from './GlassCard'
 import { formatUsdc, formatPrice, formatProgress, formatAddress, timeAgo } from '@/utils/format'
 import { ExternalLink, Flame } from 'lucide-react'
-import { EXPLORER_BASE } from '@/constants'
+import { useConfig } from '@/context/ConfigContext'
 
 interface Props { address: `0x${string}`; index?: number }
 
 const GRADUATION_THRESHOLD = 69_000
 
 export function TokenCard({ address, index = 0 }: Props) {
+  const { EXPLORER_BASE } = useConfig()
   const { token, isLoading } = useTokenData(address)
 
   if (isLoading || !token) {

@@ -1,15 +1,15 @@
 import { useReadContracts } from 'wagmi'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
 import { GLOW_TOKEN_ABI } from '@/abi/GlowToken'
-import { FACTORY_ADDRESS, CHAIN_ID } from '@/constants'
+import { useConfig } from '@/context/ConfigContext'
 import type { TokenInfo, TokenState } from '@/types'
 
 export function useTokenData(tokenAddress: `0x${string}` | undefined) {
+  const { FACTORY_ADDRESS, CHAIN_ID } = useConfig()
   const enabled = !!tokenAddress && !!FACTORY_ADDRESS
 
   const { data, isLoading, refetch } = useReadContracts({
-    contracts: tokenAddress ? [
-      // Token metadata
+    contracts: tokenAddress && FACTORY_ADDRESS ? [
       { address: tokenAddress, abi: GLOW_TOKEN_ABI, functionName: 'name', chainId: CHAIN_ID as any },
       { address: tokenAddress, abi: GLOW_TOKEN_ABI, functionName: 'symbol', chainId: CHAIN_ID as any },
       { address: tokenAddress, abi: GLOW_TOKEN_ABI, functionName: 'description', chainId: CHAIN_ID as any },
@@ -19,7 +19,6 @@ export function useTokenData(tokenAddress: `0x${string}` | undefined) {
       { address: tokenAddress, abi: GLOW_TOKEN_ABI, functionName: 'website', chainId: CHAIN_ID as any },
       { address: tokenAddress, abi: GLOW_TOKEN_ABI, functionName: 'creator', chainId: CHAIN_ID as any },
       { address: tokenAddress, abi: GLOW_TOKEN_ABI, functionName: 'createdAt', chainId: CHAIN_ID as any },
-      // Factory state
       { address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'getTokenState', args: [tokenAddress], chainId: CHAIN_ID as any },
       { address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'getTokenPrice', args: [tokenAddress], chainId: CHAIN_ID as any },
       { address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'getMarketCap', args: [tokenAddress], chainId: CHAIN_ID as any },
@@ -62,10 +61,11 @@ export function useTokenData(tokenAddress: `0x${string}` | undefined) {
 }
 
 export function useTokenBalance(tokenAddress: `0x${string}` | undefined, userAddress: `0x${string}` | undefined) {
+  const { FACTORY_ADDRESS, CHAIN_ID } = useConfig()
   const enabled = !!tokenAddress && !!userAddress && !!FACTORY_ADDRESS
 
   const { data, refetch } = useReadContracts({
-    contracts: tokenAddress && userAddress ? [
+    contracts: tokenAddress && userAddress && FACTORY_ADDRESS ? [
       { address: tokenAddress, abi: GLOW_TOKEN_ABI, functionName: 'balanceOf', args: [userAddress], chainId: CHAIN_ID as any },
       { address: tokenAddress, abi: GLOW_TOKEN_ABI, functionName: 'allowance', args: [userAddress, FACTORY_ADDRESS], chainId: CHAIN_ID as any },
     ] : [],
