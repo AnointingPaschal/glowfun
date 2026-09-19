@@ -338,12 +338,18 @@ function IDEInner() {
   const [deployedContracts, setDeployedContracts] = useState<DeployedContract[]>([])
   const [selectedDeployed, setSelectedDeployed] = useState<DeployedContract | null>(null)
   const [leftOpen, setLeftOpen] = useState(true)
-  const [rightOpen, setRightOpen] = useState(true)
+  const [rightOpen, setRightOpen] = useState(false)
+  const [mobileSheet, setMobileSheet] = useState(false)
   const [logs, setLogs] = useState(['GlowFun Solidity IDE ready. Bundled Monaco — no CDN required.'])
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const editorAreaRef = useRef<HTMLDivElement>(null)
   const [editorHeight, setEditorHeight] = useState(500)
   const { compile, compiling } = useSolcCompiler()
+
+  // On mobile: close panels by default so editor has full width
+  useEffect(() => {
+    if (window.innerWidth < 768) { setLeftOpen(false); setRightOpen(false) }
+  }, [])
 
   const log = (msg: string) => setLogs(p => [...p.slice(-99), msg])
   const current = files.find(f => f.name === activeFile)
@@ -381,9 +387,14 @@ function IDEInner() {
       log(`✓ Compiled OK — ${res.contracts.length} contract(s)`)
       res.contracts.forEach(c => log(`  • ${c.contractName} ${(c.bytecode.length/2/1000).toFixed(1)}KB`))
       setRightTab('deploy')
+      setRightOpen(true)           // always open right panel on desktop
+      setMobileSheet(true)         // always open sheet on mobile
     } else {
       const errs = res.errors.filter(e => e.severity === 'error')
       log(`✗ ${errs.length} error(s)`)
+      setRightTab('output')
+      setRightOpen(true)
+      setMobileSheet(true)
     }
   }
 
@@ -683,6 +694,196 @@ function IDEInner() {
           </div>
         )}
       </div>
+
+      {/* ── Mobile Build Bottom Sheet ── */}
+      {mobileSheet && (
+        <div
+          className="md:hidden fixed inset-0 z-50 flex flex-col justify-end"
+          style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+          onClick={e => { if (e.target === e.currentTarget) setMobileSheet(false) }}
+        >
+          <div
+            style={{
+              background: 'rgba(10,10,20,0.98)',
+              borderTop: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '20px 20px 0 0',
+              maxHeight: '80dvh',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Drag handle */}
+            <div className="flex justify-center pt-2 pb-1">
+              <div className="w-10 h-1 rounded-full" style={{ background: 'rgba(255,255,255,0.15)' }} />
+            </div>
+            {/* Sheet header */}
+            <div className="flex-shrink-0 flex items-center justify-between px-4 py-2"
+              style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                {([
+                  { id:'output', icon:Terminal, label:'Output' },
+                  { id:'deploy', icon:Rocket, label:'Deploy' },
+                  { id:'interact', icon:Zap, label:'Interact' },
+                ] as const).map(t => (
+                  <button key={t.id} onClick={() => setRightTab(t.id)}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all"
+                    style={{
+                      background: rightTab===t.id ? 'rgba(139,92,246,0.2)' : 'transparent',
+                      color: rightTab===t.id ? '#c084fc' : 'rgba(255,255,255,0.45)',
+                      boxShadow: rightTab===t.id ? '0 2px 8px rgba(139,92,246,0.2)' : 'none',
+                    }}>
+                    <t.icon size={12} />{t.label}
+                    {t.id === 'deploy' && result?.success && rightTab !== 'deploy' && (
+                      <span className="w-1.5 h-1.5 rounded-full ml-1" style={{ background: '#34d399' }} />
+                    )}
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setMobileSheet(false)}
+                className="p-2 rounded-xl ml-2" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
+                <X size={14} />
+              </button>
+            </div>
+
+            {/* Sheet content — same as right panel */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {rightTab === 'output' && (
+                <div className="space-y-3">
+                  {!result ? (
+                    <div className="text-center py-12">
+                      <Code2 size={28} className="mx-auto mb-2" style={{ color: 'rgba(255,255,255,0.1)' }} />
+                      <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>Press Compile to see output</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl"
+                        style={{ background: result.success ? 'rgba(52,211,153,0.08)' : 'rgba(248,113,113,0.08)', border: `1px solid ${result.success ? 'rgba(52,211,153,0.15)' : 'rgba(248,113,113,0.15)'}` }}>
+                        {result.success
+                          ? <CheckCircle2 size={14} style={{ color: '#34d399' }} />
+                          : <AlertTriangle size={14} style={{ color: '#f87171' }} />}
+                        <span className="text-xs font-medium" style={{ color: result.success ? '#34d399' : '#f87171' }}>
+                          {result.success ? `${result.contracts.length} contract(s) compiled` : `${result.errors.filter(e=>e.severity==='error').length} error(s)`}
+                        </span>
+                      </div>
+                      {result.errors.map((e, i) => (
+                        <div key={i} className="p-3 rounded-xl text-[10px] font-mono leading-relaxed whitespace-pre-wrap"
+                          style={{ background: e.severity==='error' ? 'rgba(248,113,113,0.06)' : 'rgba(251,191,36,0.06)', border: `1px solid ${e.severity==='error' ? 'rgba(248,113,113,0.12)' : 'rgba(251,191,36,0.12)'}`, color: e.severity==='error' ? '#fca5a5' : '#fde68a' }}>
+                          {e.formattedMessage}
+                        </div>
+                      ))}
+                      {result.contracts.map(c => (
+                        <div key={c.contractName} className="p-3 rounded-xl space-y-2"
+                          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                          <div className="flex items-center gap-2">
+                            <Package size={12} style={{ color: '#a78bfa' }} />
+                            <span className="text-xs font-semibold text-white">{c.contractName}</span>
+                            <span className="ml-auto text-[9px]" style={{ color: 'rgba(255,255,255,0.3)' }}>{(c.bytecode.length/2/1000).toFixed(1)}KB</span>
+                          </div>
+                          <div className="text-[9px] space-y-0.5 ml-4">
+                            {c.abi.filter((x:any)=>x.type==='function'||x.type==='event').slice(0,5).map((item:any,i:number) => (
+                              <div key={i} style={{ color: 'rgba(255,255,255,0.4)' }}>
+                                <span style={{ color: item.type==='event' ? '#fbbf24' : item.stateMutability==='view' ? '#60a5fa' : '#c084fc', marginRight: 4 }}>
+                                  {item.type==='event' ? 'evt' : item.stateMutability==='view' ? 'rd' : 'fn'}
+                                </span>
+                                {item.name}({item.inputs?.map((i:any)=>i.type).join(', ')})
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                      {result.success && (
+                        <button onClick={() => setRightTab('deploy')}
+                          className="w-full py-3 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2"
+                          style={{ background: 'linear-gradient(135deg,#8b5cf6,#ec4899)', boxShadow: '0 4px 16px rgba(139,92,246,0.3)' }}>
+                          <Rocket size={14} />Deploy Contract →
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {rightTab === 'deploy' && (
+                result?.success
+                  ? <DeployPanel
+                      contracts={result.contracts}
+                      onDeployed={c => { setDeployedContracts(p=>[c,...p]); setSelectedDeployed(c); setRightTab('interact') }}
+                      onBack={() => setRightTab('output')}
+                    />
+                  : <div className="text-center py-12">
+                      <Rocket size={28} className="mx-auto mb-2" style={{ color: 'rgba(255,255,255,0.1)' }} />
+                      <p className="text-xs mb-4" style={{ color: 'rgba(255,255,255,0.3)' }}>Compile first to unlock deploy</p>
+                      <button onClick={() => { setMobileSheet(false); handleCompile() }}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold text-white mx-auto"
+                        style={{ background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.3)' }}>
+                        <Play size={12} />Compile Now
+                      </button>
+                    </div>
+              )}
+
+              {rightTab === 'interact' && (
+                deployedContracts.length === 0
+                  ? <div className="text-center py-12">
+                      <Zap size={28} className="mx-auto mb-2" style={{ color: 'rgba(255,255,255,0.1)' }} />
+                      <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>Deploy a contract to interact</p>
+                    </div>
+                  : <div className="space-y-2">
+                      {deployedContracts.map((c,i) => (
+                        <button key={i} onClick={() => setSelectedDeployed(c)}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs text-left"
+                          style={{ background: selectedDeployed?.address===c.address ? 'rgba(139,92,246,0.12)' : 'rgba(255,255,255,0.04)', border: `1px solid ${selectedDeployed?.address===c.address ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.06)'}`, color: selectedDeployed?.address===c.address ? '#c084fc' : 'rgba(255,255,255,0.6)' }}>
+                          <Package size={10} />{c.name}
+                          <span className="ml-auto text-[9px] font-mono" style={{ color: 'rgba(255,255,255,0.3)' }}>{c.address.slice(0,8)}…</span>
+                        </button>
+                      ))}
+                      {selectedDeployed && <ContractInteraction deployed={selectedDeployed} onClose={() => setSelectedDeployed(null)} />}
+                    </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Mobile build-status bar (always visible after compile) ── */}
+      {result && (
+        <div
+          className="md:hidden flex-shrink-0 flex items-center justify-between px-3 py-2"
+          style={{
+            background: result.success ? 'rgba(52,211,153,0.08)' : 'rgba(248,113,113,0.08)',
+            borderTop: `1px solid ${result.success ? 'rgba(52,211,153,0.15)' : 'rgba(248,113,113,0.15)'}`,
+          }}
+        >
+          <div className="flex items-center gap-2">
+            {result.success
+              ? <CheckCircle2 size={13} style={{ color: '#34d399' }} />
+              : <AlertTriangle size={13} style={{ color: '#f87171' }} />}
+            <span className="text-xs font-medium" style={{ color: result.success ? '#34d399' : '#f87171' }}>
+              {result.success
+                ? `${result.contracts.length} contract(s) compiled`
+                : `${result.errors.filter(e=>e.severity==='error').length} error(s)`}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            {result.success && (
+              <button
+                onClick={() => { setRightTab('deploy'); setMobileSheet(true) }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white"
+                style={{ background: 'linear-gradient(135deg,#8b5cf6,#ec4899)', boxShadow: '0 2px 10px rgba(139,92,246,0.4)' }}
+              >
+                <Rocket size={11} />Deploy
+              </button>
+            )}
+            <button
+              onClick={() => { setRightTab(result.success ? 'output' : 'output'); setMobileSheet(true) }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium"
+              style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.08)' }}
+            >
+              Details
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
