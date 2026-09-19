@@ -72,8 +72,8 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // ── Constants ─────────────────────────────────────────────────────
-    uint256 public constant BPS_DENOMINATOR            = 10_000;
-    uint256 public constant MAX_PROTOCOL_FEE_BPS       = 500;
+    uint256 internal constant BPS_DENOMINATOR          = 10_000;
+    uint256 internal constant MAX_PROTOCOL_FEE_BPS     = 500;
     uint256 private constant MAX_PAUSE_DURATION         = 7 days;
 
     uint256 private constant INITIAL_VIRTUAL_USDC_RESERVES  = 30_000e6;
@@ -136,8 +136,8 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
 
     mapping(address => TokenState) public tokenStates;
     mapping(address => bool)       public isLaunchedToken;
-    mapping(address => uint256)    public pendingGraduationUsdc;
-    mapping(address => uint256)    public pendingGraduationTokens;
+    mapping(address => uint256)    internal pendingGraduationUsdc;
+    mapping(address => uint256)    internal pendingGraduationTokens;
     address[] private _launchedTokens;
 
     // ── Errors ────────────────────────────────────────────────────────
@@ -158,8 +158,6 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
     event TokenLaunchedV2(
         address indexed token,
         address indexed creator,
-        string  name,
-        string  symbol,
         uint256 totalSupply,
         uint256 curveTokens,
         uint256 graduationTokens,
@@ -276,8 +274,6 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
         emit TokenLaunchedV2(
             token,
             msg.sender,
-            p.name,
-            p.symbol,
             a.supply,
             a.curveTokens,
             a.graduationTokens,
@@ -421,23 +417,8 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
         return _launchedTokens;
     }
 
-    function getTokensPaginated(uint256 offset, uint256 limit)
-        external
-        view
-        returns (address[] memory result)
-    {
-        uint256 total = _launchedTokens.length;
-        if (offset >= total) return new address[](0);
-        uint256 end = offset + limit > total ? total : offset + limit;
-        result = new address[](end - offset);
-        for (uint256 i = offset; i < end; i++) {
-            result[i - offset] = _launchedTokens[i];
-        }
     }
 
-    function tokenCount() external view returns (uint256) {
-        return _launchedTokens.length;
-    }
 
     // ── Admin ─────────────────────────────────────────────────────────
 
