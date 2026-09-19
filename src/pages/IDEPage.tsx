@@ -344,7 +344,7 @@ function IDEInner() {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const editorAreaRef = useRef<HTMLDivElement>(null)
   const [editorHeight, setEditorHeight] = useState(500)
-  const { compile, compiling } = useSolcCompiler()
+  const { compile, compiling } = useSolcCompiler((msg) => log(`  ↳ ${msg}`))
 
   // On mobile: close panels by default so editor has full width
   useEffect(() => {

@@ -35,19 +35,30 @@ export const SOLC_VERSIONS: Record<string, string> = {
 
 let msgId = 0
 const pendingMap = new Map<number, (data: any) => void>()
+const progressListeners = new Map<number, (msg: string) => void>()
 
-export function useSolcCompiler() {
+export function useSolcCompiler(onProgress?: (msg: string) => void) {
   const workerRef = useRef<Worker | null>(null)
   const [compiling, setCompiling] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading]     = useState(false)
+  const [error, setError]         = useState<string | null>(null)
+  const progressRef = useRef(onProgress)
+  progressRef.current = onProgress
 
   useEffect(() => {
     const worker = new Worker('/workers/solc.worker.js')
     worker.onmessage = (e) => {
-      const { id, ...rest } = e.data
+      const { id, action, ...rest } = e.data
+
+      // Progress messages (import fetching updates)
+      if (action === 'progress') {
+        const listener = progressListeners.get(id)
+        if (listener) listener(rest.msg)
+        return
+      }
+
       const cb = pendingMap.get(id)
-      if (cb) { pendingMap.delete(id); cb(rest) }
+      if (cb) { pendingMap.delete(id); progressListeners.delete(id); cb(rest) }
     }
     worker.onerror = (e) => {
       console.error('Solc worker error', e)
@@ -57,10 +68,11 @@ export function useSolcCompiler() {
     return () => { worker.terminate() }
   }, [])
 
-  const send = useCallback((action: string, data: object): Promise<any> => {
+  const send = useCallback((action: string, data: object, onProg?: (m: string) => void): Promise<any> => {
     return new Promise((resolve) => {
       const id = ++msgId
       pendingMap.set(id, resolve)
+      if (onProg) progressListeners.set(id, onProg)
       workerRef.current?.postMessage({ id, action, data })
     })
   }, [])
@@ -84,10 +96,12 @@ export function useSolcCompiler() {
     const build = SOLC_VERSIONS[version] ?? SOLC_VERSIONS['0.8.26']
     const result = await send('compile', {
       version: build,
-      sources: Object.fromEntries(Object.entries(sources).map(([k, v]) => [k, { content: v }])),
+      sources,
       optimize: opts.optimize ?? true,
       runs: opts.runs ?? 200,
       evmVersion: opts.evmVersion ?? 'paris',
+    }, (msg) => {
+      progressRef.current?.(msg)
     })
 
     setCompiling(false)
