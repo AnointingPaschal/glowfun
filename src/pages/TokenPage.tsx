@@ -65,7 +65,7 @@ function StatBox({ label, value, sub, color }: { label: string; value: string; s
   return (
     <div className="flex flex-col gap-0.5 px-3 py-2.5 rounded-xl" style={{ background: '#f9fafb', border: '1px solid rgba(0,0,0,0.08)' }}>
       <span className="text-[9px] uppercase tracking-widest font-semibold" style={{ color: 'rgba(0,0,0,0.35)' }}>{label}</span>
-      <span className="text-sm font-bold tabular-nums" style={{ color: color ?? 'white', fontFamily: 'Space Grotesk, sans-serif' }}>{value}</span>
+      <span className="text-sm font-bold tabular-nums" style={{ color: color ?? '#111827', fontFamily: 'Space Grotesk, sans-serif' }}>{value}</span>
       {sub && <span className="text-[9px] tabular-nums" style={{ color: 'rgba(0,0,0,0.35)' }}>{sub}</span>}
     </div>
   )
@@ -74,7 +74,7 @@ function StatBox({ label, value, sub, color }: { label: string; value: string; s
 /* ── Trade history row (mock from events) ───────────────────────── */
 function TradeRow({ isBuy, amount, tokens, addr, time }: { isBuy: boolean; amount: string; tokens: string; addr: string; time: string }) {
   return (
-    <div className="flex items-center justify-between py-2 border-b" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+    <div className="flex items-center justify-between py-2 border-b" style={{ borderColor: 'rgba(0,0,0,0.05)' }}>
       <div className="flex items-center gap-2">
         <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: isBuy ? 'rgba(38,166,154,0.15)' : 'rgba(239,83,80,0.15)', color: isBuy ? GREEN : RED }}>
           {isBuy ? 'BUY' : 'SELL'}
@@ -401,7 +401,7 @@ export function TokenPage() {
                           { k: 'Chain', v: `Arc Mainnet` },
                           { k: 'USDC Raised', v: `$${raisedNum.toLocaleString('en', { maximumFractionDigits: 2 })}` },
                         ].map(({ k, v, copy: canCopy }) => (
-                          <div key={k} className="flex items-center justify-between py-2.5 border-b" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+                          <div key={k} className="flex items-center justify-between py-2.5 border-b" style={{ borderColor: 'rgba(0,0,0,0.05)' }}>
                             <span className="text-[10px] uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.35)' }}>{k}</span>
                             <div className="flex items-center gap-1.5">
                               <span className={`text-xs ${canCopy ? 'font-mono' : ''} text-white`}>{canCopy ? formatAddress(v) : v}</span>
@@ -507,7 +507,7 @@ export function TokenPage() {
         <div className="space-y-4">
           <motion.div initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }}>
             <GlassCard className="overflow-hidden" glow>
-              <div className="h-[2px]" style={{ background: SPECTRAL }} />
+              <div className="h-[2px]" style={{ background: 'linear-gradient(90deg,#6366f1,#8b5cf6,#ec4899)' }} />
               <div className="p-4">
                 {/* Buy/Sell */}
                 <div className="flex gap-1 p-1 rounded-xl mb-4" style={{ background: '#f9fafb', border: '1px solid rgba(0,0,0,0.08)' }}>
@@ -548,7 +548,7 @@ export function TokenPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00"
-                          className="flex-1 text-2xl font-bold text-white bg-transparent outline-none tabular-nums"
+                          className="flex-1 text-2xl font-bold bg-transparent outline-none tabular-nums"
                           style={{ fontFamily: 'Space Grotesk, sans-serif' }} />
                         <button onClick={() => {
                           if (mode === 'buy') setAmount((Number(usdcBalance as bigint ?? 0n) / 1e6).toFixed(6))
