@@ -37,58 +37,52 @@ interface Pair {
   ohlcv?: OHLCV[]
 }
 
-// ── Market data fetch ──────────────────────────────────────────────────────
+// ── Market data fetch (via server-side proxy to avoid CORS) ───────────────
 
-async function fetchMarketPairs(): Promise<Pair[]> {
-  const results: Pair[] = []
-
-  // Fetch from GeckoTerminal (Arc network)
+async function fetchMarketPairs(q = ''): Promise<Pair[]> {
   try {
-    const r = await fetch(
-      'https://api.geckoterminal.com/api/v2/networks/arc/pools?page=1&sort=h24_volume_usd_liquidity_desc',
-      { signal: AbortSignal.timeout(8000) }
-    )
-    if (r.ok) {
-      const d = await r.json()
-      const pools = d.data ?? []
-      for (const pool of pools) {
-        const attr = pool.attributes ?? {}
-        const baseToken = attr.base_token_price_usd !== undefined
-        const symbol = attr.name?.split(' / ')?.[0] ?? attr.name ?? '?'
-        results.push({
-          id: `gt-${pool.id}`,
-          source: 'market',
-          address: attr.address ?? pool.id,
-          pairAddress: attr.address,
-          name: attr.name ?? symbol,
-          symbol,
-          imageUrl: '',
-          priceUsd: parseFloat(attr.base_token_price_usd ?? '0') || 0,
-          change5m: attr.price_change_percentage?.m5 !== undefined ? parseFloat(attr.price_change_percentage.m5) : undefined,
-          change1h: attr.price_change_percentage?.h1 !== undefined ? parseFloat(attr.price_change_percentage.h1) : undefined,
-          change24h: attr.price_change_percentage?.h24 !== undefined ? parseFloat(attr.price_change_percentage.h24) : undefined,
-          liquidityUsd: parseFloat(attr.reserve_in_usd ?? '0') || undefined,
-          volumeUsd: parseFloat(attr.volume_usd?.h24 ?? '0') || undefined,
-          mcapUsd: parseFloat(attr.fdv_usd ?? '0') || undefined,
-          age: attr.pool_created_at ? Math.floor((Date.now() - new Date(attr.pool_created_at).getTime()) / 1000) : undefined,
-          buys24h: attr.transactions?.h24?.buys,
-          sells24h: attr.transactions?.h24?.sells,
-        })
-      }
-    }
-  } catch { /* silent */ }
-
-  return results
+    const url = q
+      ? `/api/market?limit=100&q=${encodeURIComponent(q)}`
+      : `/api/market?limit=100`
+    const r = await fetch(url, { signal: AbortSignal.timeout(15_000) })
+    if (!r.ok) return []
+    const d = await r.json() as any
+    if (!d.success) return []
+    return (d.data?.tokens ?? []).map((t: any) => ({
+      id:           `mkt-${t.address}`,
+      source:       'market' as const,
+      address:      t.address,
+      pairAddress:  t.pairAddress,
+      name:         t.name,
+      symbol:       t.symbol,
+      // Proxy logos through our Worker to avoid mixed-content / CORS issues
+      imageUrl:     t.logoUrl
+        ? (t.logoUrl.startsWith('http') ? `/api/market/logo?url=${encodeURIComponent(t.logoUrl)}` : t.logoUrl)
+        : '',
+      priceUsd:     t.priceUsd ?? 0,
+      change5m:     t.change5m,
+      change1h:     t.change1h,
+      change6h:     t.change6h,
+      change24h:    t.change24h,
+      liquidityUsd: t.liquidityUsd,
+      volumeUsd:    t.volumeUsd,
+      mcapUsd:      t.mcapUsd,
+      age:          t.age,
+      buys24h:      t.buys24h,
+      sells24h:     t.sells24h,
+    }))
+  } catch { return [] }
 }
 
 async function fetchGeckoOHLCV(poolAddress: string): Promise<OHLCV[] | null> {
   try {
-    const r = await fetch(
-      `https://api.geckoterminal.com/api/v2/networks/arc/pools/${poolAddress}/ohlcv/hour?limit=168`,
-      { signal: AbortSignal.timeout(6000) }
-    )
+    // Proxy through Worker to avoid CORS issues on Cloudflare Pages
+    const proxyUrl = `/api/market/logo?url=${encodeURIComponent(
+      `https://api.geckoterminal.com/api/v2/networks/arc/pools/${poolAddress}/ohlcv/hour?limit=168`
+    )}`
+    const r = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) })
     if (!r.ok) return null
-    const d = await r.json()
+    const d = await r.json() as any
     const raw: number[][] = d.data?.attributes?.ohlcv_list ?? []
     return raw.reverse().map(([t, o, h, l, c, v]) => ({
       time: Math.floor(t / 1000), open: o, high: h, low: l, close: c, volume: v,
@@ -507,9 +501,9 @@ export function TrendingPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [lastFetch, setLastFetch] = useState(0)
 
-  const fetchMarket = useCallback(async () => {
+  const fetchMarket = useCallback(async (searchQ = '') => {
     setRefreshing(true)
-    const pairs = await fetchMarketPairs()
+    const pairs = await fetchMarketPairs(searchQ)
     setMarketPairs(pairs)
     setLastFetch(Date.now())
     setRefreshing(false)
@@ -563,7 +557,7 @@ export function TrendingPage() {
             {search && <button onClick={() => setSearch('')}><X size={10} style={{ color: 'rgba(255,255,255,0.3)' }} /></button>}
           </div>
           {/* Refresh */}
-          <button onClick={fetchMarket} className="p-1.5 rounded-xl transition-all" style={{ background: 'rgba(255,255,255,0.05)' }}>
+          <button onClick={() => fetchMarket()} className="p-1.5 rounded-xl transition-all" style={{ background: 'rgba(255,255,255,0.05)' }}>
             <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} style={{ color: 'rgba(255,255,255,0.4)' }} />
           </button>
         </div>
