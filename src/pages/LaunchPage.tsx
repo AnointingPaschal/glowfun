@@ -67,7 +67,7 @@ function Slider({ label, value, min, max, step, onChange, format }: {
   return (
     <div>
       <div className="flex justify-between items-center mb-2">
-        <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.4)' }}>{label}</span>
+        <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(0,0,0,0.45)' }}>{label}</span>
         <span className="text-sm font-bold text-white">{format(value)}</span>
       </div>
       <div className="relative h-2 rounded-full" style={{ background: 'rgba(255,255,255,0.07)' }}>
@@ -184,7 +184,7 @@ function PreviewCard({ form, supply, curveBps, creatorBps, gradUsdc, creationFee
               <div className="text-base font-bold text-white truncate" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
                 {form.name || 'Token Name'}
               </div>
-              <div className="text-xs font-semibold mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
+              <div className="text-xs font-semibold mt-0.5" style={{ color: 'rgba(0,0,0,0.45)' }}>
                 ${form.symbol || 'SYMBOL'}
               </div>
               <p className="text-xs mt-1.5 line-clamp-2" style={{ color: 'rgba(255,255,255,0.45)' }}>
@@ -199,8 +199,8 @@ function PreviewCard({ form, supply, curveBps, creatorBps, gradUsdc, creationFee
               { label: 'Grad at', value: Number(gradUsdc) / 1e6 >= 1000 ? `$${(Number(gradUsdc) / 1e9).toFixed(0)}K` : `$${(Number(gradUsdc) / 1e6).toFixed(0)}` },
               { label: 'Total Supply', value: formatSupply(supply) },
             ].map(({ label, value }) => (
-              <div key={label} className="rounded-xl p-2.5 text-center" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                <div className="text-xs font-bold text-white">{value}</div>
+              <div key={label} className="rounded-xl p-2.5 text-center" style={{ background: '#f9fafb', border: '1px solid rgba(0,0,0,0.06)' }}>
+                <div className="text-xs font-bold" style={{ color: "#111827" }}>{value}</div>
                 <div className="text-[10px] mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>{label}</div>
               </div>
             ))}
@@ -221,11 +221,11 @@ function PreviewCard({ form, supply, curveBps, creatorBps, gradUsdc, creationFee
                 <div className="flex items-center gap-1.5" style={{ color }}>
                   {icon}
                   <span className="text-xs font-semibold">{label}</span>
-                  <span className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>· {desc}</span>
+                  <span className="text-xs" style={{ color: 'rgba(0,0,0,0.35)' }}>· {desc}</span>
                 </div>
-                <span className="text-xs font-bold text-white">{pct.toFixed(1)}%</span>
+                <span className="text-xs font-bold" style={{ color: "#111827" }}>{pct.toFixed(1)}%</span>
               </div>
-              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#f3f4f6' }}>
                 <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
               </div>
             </div>
@@ -245,8 +245,8 @@ function PreviewCard({ form, supply, curveBps, creatorBps, gradUsdc, creationFee
             ...(creationFee > 0n ? [{ label: 'Launch fee', value: `${formatUsdc(creationFee)} USDC` }] : []),
           ].map(({ label, value }) => (
             <div key={label} className="flex justify-between">
-              <span className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>{label}</span>
-              <span className="text-xs font-semibold text-white">{value}</span>
+              <span className="text-xs" style={{ color: 'rgba(0,0,0,0.45)' }}>{label}</span>
+              <span className="text-xs font-semibold" style={{ color: "#111827" }}>{value}</span>
             </div>
           ))}
         </div>
@@ -426,8 +426,8 @@ export function LaunchPage() {
   const busy = isPending || approveConfirming || launchConfirming
 
   const inputStyle: React.CSSProperties = {
-    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
-    borderRadius: 12, color: 'white', outline: 'none', width: '100%',
+    background: '#f3f4f6', border: '1px solid rgba(0,0,0,0.09)',
+    borderRadius: 12, color: '#111827', outline: 'none', width: '100%',
     padding: '10px 12px', fontSize: 13,
   }
   const labelStyle: React.CSSProperties = {
@@ -447,17 +447,17 @@ export function LaunchPage() {
           <h2 className="text-3xl font-bold text-white mb-2" style={{ fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '-0.02em' }}>
             Token Launched! 🚀
           </h2>
-          <p className="text-sm mb-2" style={{ color: 'rgba(255,255,255,0.5)' }}>
+          <p className="text-sm mb-2" style={{ color: '#6b7280' }}>
             <strong className="text-white">${form.symbol.toUpperCase()}</strong> is live on Arc Mainnet.
           </p>
-          <p className="text-xs mb-8" style={{ color: 'rgba(255,255,255,0.3)' }}>
+          <p className="text-xs mb-8" style={{ color: 'rgba(0,0,0,0.35)' }}>
             {formatSupply(supply)} supply · {curveBps / 100}% on curve · graduates at {Number(gradUsdc) / 1e6 >= 1000 ? '$' + (Number(gradUsdc) / 1e9).toFixed(0) + 'K' : '$' + (Number(gradUsdc) / 1e6).toFixed(0)} USDC
           </p>
           <div className="flex flex-col gap-3">
             {launchTxHash && (
               <a href={`${EXPLORER_BASE}/tx/${launchTxHash}`} target="_blank" rel="noopener noreferrer"
                 className="flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-medium no-underline"
-                style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                style={{ background: '#f3f4f6', color: '#1f2937', border: '1px solid rgba(0,0,0,0.08)' }}>
                 <ExternalLink size={14} />View Transaction
               </a>
             )}
@@ -477,10 +477,10 @@ export function LaunchPage() {
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
         <div className="flex items-center gap-2 mb-0.5">
           <div className="h-[3px] w-8 rounded-full" style={{ background: SPECTRAL }} />
-          <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.3)' }}>Token Factory</span>
+          <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(0,0,0,0.35)' }}>Token Factory</span>
         </div>
-        <h1 className="text-2xl font-bold text-white" style={{ fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '-0.02em' }}>Launch a Token</h1>
-        <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
+        <h1 className="text-2xl font-bold" style={{ color: "#111827", fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '-0.02em' }}>Launch a Token</h1>
+        <p className="text-sm mt-0.5" style={{ color: 'rgba(0,0,0,0.45)' }}>
           Deploy your meme token to the Arc bonding curve. Customize supply, allocation, and graduation target.
         </p>
       </motion.div>
@@ -489,7 +489,7 @@ export function LaunchPage() {
         <GlassCard className="p-12 text-center max-w-md mx-auto">
           <Rocket size={32} className="mx-auto mb-4" style={{ color: 'rgba(255,255,255,0.2)' }} />
           <p className="text-base font-semibold text-white mb-2">Connect your wallet</p>
-          <p className="text-sm mb-6" style={{ color: 'rgba(255,255,255,0.4)' }}>You need a wallet connected to Arc Mainnet to launch.</p>
+          <p className="text-sm mb-6" style={{ color: 'rgba(0,0,0,0.45)' }}>You need a wallet connected to Arc Mainnet to launch.</p>
           <ConnectKitButton />
         </GlassCard>
       ) : (
@@ -509,7 +509,7 @@ export function LaunchPage() {
             <GlassCard className="overflow-hidden">
               <div className="h-[2px]" style={{ background: SPECTRAL }} />
               <div className="p-6 space-y-4">
-                <div className="text-sm font-semibold text-white" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>Token Details</div>
+                <div className="text-sm font-semibold" style={{ color: "#111827", fontFamily: 'Space Grotesk, sans-serif' }}>Token Details</div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -552,7 +552,7 @@ export function LaunchPage() {
 
             {/* Supply */}
             <GlassCard className="p-6 space-y-4">
-              <div className="text-sm font-semibold text-white" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>Total Supply</div>
+              <div className="text-sm font-semibold" style={{ color: "#111827", fontFamily: 'Space Grotesk, sans-serif' }}>Total Supply</div>
               <div className="grid grid-cols-4 gap-2">
                 {SUPPLY_PRESETS.map((p, i) => (
                   <button key={p.label} onClick={() => { setSupplyPreset(i); setCustomSupply('') }}
@@ -576,18 +576,18 @@ export function LaunchPage() {
             {/* Advanced tokenomics */}
             <GlassCard className="overflow-hidden">
               <button onClick={() => setShowAdvanced(v => !v)}
-                className="w-full flex items-center justify-between p-5 text-left" style={{ color: 'white' }}>
+                className="w-full flex items-center justify-between p-5 text-left" style={{ color: '#111827' }}>
                 <div className="flex items-center gap-2">
                   <Zap size={15} style={{ color: '#a78bfa' }} />
                   <span className="text-sm font-semibold">Advanced Tokenomics</span>
                   <span className="text-xs px-2 py-0.5 rounded-full ml-1" style={{ background: 'rgba(139,92,246,0.12)', color: '#a78bfa' }}>Optional</span>
                 </div>
-                <ChevronDown size={16} style={{ color: 'rgba(255,255,255,0.4)', transform: showAdvanced ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                <ChevronDown size={16} style={{ color: 'rgba(0,0,0,0.45)', transform: showAdvanced ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
               </button>
               <AnimatePresence>
                 {showAdvanced && (
                   <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} style={{ overflow: 'hidden' }}>
-                    <div className="px-5 pb-5 space-y-6 border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                    <div className="px-5 pb-5 space-y-6 border-t" style={{ borderColor: 'rgba(0,0,0,0.06)' }}>
                       <div className="pt-4">
                         <Slider label="Bonding Curve Allocation" value={curveBps} min={5000} max={9500} step={100}
                           onChange={setCurveBps} format={v => `${(v / 100).toFixed(0)}%`} />
@@ -598,14 +598,14 @@ export function LaunchPage() {
                         {creatorBps > 0 && (
                           <div className="flex items-start gap-1.5 mt-2 p-2.5 rounded-lg" style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.1)' }}>
                             <AlertTriangle size={12} style={{ color: '#f59e0b', flexShrink: 0, marginTop: 1 }} />
-                            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                            <p className="text-xs" style={{ color: 'rgba(0,0,0,0.45)' }}>
                               {(creatorBps / 100).toFixed(0)}% ({formatSupply((supply * BigInt(creatorBps)) / 10_000n)} tokens) sent to your wallet at launch.
                             </p>
                           </div>
                         )}
                       </div>
                       <div>
-                        <div className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'rgba(255,255,255,0.4)' }}>Graduation Threshold</div>
+                        <div className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'rgba(0,0,0,0.45)' }}>Graduation Threshold</div>
                         <div className="grid grid-cols-5 gap-2 mb-3">
                           {GRAD_PRESETS.map((p, i) => (
                             <button key={p.label} onClick={() => { setGradPreset(i); setCustomGrad('') }}
@@ -663,7 +663,7 @@ export function LaunchPage() {
 
             {/* Two-step hint */}
             {needsApproval && !busy && (
-              <p className="text-center text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
+              <p className="text-center text-xs" style={{ color: 'rgba(0,0,0,0.35)' }}>
                 Step 1 of 2 — approve USDC, then the launch transaction fires automatically
               </p>
             )}
@@ -672,7 +672,7 @@ export function LaunchPage() {
           {/* ── RIGHT: Live preview ──────────────────────────────── */}
           <motion.div initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }}>
             <div className="lg:sticky lg:top-6">
-              <div className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'rgba(255,255,255,0.3)' }}>Live Preview</div>
+              <div className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>Live Preview</div>
               <PreviewCard form={form} supply={supply} curveBps={curveBps} creatorBps={creatorBps} gradUsdc={gradUsdc} creationFee={creationFee} />
             </div>
           </motion.div>

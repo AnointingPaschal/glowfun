@@ -92,15 +92,15 @@ function usePortfolio(userAddress: `0x${string}` | undefined, tokenAddresses: `0
 /* ── Mini stat card ─────────────────────────────────────────────── */
 function StatCard({ label, value, sub, icon: Icon, color }: { label: string; value: string; sub?: string; icon: any; color: string }) {
   return (
-    <div className="flex flex-col p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+    <div className="flex flex-col p-3 rounded-xl" style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,0.08)' }}>
       <div className="flex items-center gap-1.5 mb-1.5">
         <div className="w-5 h-5 rounded-lg flex items-center justify-center" style={{ background: `${color}15` }}>
           <Icon size={10} style={{ color }} />
         </div>
-        <span className="text-[9px] uppercase tracking-widest font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>{label}</span>
+        <span className="text-[9px] uppercase tracking-widest font-medium" style={{ color: 'rgba(0,0,0,0.35)' }}>{label}</span>
       </div>
-      <div className="text-sm font-bold text-white tabular-nums" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>{value}</div>
-      {sub && <div className="text-[9px] mt-0.5" style={{ color: 'rgba(255,255,255,0.3)' }}>{sub}</div>}
+      <div className="text-sm font-bold tabular-nums" style={{ color: "#111827", fontFamily: 'Space Grotesk, sans-serif' }}>{value}</div>
+      {sub && <div className="text-[9px] mt-0.5" style={{ color: 'rgba(0,0,0,0.35)' }}>{sub}</div>}
     </div>
   )
 }
@@ -163,8 +163,8 @@ function SendPanel({ address: wallet, usdcBalance, tokenHoldings }: {
           <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center" style={{ background: 'rgba(52,211,153,0.12)', border: '1px solid rgba(52,211,153,0.2)' }}>
             <Check size={28} style={{ color: '#34d399' }} />
           </div>
-          <div className="text-white font-semibold mb-1">Transfer sent!</div>
-          <div className="text-xs mb-4" style={{ color: 'rgba(255,255,255,0.4)' }}>Your transfer has been submitted to the network</div>
+          <div className="font-semibold mb-1" style={{ color: "#111827" }}>Transfer sent!</div>
+          <div className="text-xs mb-4" style={{ color: 'rgba(0,0,0,0.45)' }}>Your transfer has been submitted to the network</div>
           {(hash ?? ethHash) && (
             <a href={`${EXPLORER_BASE}/tx/${hash ?? ethHash}`} target="_blank" rel="noopener"
               className="flex items-center justify-center gap-1.5 text-xs" style={{ color: '#a78bfa' }}>
@@ -173,7 +173,7 @@ function SendPanel({ address: wallet, usdcBalance, tokenHoldings }: {
           )}
           <button onClick={() => { setStep('form'); setTo(''); setAmount('') }}
             className="mt-4 w-full py-2.5 rounded-xl text-sm font-medium text-white"
-            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            style={{ background: '#f3f4f6', border: '1px solid rgba(0,0,0,0.09)' }}>
             Send another
           </button>
         </motion.div>
@@ -181,17 +181,17 @@ function SendPanel({ address: wallet, usdcBalance, tokenHoldings }: {
         <>
           {/* Asset selector */}
           <div>
-            <div className="text-xs font-medium mb-2" style={{ color: 'rgba(255,255,255,0.5)' }}>Asset</div>
+            <div className="text-xs font-medium mb-2" style={{ color: '#6b7280' }}>Asset</div>
             <div className="space-y-1.5">
               <button onClick={() => setAsset('usdc')}
                 className="w-full flex items-center gap-3 p-3 rounded-xl transition-all"
                 style={{ background: asset === 'usdc' ? 'rgba(139,92,246,0.1)' : 'rgba(255,255,255,0.03)', border: `1px solid ${asset === 'usdc' ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.06)'}` }}>
                 <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm" style={{ background: 'rgba(59,130,246,0.2)' }}>💲</div>
                 <div className="flex-1 text-left">
-                  <div className="text-xs font-medium text-white">USDC</div>
-                  <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.4)' }}>USD Coin</div>
+                  <div className="text-xs font-medium" style={{ color: "#374151" }}>USDC</div>
+                  <div className="text-[10px]" style={{ color: 'rgba(0,0,0,0.45)' }}>USD Coin</div>
                 </div>
-                <div className="text-xs font-medium text-white">{formatUsdc(usdcBalance)}</div>
+                <div className="text-xs font-medium" style={{ color: "#374151" }}>{formatUsdc(usdcBalance)}</div>
                 {asset === 'usdc' && <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#8b5cf6' }} />}
               </button>
               {tokenHoldings.map(t => (
@@ -201,15 +201,15 @@ function SendPanel({ address: wallet, usdcBalance, tokenHoldings }: {
                   {t.imageUri ? (
                     <img src={t.imageUri} alt={t.symbol} className="w-8 h-8 rounded-full object-cover" onError={e => { (e.target as any).style.display = 'none' }} />
                   ) : (
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold" style={{ background: `hsl(${parseInt(t.address.slice(2,6),16) % 360},60%,35%)`, color: 'white' }}>
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold" style={{ background: `hsl(${parseInt(t.address.slice(2,6),16) % 360},60%,35%)`, color: '#111827' }}>
                       {t.symbol.slice(0,1)}
                     </div>
                   )}
                   <div className="flex-1 text-left">
-                    <div className="text-xs font-medium text-white">{t.symbol}</div>
-                    <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.4)' }}>{t.name}</div>
+                    <div className="text-xs font-medium" style={{ color: "#374151" }}>{t.symbol}</div>
+                    <div className="text-[10px]" style={{ color: 'rgba(0,0,0,0.45)' }}>{t.name}</div>
                   </div>
-                  <div className="text-xs font-medium text-white">{formatTokens(t.balance)}</div>
+                  <div className="text-xs font-medium" style={{ color: "#374151" }}>{formatTokens(t.balance)}</div>
                   {asset === t.address && <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#8b5cf6' }} />}
                 </button>
               ))}
@@ -218,12 +218,12 @@ function SendPanel({ address: wallet, usdcBalance, tokenHoldings }: {
 
           {/* To address */}
           <div>
-            <div className="text-xs font-medium mb-2" style={{ color: 'rgba(255,255,255,0.5)' }}>Recipient</div>
-            <div className="flex items-center gap-2 px-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${validAddr && to ? 'rgba(52,211,153,0.2)' : 'rgba(255,255,255,0.07)'}` }}>
+            <div className="text-xs font-medium mb-2" style={{ color: '#6b7280' }}>Recipient</div>
+            <div className="flex items-center gap-2 px-3 rounded-xl" style={{ background: '#f9fafb', border: `1px solid ${validAddr && to ? 'rgba(52,211,153,0.2)' : 'rgba(255,255,255,0.07)'}` }}>
               <ArrowUpRight size={13} style={{ color: validAddr && to ? '#34d399' : 'rgba(255,255,255,0.3)', flexShrink: 0 }} />
               <input value={to} onChange={e => setTo(e.target.value)} placeholder="0x... wallet address"
-                className="flex-1 py-3 text-sm text-white bg-transparent outline-none placeholder-white/20 font-mono" />
-              {to && <button onClick={() => setTo('')}><X size={12} style={{ color: 'rgba(255,255,255,0.3)' }} /></button>}
+                className="flex-1 py-3 text-sm bg-transparent outline-none font-mono" style={{ color: "#111827" }} />
+              {to && <button onClick={() => setTo('')}><X size={12} style={{ color: 'rgba(0,0,0,0.35)' }} /></button>}
             </div>
             {to && !validAddr && <p className="text-[10px] mt-1 ml-1" style={{ color: '#f87171' }}>Invalid address</p>}
           </div>
@@ -231,15 +231,15 @@ function SendPanel({ address: wallet, usdcBalance, tokenHoldings }: {
           {/* Amount */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.5)' }}>Amount</span>
+              <span className="text-xs font-medium" style={{ color: '#6b7280' }}>Amount</span>
               <button onClick={() => setAmount(maxAmount)} className="text-[10px]" style={{ color: '#a78bfa' }}>
                 Max: {isUsdc ? formatUsdc(usdcBalance) : formatTokens(selectedToken?.balance)}
               </button>
             </div>
-            <div className="flex items-center gap-2 px-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+            <div className="flex items-center gap-2 px-3 rounded-xl" style={{ background: '#f9fafb', border: '1px solid rgba(0,0,0,0.08)' }}>
               <input value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" type="number"
-                className="flex-1 py-3 text-lg font-bold text-white bg-transparent outline-none" />
-              <span className="text-sm font-medium px-2 py-1 rounded-lg" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)' }}>
+                className="flex-1 py-3 text-lg font-bold bg-transparent outline-none" style={{ color: "#111827" }} />
+              <span className="text-sm font-medium px-2 py-1 rounded-lg" style={{ background: '#f3f4f6', color: '#374151' }}>
                 {isUsdc ? 'USDC' : selectedToken?.symbol ?? ''}
               </span>
             </div>
@@ -269,7 +269,7 @@ function ReceivePanel({ address }: { address: string }) {
     <div className="max-w-sm mx-auto text-center space-y-5">
       <div>
         <div className="text-sm font-semibold text-white mb-1">Your Wallet Address</div>
-        <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>Scan QR code or copy address to receive tokens on Arc Mainnet</p>
+        <p className="text-xs" style={{ color: 'rgba(0,0,0,0.45)' }}>Scan QR code or copy address to receive tokens on Arc Mainnet</p>
       </div>
 
       {/* QR Code */}
@@ -281,8 +281,8 @@ function ReceivePanel({ address }: { address: string }) {
       </div>
 
       {/* Address */}
-      <div className="px-4 py-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-        <div className="text-xs font-mono text-white break-all">{address}</div>
+      <div className="px-4 py-3 rounded-xl" style={{ background: '#f9fafb', border: '1px solid rgba(0,0,0,0.08)' }}>
+        <div className="text-xs font-mono break-all" style={{ color: "#374151" }}>{address}</div>
       </div>
 
       <div className="flex gap-3">
@@ -314,10 +314,10 @@ function ActivityPanel({ address }: { address: string }) {
         <Activity size={20} style={{ color: '#a78bfa' }} />
       </div>
       <div className="text-sm font-medium text-white mb-1">Transaction History</div>
-      <p className="text-xs mb-4" style={{ color: 'rgba(255,255,255,0.4)' }}>View your complete on-chain history on the Arc Explorer</p>
+      <p className="text-xs mb-4" style={{ color: 'rgba(0,0,0,0.45)' }}>View your complete on-chain history on the Arc Explorer</p>
       <a href={`${EXPLORER_BASE}/address/${address}`} target="_blank" rel="noopener"
         className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold"
-        style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)', color: 'white' }}>
+        style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)', color: '#111827' }}>
         <ExternalLink size={14} />Open Explorer
       </a>
     </div>
@@ -334,13 +334,13 @@ function PortfolioTab({ portfolio, isLoading, totalValueUsdc, usdcBalance, refet
     return (
       <div className="space-y-2">
         {[1,2,3].map(i => (
-          <div key={i} className="flex items-center gap-3 p-3 rounded-xl animate-pulse" style={{ background: 'rgba(255,255,255,0.04)' }}>
-            <div className="w-10 h-10 rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }} />
+          <div key={i} className="flex items-center gap-3 p-3 rounded-xl animate-pulse" style={{ background: '#f9fafb' }}>
+            <div className="w-10 h-10 rounded-full" style={{ background: '#e5e7eb' }} />
             <div className="flex-1 space-y-1.5">
-              <div className="h-3 w-24 rounded" style={{ background: 'rgba(255,255,255,0.08)' }} />
-              <div className="h-2 w-16 rounded" style={{ background: 'rgba(255,255,255,0.05)' }} />
+              <div className="h-3 w-24 rounded" style={{ background: '#e5e7eb' }} />
+              <div className="h-2 w-16 rounded" style={{ background: '#f3f4f6' }} />
             </div>
-            <div className="h-4 w-14 rounded" style={{ background: 'rgba(255,255,255,0.06)' }} />
+            <div className="h-4 w-14 rounded" style={{ background: '#f3f4f6' }} />
           </div>
         ))}
       </div>
@@ -351,8 +351,8 @@ function PortfolioTab({ portfolio, isLoading, totalValueUsdc, usdcBalance, refet
     <div className="space-y-3">
       {/* Total portfolio value */}
       <div className="p-4 rounded-2xl" style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.12), rgba(236,72,153,0.08))', border: '1px solid rgba(139,92,246,0.15)' }}>
-        <div className="text-[10px] uppercase tracking-widest mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>Total Portfolio Value</div>
-        <div className="text-3xl font-bold text-white mb-1" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+        <div className="text-[10px] uppercase tracking-widest mb-1" style={{ color: 'rgba(0,0,0,0.45)' }}>Total Portfolio Value</div>
+        <div className="text-3xl font-bold mb-1" style={{ color: "#111827", fontFamily: 'Space Grotesk, sans-serif' }}>
           ${total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </div>
         <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.35)' }}>Arc Mainnet · USDC-denominated</div>
@@ -361,15 +361,15 @@ function PortfolioTab({ portfolio, isLoading, totalValueUsdc, usdcBalance, refet
       {/* Holdings */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-[10px] uppercase tracking-widest font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>Holdings</span>
-          <button onClick={refetch} style={{ color: 'rgba(255,255,255,0.3)' }}><RefreshCw size={11} /></button>
+          <span className="text-[10px] uppercase tracking-widest font-medium" style={{ color: 'rgba(0,0,0,0.35)' }}>Holdings</span>
+          <button onClick={refetch} style={{ color: 'rgba(0,0,0,0.35)' }}><RefreshCw size={11} /></button>
         </div>
 
         {/* USDC always first */}
-        <div className="flex items-center gap-3 p-3 rounded-xl mb-1.5" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="flex items-center gap-3 p-3 rounded-xl mb-1.5" style={{ background: '#f9fafb', border: '1px solid rgba(0,0,0,0.08)' }}>
           <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg" style={{ background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.2)' }}>💲</div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold text-white">USDC</div>
+            <div className="text-sm font-semibold" style={{ color: "#111827" }}>USDC</div>
             <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.35)' }}>USD Coin</div>
           </div>
           <div className="text-right">
@@ -382,12 +382,12 @@ function PortfolioTab({ portfolio, isLoading, totalValueUsdc, usdcBalance, refet
         {portfolio.length === 0 ? (
           <div className="text-center py-6">
             <Coins size={20} className="mx-auto mb-2" style={{ color: 'rgba(255,255,255,0.15)' }} />
-            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>No GlowFun tokens yet. Trade to build your portfolio.</p>
+            <p className="text-xs" style={{ color: 'rgba(0,0,0,0.35)' }}>No GlowFun tokens yet. Trade to build your portfolio.</p>
           </div>
         ) : (
           portfolio.map(t => (
             <div key={t.address} className="flex items-center gap-3 p-3 rounded-xl mb-1.5"
-              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              style={{ background: '#f9fafb', border: '1px solid rgba(0,0,0,0.08)' }}>
               {t.imageUri ? (
                 <img src={t.imageUri} alt={t.symbol} className="w-10 h-10 rounded-full object-cover" />
               ) : (
@@ -431,12 +431,12 @@ function CircleSection() {
             <Shield size={14} className="text-white" />
           </div>
           <div>
-            <div className="text-sm font-semibold text-white">Circle MPC Wallet</div>
-            <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.4)' }}>Non-custodial · PIN-secured</div>
+            <div className="text-sm font-semibold" style={{ color: "#111827" }}>Circle MPC Wallet</div>
+            <div className="text-[10px]" style={{ color: 'rgba(0,0,0,0.45)' }}>Non-custodial · PIN-secured</div>
           </div>
         </div>
         {hasCreds && (
-          <button onClick={disconnect} className="flex items-center gap-1 text-[10px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
+          <button onClick={disconnect} className="flex items-center gap-1 text-[10px]" style={{ color: 'rgba(0,0,0,0.35)' }}>
             <LogOut size={11} />Sign out
           </button>
         )}
@@ -449,27 +449,27 @@ function CircleSection() {
         </div>
       ) : !sdkReady ? (
         <div className="text-center py-3">
-          <Loader2 size={16} className="animate-spin mx-auto mb-1" style={{ color: 'rgba(255,255,255,0.3)' }} />
-          <p className="text-[10px]" style={{ color: 'rgba(255,255,255,0.4)' }}>Initializing…</p>
+          <Loader2 size={16} className="animate-spin mx-auto mb-1" style={{ color: 'rgba(0,0,0,0.35)' }} />
+          <p className="text-[10px]" style={{ color: 'rgba(0,0,0,0.45)' }}>Initializing…</p>
         </div>
       ) : hasWallet && selectedWallet ? (
         <div className="space-y-3">
-          <div className="p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
-            <div className="text-[10px] mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>MPC Wallet Address</div>
+          <div className="p-3 rounded-xl" style={{ background: '#f9fafb', border: '1px solid rgba(0,0,0,0.08)' }}>
+            <div className="text-[10px] mb-1" style={{ color: 'rgba(0,0,0,0.45)' }}>MPC Wallet Address</div>
             <div className="flex items-center gap-2">
-              <span className="text-sm text-white font-mono">{formatAddress(selectedWallet.address)}</span>
+              <span className="text-sm font-mono" style={{ color: "#374151" }}>{formatAddress(selectedWallet.address)}</span>
               <button onClick={() => copyAddr(selectedWallet.address)}>
-                {copied ? <Check size={12} style={{ color: '#34d399' }} /> : <Copy size={12} style={{ color: 'rgba(255,255,255,0.4)' }} />}
+                {copied ? <Check size={12} style={{ color: '#34d399' }} /> : <Copy size={12} style={{ color: 'rgba(0,0,0,0.45)' }} />}
               </button>
               <a href={`${EXPLORER_BASE}/address/${selectedWallet.address}`} target="_blank" rel="noopener">
-                <ExternalLink size={11} style={{ color: 'rgba(255,255,255,0.3)' }} />
+                <ExternalLink size={11} style={{ color: 'rgba(0,0,0,0.35)' }} />
               </a>
             </div>
           </div>
           <div className="grid grid-cols-3 gap-2">
             {[{ k: 'State', v: selectedWallet.state }, { k: 'Type', v: selectedWallet.accountType }, { k: 'Chain', v: selectedWallet.blockchain }].map(({ k, v }) => (
-              <div key={k} className="p-2 rounded-lg text-center" style={{ background: 'rgba(255,255,255,0.03)' }}>
-                <div className="text-[8px] uppercase tracking-widest mb-0.5" style={{ color: 'rgba(255,255,255,0.3)' }}>{k}</div>
+              <div key={k} className="p-2 rounded-lg text-center" style={{ background: '#ffffff' }}>
+                <div className="text-[8px] uppercase tracking-widest mb-0.5" style={{ color: 'rgba(0,0,0,0.35)' }}>{k}</div>
                 <div className="text-[10px] font-medium text-white truncate">{v}</div>
               </div>
             ))}
@@ -486,16 +486,16 @@ function CircleSection() {
         </div>
       ) : (
         <div className="space-y-3">
-          <div className="flex items-center gap-2 px-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-            <User size={12} style={{ color: 'rgba(255,255,255,0.3)' }} />
+          <div className="flex items-center gap-2 px-3 rounded-xl" style={{ background: '#f9fafb', border: '1px solid rgba(0,0,0,0.08)' }}>
+            <User size={12} style={{ color: 'rgba(0,0,0,0.35)' }} />
             <input value={userId} onChange={e => setUserId(e.target.value)} placeholder="email or username"
-              className="flex-1 py-2.5 text-sm text-white placeholder-white/20 bg-transparent outline-none" />
+              className="flex-1 py-2.5 text-sm bg-transparent outline-none" style={{ color: "#111827" }} />
           </div>
           {status && <p className="text-[10px]" style={{ color: status.includes('Failed') || status.includes('Error') ? '#f87171' : '#a78bfa' }}>{status}</p>}
           <div className="flex gap-2">
             <button onClick={() => createUser(userId)} disabled={userId.length < 3 || isLoading}
               className="flex-1 py-2.5 rounded-xl text-xs font-medium disabled:opacity-50 flex items-center justify-center gap-1.5 text-white"
-              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
+              style={{ background: '#f3f4f6', border: '1px solid rgba(0,0,0,0.09)' }}>
               {isLoading ? <Loader2 size={12} className="animate-spin" /> : <User size={12} />}Register
             </button>
             <button onClick={() => getToken(userId)} disabled={userId.length < 3 || isLoading}
@@ -544,9 +544,9 @@ export function WalletPage() {
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
           <div className="flex items-center gap-2 mb-0.5">
             <div className="h-[3px] w-8 rounded-full" style={{ background: SPECTRAL }} />
-            <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.3)' }}>Account</span>
+            <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(0,0,0,0.35)' }}>Account</span>
           </div>
-          <h1 className="text-2xl font-bold text-white" style={{ fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '-0.02em' }}>Wallet</h1>
+          <h1 className="text-2xl font-bold" style={{ color: "#111827", fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '-0.02em' }}>Wallet</h1>
         </motion.div>
 
         <GlassCard className="p-8 text-center">
@@ -572,9 +572,9 @@ export function WalletPage() {
           <div>
             <div className="flex items-center gap-2 mb-0.5">
               <div className="h-[3px] w-8 rounded-full" style={{ background: SPECTRAL }} />
-              <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.3)' }}>Account</span>
+              <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(0,0,0,0.35)' }}>Account</span>
             </div>
-            <h1 className="text-2xl font-bold text-white" style={{ fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '-0.02em' }}>Wallet</h1>
+            <h1 className="text-2xl font-bold" style={{ color: "#111827", fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '-0.02em' }}>Wallet</h1>
           </div>
           <ConnectKitButton />
         </div>
@@ -591,11 +591,11 @@ export function WalletPage() {
               </div>
               <div className="flex items-center gap-1.5 mt-1">
                 <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#34d399' }} />
-                <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.4)' }}>Arc Mainnet</span>
-                <span className="text-[10px] font-mono" style={{ color: 'rgba(255,255,255,0.3)' }}>{formatAddress(evmAddress ?? '')}</span>
+                <span className="text-[10px]" style={{ color: 'rgba(0,0,0,0.45)' }}>Arc Mainnet</span>
+                <span className="text-[10px] font-mono" style={{ color: 'rgba(0,0,0,0.35)' }}>{formatAddress(evmAddress ?? '')}</span>
               </div>
             </div>
-            <button onClick={() => setHideBalance(v => !v)} className="p-2 rounded-xl transition-all hover:bg-white/5" style={{ color: 'rgba(255,255,255,0.3)' }}>
+            <button onClick={() => setHideBalance(v => !v)} className="p-2 rounded-xl transition-all hover:bg-white/5" style={{ color: 'rgba(0,0,0,0.35)' }}>
               {hideBalance ? <Eye size={16} /> : <EyeOff size={16} />}
             </button>
           </div>
@@ -636,7 +636,7 @@ export function WalletPage() {
       {/* Tab content */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}>
         {/* Tab bar */}
-        <div className="flex gap-1 p-1 rounded-xl mb-4" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="flex gap-1 p-1 rounded-xl mb-4" style={{ background: '#f9fafb', border: '1px solid rgba(0,0,0,0.08)' }}>
           {TABS.map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setActiveTab(id)}
               className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-[10px] font-medium transition-all"
@@ -664,11 +664,11 @@ export function WalletPage() {
                         {isAddr ? (
                           <div className="flex items-center gap-1.5">
                             <span className="text-xs font-mono text-white">{formatAddress(v)}</span>
-                            <button onClick={() => navigator.clipboard.writeText(v)}><Copy size={10} style={{ color: 'rgba(255,255,255,0.3)' }} /></button>
-                            <a href={`${EXPLORER_BASE}/address/${v}`} target="_blank" rel="noopener"><ExternalLink size={10} style={{ color: 'rgba(255,255,255,0.3)' }} /></a>
+                            <button onClick={() => navigator.clipboard.writeText(v)}><Copy size={10} style={{ color: 'rgba(0,0,0,0.35)' }} /></button>
+                            <a href={`${EXPLORER_BASE}/address/${v}`} target="_blank" rel="noopener"><ExternalLink size={10} style={{ color: 'rgba(0,0,0,0.35)' }} /></a>
                           </div>
                         ) : (
-                          <span className="text-xs font-medium text-white">{v}</span>
+                          <span className="text-xs font-medium" style={{ color: "#374151" }}>{v}</span>
                         )}
                       </div>
                     ))}
@@ -680,7 +680,7 @@ export function WalletPage() {
                     {['Never share your private key or seed phrase.', 'Always verify transaction details before signing.', 'Be cautious of phishing sites — double-check URLs.'].map(tip => (
                       <div key={tip} className="flex items-start gap-2 mb-1">
                         <Shield size={9} className="flex-shrink-0 mt-0.5" style={{ color: '#a78bfa' }} />
-                        <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.5)' }}>{tip}</span>
+                        <span className="text-[10px]" style={{ color: '#6b7280' }}>{tip}</span>
                       </div>
                     ))}
                   </div>

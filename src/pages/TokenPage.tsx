@@ -63,10 +63,10 @@ async function fetchGeckoOHLCV(poolAddress: string): Promise<OHLCV[] | null> {
 /* ── Stat badge ─────────────────────────────────────────────────── */
 function StatBox({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
-    <div className="flex flex-col gap-0.5 px-3 py-2.5 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
-      <span className="text-[9px] uppercase tracking-widest font-semibold" style={{ color: 'rgba(255,255,255,0.3)' }}>{label}</span>
+    <div className="flex flex-col gap-0.5 px-3 py-2.5 rounded-xl" style={{ background: '#f9fafb', border: '1px solid rgba(0,0,0,0.08)' }}>
+      <span className="text-[9px] uppercase tracking-widest font-semibold" style={{ color: 'rgba(0,0,0,0.35)' }}>{label}</span>
       <span className="text-sm font-bold tabular-nums" style={{ color: color ?? 'white', fontFamily: 'Space Grotesk, sans-serif' }}>{value}</span>
-      {sub && <span className="text-[9px] tabular-nums" style={{ color: 'rgba(255,255,255,0.3)' }}>{sub}</span>}
+      {sub && <span className="text-[9px] tabular-nums" style={{ color: 'rgba(0,0,0,0.35)' }}>{sub}</span>}
     </div>
   )
 }
@@ -79,11 +79,11 @@ function TradeRow({ isBuy, amount, tokens, addr, time }: { isBuy: boolean; amoun
         <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: isBuy ? 'rgba(38,166,154,0.15)' : 'rgba(239,83,80,0.15)', color: isBuy ? GREEN : RED }}>
           {isBuy ? 'BUY' : 'SELL'}
         </span>
-        <span className="text-[10px] font-mono" style={{ color: 'rgba(255,255,255,0.4)' }}>{addr}</span>
+        <span className="text-[10px] font-mono" style={{ color: 'rgba(0,0,0,0.45)' }}>{addr}</span>
       </div>
       <div className="text-right">
         <div className="text-xs font-medium tabular-nums" style={{ color: isBuy ? GREEN : RED }}>{isBuy ? `+${tokens}` : `-${tokens}`}</div>
-        <div className="text-[9px]" style={{ color: 'rgba(255,255,255,0.3)' }}>{amount} · {time}</div>
+        <div className="text-[9px]" style={{ color: 'rgba(0,0,0,0.35)' }}>{amount} · {time}</div>
       </div>
     </div>
   )
@@ -223,15 +223,15 @@ export function TokenPage() {
   if (isLoading) return (
     <div className="max-w-[1400px] mx-auto">
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-4">
-        <div className="space-y-3">{[56, 420, 80].map(h => <div key={h} className="animate-pulse rounded-2xl" style={{ height: h, background: 'rgba(255,255,255,0.05)' }} />)}</div>
-        <div className="space-y-3">{[280, 180].map(h => <div key={h} className="animate-pulse rounded-2xl" style={{ height: h, background: 'rgba(255,255,255,0.05)' }} />)}</div>
+        <div className="space-y-3">{[56, 420, 80].map(h => <div key={h} className="animate-pulse rounded-2xl" style={{ height: h, background: '#f3f4f6' }} />)}</div>
+        <div className="space-y-3">{[280, 180].map(h => <div key={h} className="animate-pulse rounded-2xl" style={{ height: h, background: '#f3f4f6' }} />)}</div>
       </div>
     </div>
   )
   if (!token) return (
     <div className="text-center py-20">
       <p className="text-white font-semibold mb-2">Token not found</p>
-      <p className="text-sm mb-4" style={{ color: 'rgba(255,255,255,0.4)' }}>Not a GlowFun token.</p>
+      <p className="text-sm mb-4" style={{ color: 'rgba(0,0,0,0.45)' }}>Not a GlowFun token.</p>
       <Link to="/" className="text-purple-400 text-sm">← Back to feed</Link>
     </div>
   )
@@ -240,11 +240,11 @@ export function TokenPage() {
     <div className="max-w-[1400px] mx-auto">
       {/* ── Breadcrumb bar ── */}
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <Link to="/" className="inline-flex items-center gap-1.5 text-sm hover:text-purple-400 transition-colors" style={{ color: 'rgba(255,255,255,0.4)' }}>
+        <Link to="/" className="inline-flex items-center gap-1.5 text-sm hover:text-purple-400 transition-colors" style={{ color: 'rgba(0,0,0,0.45)' }}>
           <ArrowLeft size={14} />Feed
         </Link>
         <div className="flex items-center gap-2">
-          <button onClick={() => { void refetch(); void refetchBal() }} className="p-1.5 rounded-lg transition-all hover:bg-white/5" style={{ color: 'rgba(255,255,255,0.4)' }} title="Refresh">
+          <button onClick={() => { void refetch(); void refetchBal() }} className="p-1.5 rounded-lg transition-all hover:bg-white/5" style={{ color: 'rgba(0,0,0,0.45)' }} title="Refresh">
             <RefreshCw size={13} />
           </button>
           <button onClick={() => setAutoRefresh(v => !v)} className="flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-lg" style={{ background: autoRefresh ? 'rgba(38,166,154,0.1)' : 'rgba(255,255,255,0.04)', color: autoRefresh ? GREEN : 'rgba(255,255,255,0.35)', border: `1px solid ${autoRefresh ? 'rgba(38,166,154,0.2)' : 'rgba(255,255,255,0.06)'}` }}>
@@ -254,7 +254,7 @@ export function TokenPage() {
           <button onClick={() => setStarred(v => !v)} className="p-1.5 rounded-lg transition-all" style={{ color: starred ? '#fbbf24' : 'rgba(255,255,255,0.3)', background: starred ? 'rgba(251,191,36,0.08)' : 'rgba(255,255,255,0.04)' }}>
             <Star size={13} fill={starred ? '#fbbf24' : 'none'} />
           </button>
-          <button onClick={share} className="p-1.5 rounded-lg hover:bg-white/5" style={{ color: 'rgba(255,255,255,0.4)' }}>
+          <button onClick={share} className="p-1.5 rounded-lg hover:bg-white/5" style={{ color: 'rgba(0,0,0,0.45)' }}>
             <Share2 size={13} />
           </button>
         </div>
@@ -278,7 +278,7 @@ export function TokenPage() {
                 {/* Name + price + change */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <h1 className="text-xl font-bold text-white" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>{token.name}</h1>
+                    <h1 className="text-xl font-bold" style={{ color: "#111827", fontFamily: 'Space Grotesk, sans-serif' }}>{token.name}</h1>
                     <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(139,92,246,0.15)', color: '#a78bfa' }}>${token.symbol}</span>
                     {token.state?.graduated && <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" style={{ background: 'rgba(250,204,21,0.1)', color: '#fbbf24' }}><Trophy size={10} />Graduated</span>}
                     {dsData && <span className="text-[9px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(38,166,154,0.1)', color: GREEN }}>DexScreener ✓</span>}
@@ -298,9 +298,9 @@ export function TokenPage() {
 
                 {/* Address + links */}
                 <div className="flex flex-col gap-1.5 items-end flex-shrink-0">
-                  <div className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                    <span className="text-[10px] font-mono" style={{ color: 'rgba(255,255,255,0.5)' }}>{formatAddress(tokenAddr)}</span>
-                    <button onClick={() => copy(tokenAddr)}>{copied ? <Check size={9} style={{ color: GREEN }} /> : <Copy size={9} style={{ color: 'rgba(255,255,255,0.3)' }} />}</button>
+                  <div className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ background: '#f9fafb', border: '1px solid rgba(0,0,0,0.08)' }}>
+                    <span className="text-[10px] font-mono" style={{ color: '#6b7280' }}>{formatAddress(tokenAddr)}</span>
+                    <button onClick={() => copy(tokenAddr)}>{copied ? <Check size={9} style={{ color: GREEN }} /> : <Copy size={9} style={{ color: 'rgba(0,0,0,0.35)' }} />}</button>
                   </div>
                   <div className="flex items-center gap-1">
                     <a href={`${EXPLORER_BASE}/address/${tokenAddr}`} target="_blank" rel="noopener" className="p-1.5 rounded-lg hover:bg-white/5" style={{ color: 'rgba(255,255,255,0.35)' }}><ExternalLink size={11} /></a>
@@ -329,7 +329,7 @@ export function TokenPage() {
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.07 }}>
             <GlassCard className="overflow-hidden">
               {/* Tab bar */}
-              <div className="flex items-center justify-between px-4 pt-3 pb-0 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+              <div className="flex items-center justify-between px-4 pt-3 pb-0 border-b" style={{ borderColor: 'rgba(0,0,0,0.06)' }}>
                 <div className="flex">
                   {([
                     { id: 'chart',    label: 'Chart',   icon: BarChart3 },
@@ -371,7 +371,7 @@ export function TokenPage() {
                       <div className="flex gap-2 mt-3 flex-wrap">
                         <a href={`https://dexscreener.com/arc/${dsData.pairAddress}`} target="_blank" rel="noopener"
                           className="flex items-center gap-1.5 text-[10px] px-3 py-2 rounded-lg"
-                          style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                          style={{ background: '#f9fafb', color: '#6b7280', border: '1px solid rgba(0,0,0,0.08)' }}>
                           <BarChart3 size={10} />DexScreener
                         </a>
                       </div>
@@ -384,12 +384,12 @@ export function TokenPage() {
                   <div className="space-y-5">
                     {token.description && (
                       <div>
-                        <div className="text-[9px] uppercase tracking-widest mb-2 font-semibold" style={{ color: 'rgba(255,255,255,0.3)' }}>Description</div>
+                        <div className="text-[9px] uppercase tracking-widest mb-2 font-semibold" style={{ color: 'rgba(0,0,0,0.35)' }}>Description</div>
                         <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.65)' }}>{token.description}</p>
                       </div>
                     )}
                     <div>
-                      <div className="text-[9px] uppercase tracking-widest mb-2 font-semibold" style={{ color: 'rgba(255,255,255,0.3)' }}>Token Details</div>
+                      <div className="text-[9px] uppercase tracking-widest mb-2 font-semibold" style={{ color: 'rgba(0,0,0,0.35)' }}>Token Details</div>
                       <div className="space-y-0">
                         {[
                           { k: 'Contract', v: tokenAddr, copy: true },
@@ -416,11 +416,11 @@ export function TokenPage() {
                     {/* Socials */}
                     {(token.twitter || token.telegram || token.website) && (
                       <div>
-                        <div className="text-[9px] uppercase tracking-widest mb-2 font-semibold" style={{ color: 'rgba(255,255,255,0.3)' }}>Links</div>
+                        <div className="text-[9px] uppercase tracking-widest mb-2 font-semibold" style={{ color: 'rgba(0,0,0,0.35)' }}>Links</div>
                         <div className="flex gap-2 flex-wrap">
                           {token.twitter && <a href={token.twitter} target="_blank" rel="noopener" className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs" style={{ background: 'rgba(29,161,242,0.08)', color: '#1da1f2', border: '1px solid rgba(29,161,242,0.12)' }}><Twitter size={12} />Twitter/X</a>}
                           {token.telegram && <a href={token.telegram} target="_blank" rel="noopener" className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs" style={{ background: 'rgba(0,136,204,0.08)', color: '#0088cc', border: '1px solid rgba(0,136,204,0.12)' }}><Send size={12} />Telegram</a>}
-                          {token.website && <a href={token.website} target="_blank" rel="noopener" className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs" style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.08)' }}><Globe size={12} />Website</a>}
+                          {token.website && <a href={token.website} target="_blank" rel="noopener" className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs" style={{ background: '#f3f4f6', color: '#374151', border: '1px solid rgba(0,0,0,0.09)' }}><Globe size={12} />Website</a>}
                         </div>
                       </div>
                     )}
@@ -438,7 +438,7 @@ export function TokenPage() {
                             { k: '1h Volume', v: dsData.volume.h1 ? `$${(dsData.volume.h1/1e3).toFixed(1)}K` : '—' },
                           ].map(({ k, v }) => (
                             <div key={k} className="flex justify-between text-xs">
-                              <span style={{ color: 'rgba(255,255,255,0.4)' }}>{k}</span>
+                              <span style={{ color: 'rgba(0,0,0,0.45)' }}>{k}</span>
                               <span className="font-medium text-white">{v}</span>
                             </div>
                           ))}
@@ -452,7 +452,7 @@ export function TokenPage() {
                 {tab === 'trades' && (
                   <div>
                     <div className="flex items-center justify-between mb-3">
-                      <span className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.5)' }}>Recent Transactions</span>
+                      <span className="text-xs font-semibold" style={{ color: '#6b7280' }}>Recent Transactions</span>
                       <a href={`${EXPLORER_BASE}/token/${tokenAddr}`} target="_blank" rel="noopener" className="flex items-center gap-1 text-[10px]" style={{ color: '#a78bfa' }}>
                         Arc Explorer <ExternalLink size={9} />
                       </a>
@@ -484,16 +484,16 @@ export function TokenPage() {
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
               <GlassCard className="p-4">
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm font-semibold text-white">Bonding Curve Progress</span>
-                  <span className="text-xs tabular-nums" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                  <span className="text-sm font-semibold" style={{ color: "#111827" }}>Bonding Curve Progress</span>
+                  <span className="text-xs tabular-nums" style={{ color: 'rgba(0,0,0,0.45)' }}>
                     ${raisedNum.toFixed(2)} / ${gradThreshold >= 1000 ? `${(gradThreshold/1000).toFixed(0)}K` : gradThreshold}
                   </span>
                 </div>
-                <div className="h-3 rounded-full overflow-hidden mb-1.5" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                <div className="h-3 rounded-full overflow-hidden mb-1.5" style={{ background: '#f3f4f6' }}>
                   <motion.div className="h-full rounded-full" initial={{ width: 0 }} animate={{ width: `${Math.min(100, progress)}%` }} transition={{ duration: 1, ease: 'easeOut' }}
                     style={{ background: progress > 90 ? `linear-gradient(90deg, ${GREEN}, #059669)` : 'linear-gradient(90deg, #8b5cf6, #ec4899)' }} />
                 </div>
-                <div className="flex justify-between text-[10px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                <div className="flex justify-between text-[10px]" style={{ color: 'rgba(0,0,0,0.35)' }}>
                   <span>$0</span>
                   <span style={{ color: progress > 50 ? GREEN : 'inherit' }}>{progress.toFixed(2)}% to graduation</span>
                   <span>${gradThreshold >= 1000 ? `${(gradThreshold/1000).toFixed(0)}K` : gradThreshold}</span>
@@ -510,7 +510,7 @@ export function TokenPage() {
               <div className="h-[2px]" style={{ background: SPECTRAL }} />
               <div className="p-4">
                 {/* Buy/Sell */}
-                <div className="flex gap-1 p-1 rounded-xl mb-4" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div className="flex gap-1 p-1 rounded-xl mb-4" style={{ background: '#f9fafb', border: '1px solid rgba(0,0,0,0.08)' }}>
                   {(['buy', 'sell'] as TradeMode[]).map(m => (
                     <button key={m} onClick={() => { setMode(m); setAmount('') }} className="flex-1 py-2 rounded-lg text-sm font-bold capitalize transition-all" style={{
                       background: mode === m ? (m === 'buy' ? `linear-gradient(135deg, ${GREEN}, #2bbbad)` : 'linear-gradient(135deg, #c62828, #ef5350)') : 'transparent',
@@ -524,7 +524,7 @@ export function TokenPage() {
                   <div className="text-center py-8">
                     <Trophy size={28} className="mx-auto mb-3" style={{ color: '#fbbf24' }} />
                     <p className="text-sm font-bold text-white mb-1">Token Graduated</p>
-                    <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>Trade on a DEX for continued liquidity.</p>
+                    <p className="text-xs" style={{ color: 'rgba(0,0,0,0.45)' }}>Trade on a DEX for continued liquidity.</p>
                   </div>
                 ) : !wallet ? (
                   <ConnectKitButton.Custom>
@@ -541,8 +541,8 @@ export function TokenPage() {
                 ) : (
                   <div className="space-y-3">
                     {/* Amount */}
-                    <div className="rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                      <div className="flex justify-between mb-1.5 text-[10px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                    <div className="rounded-xl p-3" style={{ background: '#f9fafb', border: '1px solid rgba(0,0,0,0.08)' }}>
+                      <div className="flex justify-between mb-1.5 text-[10px]" style={{ color: 'rgba(0,0,0,0.45)' }}>
                         <span>{mode === 'buy' ? 'You pay (USDC)' : `You sell (${token.symbol})`}</span>
                         <span>Bal: {mode === 'buy' ? formatUsdc(usdcBalance as bigint ?? 0n) : `${formatTokens(tokenBalance)} ${token.symbol}`}</span>
                       </div>
@@ -558,7 +558,7 @@ export function TokenPage() {
                       {mode === 'buy' && (
                         <div className="flex gap-1.5 mt-2">
                           {['1', '5', '10', '50', '100'].map(v => (
-                            <button key={v} onClick={() => setAmount(v)} className="px-2 py-1 rounded-lg text-[10px] transition-all hover:bg-white/10" style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)' }}>${v}</button>
+                            <button key={v} onClick={() => setAmount(v)} className="px-2 py-1 rounded-lg text-[10px] transition-all hover:bg-white/10" style={{ background: '#f3f4f6', color: '#6b7280' }}>${v}</button>
                           ))}
                         </div>
                       )}
@@ -566,20 +566,20 @@ export function TokenPage() {
 
                     {/* Quote */}
                     {amount && (
-                      <div className="rounded-xl p-3 space-y-1.5" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div className="rounded-xl p-3 space-y-1.5" style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,0.06)' }}>
                         <div className="flex justify-between text-xs">
-                          <span style={{ color: 'rgba(255,255,255,0.4)' }}>You receive</span>
+                          <span style={{ color: 'rgba(0,0,0,0.45)' }}>You receive</span>
                           <span className="font-semibold text-white">
                             {mode === 'buy' ? (buyQuote ? `${formatTokens(buyQuote as bigint)} ${token.symbol}` : '...') : (sellQuote ? formatUsdc(sellQuote as bigint) : '...')}
                           </span>
                         </div>
                         <div className="flex justify-between text-xs">
-                          <span style={{ color: 'rgba(255,255,255,0.4)' }}>Price impact</span>
-                          <span style={{ color: 'rgba(255,255,255,0.5)' }}>~{parseFloat(amount) > 100 ? '>1' : '<0.5'}%</span>
+                          <span style={{ color: 'rgba(0,0,0,0.45)' }}>Price impact</span>
+                          <span style={{ color: '#6b7280' }}>~{parseFloat(amount) > 100 ? '>1' : '<0.5'}%</span>
                         </div>
                         <div className="flex justify-between text-xs">
-                          <span style={{ color: 'rgba(255,255,255,0.4)' }}>Protocol fee</span>
-                          <span style={{ color: 'rgba(255,255,255,0.4)' }}>1%</span>
+                          <span style={{ color: 'rgba(0,0,0,0.45)' }}>Protocol fee</span>
+                          <span style={{ color: 'rgba(0,0,0,0.45)' }}>1%</span>
                         </div>
                       </div>
                     )}
@@ -639,15 +639,15 @@ export function TokenPage() {
               <GlassCard className="p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-1.5 h-1.5 rounded-full" style={{ background: GREEN }} />
-                  <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.3)' }}>Your Holdings</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'rgba(0,0,0,0.35)' }}>Your Holdings</span>
                 </div>
                 <div className="space-y-2">
                   <div className="flex justify-between">
-                    <span className="text-sm" style={{ color: 'rgba(255,255,255,0.5)' }}>{token.symbol} Balance</span>
-                    <span className="text-sm font-bold text-white tabular-nums">{formatTokens(tokenBalance)}</span>
+                    <span className="text-sm" style={{ color: '#6b7280' }}>{token.symbol} Balance</span>
+                    <span className="text-sm font-bold tabular-nums" style={{ color: "#111827" }}>{formatTokens(tokenBalance)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm" style={{ color: 'rgba(255,255,255,0.5)' }}>Est. Value</span>
+                    <span className="text-sm" style={{ color: '#6b7280' }}>Est. Value</span>
                     <span className="text-sm font-bold tabular-nums" style={{ color: GREEN }}>${(Number(tokenBalance) / 1e18 * displayPrice).toFixed(4)}</span>
                   </div>
                 </div>
@@ -659,20 +659,20 @@ export function TokenPage() {
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
             <GlassCard className="p-4">
               <div className="flex items-center gap-2 mb-2">
-                <Clock size={11} style={{ color: 'rgba(255,255,255,0.3)' }} />
-                <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.3)' }}>Token Info</span>
+                <Clock size={11} style={{ color: 'rgba(0,0,0,0.35)' }} />
+                <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'rgba(0,0,0,0.35)' }}>Token Info</span>
               </div>
               <div className="space-y-1.5 text-xs">
                 <div className="flex justify-between">
-                  <span style={{ color: 'rgba(255,255,255,0.4)' }}>Creator</span>
+                  <span style={{ color: 'rgba(0,0,0,0.45)' }}>Creator</span>
                   <span className="font-mono text-white">{formatAddress(token.creator)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span style={{ color: 'rgba(255,255,255,0.4)' }}>Age</span>
+                  <span style={{ color: 'rgba(0,0,0,0.45)' }}>Age</span>
                   <span className="text-white">{timeAgo(token.createdAt)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span style={{ color: 'rgba(255,255,255,0.4)' }}>Network</span>
+                  <span style={{ color: 'rgba(0,0,0,0.45)' }}>Network</span>
                   <span className="text-white">Arc Mainnet</span>
                 </div>
               </div>
