@@ -539,7 +539,6 @@ export function TrendingPage() {
   const [dsLoading, setDsLoading] = useState(false)
   const [enriched, setEnriched] = useState(0)
 
-  const hasFactory = !!FACTORY_ADDRESS
 
   // Enrich tokens with DexScreener data
   useEffect(() => {
@@ -632,13 +631,6 @@ export function TrendingPage() {
           )}
         </div>
       </motion.div>
-
-      {!hasFactory && (
-        <GlassCard className="p-4 mb-5" style={{ border: '1px solid rgba(251,191,36,0.15)' }}>
-          <p className="text-sm font-medium" style={{ color: '#fbbf24' }}>Factory contract not set</p>
-          <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>Deploy GlowFunFactory and set <code>VITE_FACTORY_ADDRESS</code> in Admin.</p>
-        </GlassCard>
-      )}
 
       {/* Stats bar */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>

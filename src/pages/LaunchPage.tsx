@@ -253,7 +253,7 @@ export function LaunchPage() {
   const handleLaunch = () => {
     if (!isConnected) { toast.error('Connect your wallet first.'); return }
     if (isWrongChain) { switchChain({ chainId: CHAIN_ID as any }); return }
-    if (!FACTORY_ADDRESS) { toast.error('Factory not deployed yet. Check Admin.'); return }
+    if (!FACTORY_ADDRESS) { toast.error('Launching is not available yet. Please try again later.'); return }
     if (!form.name.trim() || !form.symbol.trim()) { toast.error('Name and ticker are required.'); return }
     if (creatorBps + (10000 - curveBps) > 10000) { toast.error('Allocations exceed 100%.'); return }
 

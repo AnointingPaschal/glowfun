@@ -21,7 +21,6 @@ export function FeedPage() {
     return base
   }, [addresses, sort])
 
-  const hasFactory = !!import.meta.env.VITE_FACTORY_ADDRESS
 
   return (
     <div>
@@ -45,13 +44,6 @@ export function FeedPage() {
           </Link>
         </div>
       </motion.div>
-
-      {!hasFactory && (
-        <GlassCard className="p-4 mb-6" style={{ border: '1px solid rgba(251,191,36,0.15)' }}>
-          <p className="text-sm font-medium" style={{ color: '#fbbf24' }}>Contract not deployed yet</p>
-          <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>Deploy the GlowFunFactory to Arc Mainnet, then set <code>VITE_FACTORY_ADDRESS</code> in your <code>.env</code>. Visit the Admin panel for instructions.</p>
-        </GlassCard>
-      )}
 
       {/* Controls */}
       <div className="flex items-center gap-3 mb-5 flex-wrap">

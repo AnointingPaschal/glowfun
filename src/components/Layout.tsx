@@ -2,7 +2,7 @@ import { ReactNode, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { ConnectKitButton } from 'connectkit'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Flame, TrendingUp, Rocket, Wallet, Settings, Menu, X, Zap, Code2, Layers } from 'lucide-react'
+import { Flame, TrendingUp, Rocket, Wallet, Menu, X, Zap, Code2, Layers } from 'lucide-react'
 import { MobileNav } from './MobileNav'
 
 const SPECTRAL = 'linear-gradient(90deg, #5fbeff, #af8ff4, #f05c6b, #ffcd83, #7ef1b3)'
@@ -13,7 +13,6 @@ const NAV_ITEMS = [
   { path: '/launch', label: 'Launch', icon: Rocket },
   { path: '/wallet', label: 'Wallet', icon: Wallet },
   { path: '/ide', label: 'IDE', icon: Code2 },
-  { path: '/admin', label: 'Admin', icon: Settings },
 ]
 
 interface LayoutProps { children: ReactNode }

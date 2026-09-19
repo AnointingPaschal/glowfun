@@ -444,7 +444,7 @@ function CircleSection() {
       {!appIdSet ? (
         <div className="flex gap-2 p-3 rounded-xl" style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.12)' }}>
           <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" style={{ color: '#fbbf24' }} />
-          <p className="text-[10px]" style={{ color: '#fbbf24' }}>Set <code>VITE_CIRCLE_APP_ID</code> in the Admin panel to enable Circle Wallets.</p>
+          <p className="text-[10px]" style={{ color: '#fbbf24' }}>Circle MPC Wallets are not available on this deployment.</p>
         </div>
       ) : !sdkReady ? (
         <div className="text-center py-3">
