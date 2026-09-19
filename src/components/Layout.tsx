@@ -2,8 +2,9 @@ import { ReactNode, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { ConnectKitButton } from 'connectkit'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Flame, TrendingUp, Rocket, Wallet, Menu, X, Zap, Code2, Layers } from 'lucide-react'
+import { Flame, Rocket, Wallet, Menu, X, Zap, Code2, Layers } from 'lucide-react'
 import { MobileNav } from './MobileNav'
+import { useConfig } from '@/context/ConfigContext'
 
 const SPECTRAL = 'linear-gradient(90deg, #5fbeff, #af8ff4, #f05c6b, #ffcd83, #7ef1b3)'
 
@@ -21,13 +22,16 @@ export function Layout({ children }: LayoutProps) {
   const loc = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
   const isIDE = loc.pathname === '/ide'
+  const { SITE_TITLE, SITE_LOGO } = useConfig()
+
+  const siteName = SITE_TITLE || 'GlowFun'
 
   return (
     <div
       className="min-h-dvh relative overflow-x-hidden"
       style={{ background: 'linear-gradient(135deg, #0a0a14 0%, #0d0d1a 50%, #08080f 100%)' }}
     >
-      {/* Ambient blobs (hidden on IDE for performance) */}
+      {/* Ambient blobs */}
       {!isIDE && (
         <div className="fixed inset-0 pointer-events-none overflow-hidden">
           <div style={{ position: 'absolute', top: '5%', left: '10%', width: 400, height: 400, borderRadius: '50%', background: 'radial-gradient(circle, rgba(139,92,246,0.07) 0%, transparent 70%)', filter: 'blur(80px)' }} />
@@ -49,11 +53,20 @@ export function Layout({ children }: LayoutProps) {
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2.5 no-underline">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)' }}>
-              <Zap size={14} className="text-white" />
-            </div>
+            {SITE_LOGO ? (
+              <img
+                src={SITE_LOGO}
+                alt={siteName}
+                className="w-7 h-7 rounded-lg object-cover"
+                onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+              />
+            ) : (
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)' }}>
+                <Zap size={14} className="text-white" />
+              </div>
+            )}
             <span className="text-base font-bold text-white" style={{ fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '-0.02em' }}>
-              GlowFun
+              {siteName}
             </span>
             <span className="hidden sm:inline-flex h-4 px-1.5 items-center rounded text-[9px] font-bold uppercase tracking-widest" style={{ background: 'rgba(139,92,246,0.12)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.2)' }}>
               Mainnet
@@ -68,7 +81,7 @@ export function Layout({ children }: LayoutProps) {
                 <Link
                   key={path}
                   to={path}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium no-underline transition-all relative"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium no-underline transition-all"
                   style={{
                     background: active ? 'rgba(139,92,246,0.12)' : 'transparent',
                     color: active ? '#a78bfa' : 'rgba(255,255,255,0.5)',
@@ -103,7 +116,7 @@ export function Layout({ children }: LayoutProps) {
         <div className="h-[1.5px]" style={{ background: SPECTRAL, opacity: 0.35 }} />
       </header>
 
-      {/* Mobile menu overlay (burger) */}
+      {/* Mobile menu overlay */}
       <AnimatePresence>
         {mobileOpen && (
           <motion.div
@@ -139,7 +152,7 @@ export function Layout({ children }: LayoutProps) {
         )}
       </AnimatePresence>
 
-      {/* Main content — IDE gets special full-height treatment */}
+      {/* Main content */}
       <main
         className="relative z-10"
         style={isIDE

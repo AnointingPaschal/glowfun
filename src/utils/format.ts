@@ -1,12 +1,15 @@
 export const formatAddress = (addr: string): string =>
   addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : ''
 
-export const formatUsdc = (raw: bigint | undefined): string => {
+export const formatUsdc = (raw: bigint | number | undefined): string => {
   if (raw === undefined || raw === null) return '$0.00'
-  const n = Number(raw) / 1e6
+  const n = typeof raw === 'bigint' ? Number(raw) / 1e6 : raw
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`
   if (n >= 1_000) return `$${(n / 1_000).toFixed(2)}K`
-  return `$${n.toFixed(2)}`
+  if (n >= 1) return `$${n.toFixed(2)}`
+  if (n >= 0.01) return `$${n.toFixed(4)}`
+  if (n >= 0.0001) return `$${n.toFixed(6)}`
+  return `$${n.toFixed(8)}`
 }
 
 export const formatTokens = (raw: bigint | undefined): string => {
@@ -15,18 +18,58 @@ export const formatTokens = (raw: bigint | undefined): string => {
   if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)}B`
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(2)}K`
+  if (n >= 1) return n.toFixed(2)
   return n.toFixed(4)
 }
 
+/**
+ * Format a token price from the contract's price format.
+ * Contract returns: virtualUsdcReserves * 1e30 / virtualTokenReserves
+ * USDC has 6 decimals, tokens have 18 decimals.
+ * Real price in USD = raw / 1e30 * 1e6 / 1e18 = raw / 1e42
+ * 
+ * Example: at launch, ~30000e6 * 1e30 / 1073000191e18 ≈ 2.8e7
+ *   => 2.8e7 / 1e42 = 2.8e-35 — this is the actual price in USD per token
+ * 
+ * We display this as a human-readable string without scientific notation.
+ */
 export const formatPrice = (raw: bigint | undefined): string => {
   if (raw === undefined || raw === null) return '0'
-  // price is in USDC per token, scaled by 1e30 (usdcReserves*1e30/tokenReserves)
-  // to get USDC per token: raw / 1e30 * 1e6 (USDC 6 decimals) / 1e18 (token 18 decimals)
-  // = raw / 1e42
+  // Convert to actual USD price
   const n = Number(raw) / 1e42
-  if (n < 0.000001) return n.toExponential(3)
-  if (n < 0.01) return n.toFixed(8)
-  return n.toFixed(6)
+  return formatPriceNumber(n)
+}
+
+/**
+ * Format a raw JS number as a price, always human-readable (no e-notation).
+ */
+export const formatPriceNumber = (n: number): string => {
+  if (n === 0) return '0'
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(2)}K`
+  if (n >= 1) return n.toFixed(4)
+  if (n >= 0.01) return n.toFixed(6)
+  if (n >= 0.0001) return n.toFixed(8)
+  if (n >= 0.000001) return n.toFixed(10)
+  // For very small numbers (bonding curve just launched), use subscript notation
+  // e.g. 0.000000000000001234 → "0.0₁₄1234"
+  if (n > 0) {
+    // Count leading zeros after decimal point
+    const str = n.toFixed(20).replace(/0+$/, '')
+    const match = str.match(/^0\.(0+)([1-9].*)$/)
+    if (match) {
+      const zeros = match[1].length
+      const sig = match[2].slice(0, 6)
+      if (zeros > 4) {
+        // Use subscript zero notation: 0.0₍n₎significant
+        const subscriptDigits: Record<string, string> = { '0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅','6':'₆','7':'₇','8':'₈','9':'₉' }
+        const sub = zeros.toString().split('').map(d => subscriptDigits[d]).join('')
+        return `0.0${sub}${sig}`
+      }
+    }
+    return n.toFixed(12).replace(/0+$/, '').replace(/\.$/, '')
+  }
+  return '0'
 }
 
 export const formatProgress = (raw: bigint | undefined): number => {

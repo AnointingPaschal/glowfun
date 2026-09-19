@@ -22,6 +22,7 @@ export interface AppConfig {
   CIRCLE_APP_ID:           string
   R2_PUBLIC_URL:           string
   SITE_TITLE:              string
+  SITE_LOGO:               string
   SITE_DESCRIPTION:        string
   TWITTER_HANDLE:          string
   ADMIN_SECRET:            string
@@ -37,6 +38,7 @@ const DEFAULT_CONFIG: AppConfig = {
   CIRCLE_APP_ID:            import.meta.env.VITE_CIRCLE_APP_ID ?? '',
   R2_PUBLIC_URL:            '',
   SITE_TITLE:               'GlowFun',
+  SITE_LOGO:                '',
   SITE_DESCRIPTION:         'Launch and trade meme tokens on Arc',
   TWITTER_HANDLE:           '',
   ADMIN_SECRET:             '',
@@ -73,6 +75,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
           CIRCLE_APP_ID:            data['CIRCLE_APP_ID']             || prev.CIRCLE_APP_ID,
           R2_PUBLIC_URL:            data['R2_PUBLIC_URL']             || prev.R2_PUBLIC_URL,
           SITE_TITLE:               data['SITE_TITLE']                || prev.SITE_TITLE,
+          SITE_LOGO:                data['SITE_LOGO']                 || prev.SITE_LOGO,
           SITE_DESCRIPTION:         data['SITE_DESCRIPTION']          || prev.SITE_DESCRIPTION,
           TWITTER_HANDLE:           data['TWITTER_HANDLE']            || prev.TWITTER_HANDLE,
           ADMIN_SECRET:             data['ADMIN_SECRET']              || prev.ADMIN_SECRET,

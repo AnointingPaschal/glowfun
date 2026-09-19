@@ -15,7 +15,7 @@ import { FACTORY_ABI } from '@/abi/GlowFunFactory'
 import { GLOW_TOKEN_ABI } from '@/abi/GlowToken'
 import { useConfig } from '@/context/ConfigContext'
 import { FACTORY_ADDRESS, CHAIN_ID, EXPLORER_BASE, GRADUATION_THRESHOLD } from '@/constants'
-import { formatUsdc, formatPrice, formatProgress, formatAddress, timeAgo } from '@/utils/format'
+import { formatUsdc, formatPrice, formatPriceNumber, formatProgress, formatAddress, timeAgo } from '@/utils/format'
 import type { TokenInfo } from '@/types'
 
 const SPECTRAL = 'linear-gradient(90deg, #5fbeff, #af8ff4, #f05c6b, #ffcd83, #7ef1b3)'
@@ -175,7 +175,7 @@ function TokenRow({
       {/* Price */}
       <td className="px-3 py-3 text-right">
         <div className="text-xs font-mono text-white tabular-nums">
-          ${dsData?.priceUsd ? parseFloat(dsData.priceUsd).toExponential(4) : priceNum.toExponential(4)}
+          ${dsData?.priceUsd ? formatPriceNumber(parseFloat(dsData.priceUsd)) : formatPriceNumber(priceNum)}
         </div>
       </td>
 
