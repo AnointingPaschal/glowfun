@@ -92,13 +92,13 @@ async function fetchOHLCV(pool: string, token: string, tf: string): Promise<Cand
 /* ── Stat card ────────────────────────────────────────────────────── */
 function StatCard({ label, value, sub, highlight }: { label: string; value: string; sub?: string; highlight?: string }) {
   return (
-    <div className="py-3.5 px-4 border-b last:border-0" style={{ borderColor: 'rgba(0,0,0,0.05)' }}>
+    <div className="py-2.5 px-3 border-b last:border-0" style={{ borderColor: 'rgba(0,0,0,0.05)' }}>
       <div className="flex items-center gap-1 mb-1.5">
         <span className="text-xs" style={{ color: '#9ca3af' }}>{label}</span>
         <span className="w-3.5 h-3.5 rounded-full inline-flex items-center justify-center text-[8px] border flex-shrink-0" style={{ borderColor: '#d1d5db', color: '#9ca3af' }}>i</span>
       </div>
       <div className="flex items-baseline gap-2">
-        <span className="text-[17px] font-bold" style={{ color: '#111827', fontFamily: 'Space Grotesk,sans-serif' }}>{value}</span>
+        <span className="text-sm font-bold" style={{ color: '#111827', fontFamily: 'Space Grotesk,sans-serif' }}>{value}</span>
         {highlight && <span className="text-xs font-semibold flex items-center gap-0.5" style={{ color: parseFloat(highlight) >= 0 ? '#16a34a' : '#dc2626' }}>
           {parseFloat(highlight) >= 0 ? <ArrowUpRight size={11}/> : <ArrowDownRight size={11}/>}
           {highlight}
@@ -114,11 +114,11 @@ function CPill({ label, v }: { label: string; v?: number }) {
   if (v == null) return null
   const pos = v >= 0
   return (
-    <div className="flex flex-col items-center px-2 py-2 rounded-xl flex-1" style={{ background: pos ? '#f0fdf4' : '#fef2f2', border: `1px solid ${pos ? '#bbf7d0' : '#fecaca'}` }}>
+    <div className="flex flex-col items-center px-1.5 py-1.5 rounded-lg flex-1" style={{ background: pos ? '#f0fdf4' : '#fef2f2', border: `1px solid ${pos ? '#bbf7d0' : '#fecaca'}` }}>
       <span className="text-[8px] font-semibold uppercase tracking-wider mb-1" style={{ color: '#9ca3af' }}>{label}</span>
       <div className="flex items-center gap-0.5">
         {pos ? <ArrowUpRight size={10} style={{ color: '#16a34a' }}/> : <ArrowDownRight size={10} style={{ color: '#dc2626' }}/>}
-        <span className="text-xs font-bold" style={{ color: pos ? '#16a34a' : '#dc2626' }}>{Math.abs(v).toFixed(2)}%</span>
+        <span className="text-[10px] font-bold" style={{ color: pos ? '#16a34a' : '#dc2626' }}>{Math.abs(v).toFixed(2)}%</span>
       </div>
     </div>
   )
@@ -218,15 +218,15 @@ export function TokenDetailPage() {
       <div className="rounded-2xl mb-3 overflow-hidden" style={{ background: '#fff', border: '1px solid rgba(0,0,0,0.08)', boxShadow: '0 1px 8px rgba(0,0,0,0.06)' }}>
 
         {/* Token identity */}
-        <div className="px-4 pt-4 pb-3">
+        <div className="px-3 pt-3 pb-2.5">
           <div className="flex items-start gap-3 mb-4">
             <div className="relative flex-shrink-0">
               {token.logoUrl
-                ? <img src={token.logoUrl} className="w-16 h-16 rounded-2xl object-cover border" style={{ borderColor: 'rgba(0,0,0,0.08)' }} onError={e => { (e.target as any).style.display='none' }}/>
-                : <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-xl font-bold text-white" style={{ background: `linear-gradient(135deg,hsl(${hue},60%,50%),hsl(${(hue+120)%360},55%,42%))` }}>{token.symbol.slice(0,2)}</div>}
+                ? <img src={token.logoUrl} className="w-12 h-12 rounded-xl object-cover border" style={{ borderColor: 'rgba(0,0,0,0.08)' }} onError={e => { (e.target as any).style.display='none' }}/>
+                : <div className="w-12 h-12 rounded-xl flex items-center justify-center text-base font-bold text-white" style={{ background: `linear-gradient(135deg,hsl(${hue},60%,50%),hsl(${(hue+120)%360},55%,42%))` }}>{token.symbol.slice(0,2)}</div>}
             </div>
             <div className="flex-1 min-w-0 pt-0.5">
-              <h1 className="text-2xl font-bold leading-tight mb-1.5" style={{ color: '#111827', fontFamily: 'Space Grotesk,sans-serif', letterSpacing:'-0.01em' }}>{tokenName}</h1>
+              <h1 className="text-xl font-bold leading-tight mb-1" style={{ color: '#111827', fontFamily: 'Space Grotesk,sans-serif', letterSpacing:'-0.01em' }}>{tokenName}</h1>
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: '#f3f4f6', color: '#374151' }}>{token.symbol}</span>
                 {token.dexId && <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: '#ede9fe', color: '#7c3aed' }}>{token.dexId}</span>}
@@ -238,7 +238,7 @@ export function TokenDetailPage() {
           {/* Price */}
           <div className="flex items-end gap-3 mb-1">
             <Price v={token.priceUsd} className="text-5xl font-bold" />
-            <div className="flex items-center gap-1 px-3 py-1.5 rounded-full font-bold text-sm mb-1"
+            <div className="flex items-center gap-1 px-2 py-1 rounded-full font-bold text-xs mb-1"
               style={{ background: ch24Pos ? '#dcfce7' : '#fee2e2', color: ch24Pos ? '#15803d' : '#dc2626' }}>
               {ch24Pos ? <ArrowUpRight size={14}/> : <ArrowDownRight size={14}/>}
               {Math.abs(ch24).toFixed(2)}%
@@ -269,7 +269,7 @@ export function TokenDetailPage() {
         </div>
 
         {/* ── Market Signal ───────────────────────────────────── */}
-        <div className="px-4 py-4" style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+        <div className="px-3 py-3" style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }}>
           <div className="text-[10px] font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5" style={{ color: '#9ca3af' }}>
             MARKET SIGNAL
             <span className="w-3.5 h-3.5 rounded-full inline-flex items-center justify-center text-[8px] border" style={{ borderColor: '#d1d5db', color: '#9ca3af' }}>i</span>
@@ -389,7 +389,7 @@ export function TokenDetailPage() {
         </div>
 
         {/* Chart */}
-        <TVChart data={ohlcv} height={320} type={chartType} loading={chartLoading}/>
+        <TVChart data={ohlcv} height={260} type={chartType} loading={chartLoading}/>
       </div>
 
       {/* ── External links ──────────────────────────────────────── */}

@@ -83,9 +83,35 @@ function ChainLogo({chain,size=16,border=true}:{chain:string;size?:number;border
 /* ── DexLogo: uses DexScreener CDN ─────────────────────────────── */
 function DexLogo({dexId,logoUrl,size=14}:{dexId?:string;logoUrl?:string;size?:number}){
   const [err,setErr]=useState(false)
-  const src=(!err&&logoUrl)||(!err&&dexId?`https://dd.dexscreener.com/ds-data/dexes/${dexId.toLowerCase()}.png`:null)
-  if (!src) return<span style={{fontSize:size*0.85,color:'#9ca3af'}}>🔄</span>
-  return <img src={src} onError={()=>setErr(true)} className="rounded-md object-contain flex-shrink-0" style={{width:size,height:size}} alt={dexId||'dex'}/>
+  const src=err?null:(logoUrl||( dexId?`https://dd.dexscreener.com/ds-data/dexes/${dexId.toLowerCase()}.png`:null))
+  if (!src||err) return(
+    <div className="rounded-md flex items-center justify-center text-white font-bold flex-shrink-0"
+      style={{width:size,height:size,background:'#e5e7eb',fontSize:size*0.5,color:'#9ca3af'}}>
+      {dexId?.slice(0,1).toUpperCase()||'?'}
+    </div>
+  )
+  return <img src={src} onError={()=>setErr(true)} className="rounded-md object-cover flex-shrink-0" style={{width:size,height:size}} alt={dexId||'dex'}/>
+}
+
+
+/* ── TokenLogo with multiple fallbacks ─────────────────────────── */
+function TokenLogo({token,size}:{token:Token;size:number}){
+  const hue=parseInt((token.address||'000000').slice(2,6),16)%360
+  const fallbackUrls=[
+    token.logoUrl,
+    token.logoUrl?null:`https://dd.dexscreener.com/ds-data/tokens/${token.chain}/${token.address}.png`,
+  ].filter(Boolean) as string[]
+  const [idx,setIdx]=useState(0)
+  const [allFailed,setFailed]=useState(!fallbackUrls.length)
+  const src=fallbackUrls[idx]
+  if (allFailed||!src) return(
+    <div className="rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0"
+      style={{width:size,height:size,background:`linear-gradient(135deg,hsl(${hue},60%,50%),hsl(${(hue+120)%360},55%,42%))`}}>
+      {token.symbol.slice(0,2)}
+    </div>
+  )
+  return <img src={src} className="rounded-full object-cover flex-shrink-0 border" style={{width:size,height:size,borderColor:'rgba(0,0,0,0.08)'}}
+    onError={()=>{ if(idx+1<fallbackUrls.length)setIdx(i=>i+1); else setFailed(true) }}/>
 }
 
 /* ── Token row ──────────────────────────────────────────────────── */
@@ -99,13 +125,7 @@ function TokenRow({token,onClick}:{token:Token;onClick:()=>void}){
       <div className="flex items-center gap-2.5">
         {/* Token logo + chain badge */}
         <div className="relative flex-shrink-0">
-          {token.logoUrl
-            ?<img src={token.logoUrl} className="w-9 h-9 rounded-full object-cover border" style={{borderColor:'rgba(0,0,0,0.08)'}}
-               onError={e=>{(e.target as any).style.display='none'}}/>
-            :<div className="w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-bold text-white"
-               style={{background:`linear-gradient(135deg,hsl(${hue},60%,50%),hsl(${(hue+120)%360},55%,42%))`}}>
-               {token.symbol.slice(0,2)}
-             </div>}
+          <TokenLogo token={token} size={36}/>
           <div className="absolute -bottom-0.5 -right-0.5">
             <ChainLogo chain={token.chain} size={14} border/>
           </div>
@@ -162,11 +182,11 @@ function ChainSheet({selected,onSelect,onClose}:{selected:string;onSelect:(id:st
       className="fixed inset-0 z-50 flex items-end" style={{background:'rgba(0,0,0,0.45)',backdropFilter:'blur(6px)'}}
       onClick={e=>{if(e.target===e.currentTarget)onClose()}}>
       <motion.div initial={{y:'100%'}} animate={{y:0}} exit={{y:'100%'}} transition={{type:'spring',stiffness:350,damping:32}}
-        className="w-full rounded-t-3xl overflow-hidden" style={{background:'#fff',maxHeight:'88dvh'}}>
+        className="w-full rounded-t-3xl overflow-hidden" style={{background:'#fff',maxHeight:'92dvh',display:'flex',flexDirection:'column'}}>
         <div className="flex justify-center pt-3 pb-0.5 flex-shrink-0">
           <div className="w-10 h-1 rounded-full" style={{background:'#e5e7eb'}}/>
         </div>
-        <div className="px-4 py-3 overflow-y-auto">
+        <div className="px-4 py-3 overflow-y-auto flex-1 min-h-0">
           <h3 className="text-base font-bold mb-3" style={{color:'#111827'}}>Select Chain</h3>
           <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl mb-4" style={{background:'#f3f4f6',border:'1px solid rgba(0,0,0,0.07)'}}>
             <Search size={13} style={{color:'#9ca3af'}}/>
@@ -204,9 +224,9 @@ function DexSheet({dexes,selected,onSelect,onClose}:{dexes:{id:string;logo:strin
       className="fixed inset-0 z-50 flex items-end" style={{background:'rgba(0,0,0,0.45)',backdropFilter:'blur(6px)'}}
       onClick={e=>{if(e.target===e.currentTarget)onClose()}}>
       <motion.div initial={{y:'100%'}} animate={{y:0}} exit={{y:'100%'}} transition={{type:'spring',stiffness:350,damping:32}}
-        className="w-full rounded-t-3xl overflow-hidden" style={{background:'#fff',maxHeight:'75dvh'}}>
+        className="w-full rounded-t-3xl overflow-hidden" style={{background:'#fff',maxHeight:'85dvh',display:'flex',flexDirection:'column'}}>
         <div className="flex justify-center pt-3 pb-0.5"><div className="w-10 h-1 rounded-full" style={{background:'#e5e7eb'}}/></div>
-        <div className="px-4 py-3 overflow-y-auto pb-6">
+        <div className="px-4 py-3 overflow-y-auto flex-1 min-h-0 pb-6">
           <h3 className="text-base font-bold mb-3" style={{color:'#111827'}}>Select DEX</h3>
           <div className="grid grid-cols-2 gap-2">
             {/* All DEXes */}
