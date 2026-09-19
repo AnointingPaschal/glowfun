@@ -77,6 +77,15 @@ export function CustomChart({ data, height = 380, loading = false }: Props) {
     return () => ro.disconnect()
   }, [])
 
+  /* Reset view when data first arrives (count was 0 from empty init) */
+  useEffect(() => {
+    if (data.length > 0) {
+      const cnt = Math.min(80, data.length)
+      stateRef.current.count    = cnt
+      stateRef.current.startIdx = Math.max(0, data.length - cnt)
+    }
+  }, [data.length])
+
   /* clamp view */
   const clamp = useCallback((s: number, c: number) => {
     const n   = data.length
@@ -90,6 +99,7 @@ export function CustomChart({ data, height = 380, loading = false }: Props) {
     const cv  = canvasRef.current; if (!cv) return
     const ctx = cv.getContext('2d');    if (!ctx) return
     const { startIdx, count } = stateRef.current
+    if (count === 0) return
     const dpr = window.devicePixelRatio || 1
 
     cv.width  = w   * dpr
