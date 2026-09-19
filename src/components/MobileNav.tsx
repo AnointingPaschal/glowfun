@@ -3,8 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Flame, TrendingUp, Rocket, Wallet, Code2, Layers } from 'lucide-react'
 
 const NAV = [
-  { path: '/', label: 'Feed', icon: Flame },
-  { path: '/trending', label: 'Dex', icon: Layers },
+  { path: '/', label: 'Dex', icon: Layers },
+  { path: '/feed', label: 'Feed', icon: Flame },
   { path: '/launch', label: 'Launch', icon: Rocket },
   { path: '/wallet', label: 'Wallet', icon: Wallet },
   { path: '/ide', label: 'IDE', icon: Code2 },
@@ -13,7 +13,7 @@ const NAV = [
 export function MobileNav() {
   const loc = useLocation()
   // Hide on IDE page since it takes full height
-  if (loc.pathname === '/ide') return null
+  if (loc.pathname === '/ide' || loc.pathname.startsWith('/dex/')) return null
   return (
     <nav
       className="fixed bottom-0 left-0 right-0 z-50 md:hidden"

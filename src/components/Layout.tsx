@@ -9,8 +9,8 @@ import { useConfig } from '@/context/ConfigContext'
 const SPECTRAL = 'linear-gradient(90deg, #5fbeff, #af8ff4, #f05c6b, #ffcd83, #7ef1b3)'
 
 const NAV_ITEMS = [
-  { path: '/', label: 'Feed', icon: Flame },
-  { path: '/trending', label: 'Dex', icon: Layers },
+  { path: '/', label: 'Dex', icon: Layers },
+  { path: '/feed', label: 'Feed', icon: Flame },
   { path: '/launch', label: 'Launch', icon: Rocket },
   { path: '/wallet', label: 'Wallet', icon: Wallet },
   { path: '/ide', label: 'IDE', icon: Code2 },
