@@ -30,25 +30,17 @@ export function Layout({ children }: LayoutProps) {
   return (
     <div
       className="min-h-dvh relative overflow-x-hidden"
-      style={{ background: 'linear-gradient(135deg, #0a0a14 0%, #0d0d1a 50%, #08080f 100%)' }}
+      style={{ background: 'var(--bg,#f4f4f8)' }}
     >
       {/* Ambient blobs */}
-      {!isIDE && (
-        <div className="fixed inset-0 pointer-events-none overflow-hidden">
-          <div style={{ position: 'absolute', top: '5%', left: '10%', width: 400, height: 400, borderRadius: '50%', background: 'radial-gradient(circle, rgba(139,92,246,0.07) 0%, transparent 70%)', filter: 'blur(80px)' }} />
-          <div style={{ position: 'absolute', bottom: '10%', right: '5%', width: 350, height: 350, borderRadius: '50%', background: 'radial-gradient(circle, rgba(236,72,153,0.05) 0%, transparent 70%)', filter: 'blur(70px)' }} />
-          <div style={{ position: 'absolute', top: '45%', left: '45%', width: 300, height: 300, borderRadius: '50%', background: 'radial-gradient(circle, rgba(59,130,246,0.04) 0%, transparent 70%)', filter: 'blur(80px)' }} />
-        </div>
-      )}
-
       {/* Topbar */}
       <header
         className="fixed top-0 left-0 right-0 z-50"
         style={{
-          background: 'rgba(10,10,20,0.88)',
-          backdropFilter: 'blur(20px)',
+          background: 'rgba(255,255,255,0.95)',
+          backdropFilter: 'blur(16px)',
           WebkitBackdropFilter: 'blur(20px)',
-          borderBottom: '1px solid rgba(255,255,255,0.05)',
+          borderBottom: '1px solid rgba(0,0,0,0.07)',
         }}
       >
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
@@ -63,13 +55,13 @@ export function Layout({ children }: LayoutProps) {
               />
             ) : (
               <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)' }}>
-                <Zap size={14} className="text-white" />
+                <Zap size={14} style={{ color:'#374151' }} />
               </div>
             )}
-            <span className="text-base font-bold text-white" style={{ fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '-0.02em' }}>
+            <span className="text-base font-bold" style={{ color: '#111827', fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '-0.02em' }}>
               {siteName}
             </span>
-            <span className="hidden sm:inline-flex h-4 px-1.5 items-center rounded text-[9px] font-bold uppercase tracking-widest" style={{ background: 'rgba(139,92,246,0.12)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.2)' }}>
+            <span className="hidden sm:inline-flex h-4 px-1.5 items-center rounded text-[9px] font-bold uppercase tracking-widest" style={{ background: 'rgba(99,102,241,0.08)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.15)' }}>
               Mainnet
             </span>
           </Link>
@@ -84,15 +76,15 @@ export function Layout({ children }: LayoutProps) {
                   to={path}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium no-underline transition-all"
                   style={{
-                    background: active ? 'rgba(139,92,246,0.12)' : 'transparent',
-                    color: active ? '#a78bfa' : 'rgba(255,255,255,0.5)',
-                    border: active ? '1px solid rgba(139,92,246,0.18)' : '1px solid transparent',
+                    background: active ? 'rgba(99,102,241,0.08)' : 'transparent',
+                    color: active ? '#6366f1' : '#6b7280',
+                    border: active ? '1px solid rgba(99,102,241,0.15)' : '1px solid transparent',
                   }}
                 >
                   <Icon size={12} />
                   {label}
                   {label === 'IDE' && (
-                    <span className="ml-0.5 text-[7px] px-1 py-px rounded" style={{ background: 'rgba(52,211,153,0.12)', color: '#34d399' }}>
+                    <span className="ml-0.5 text-[7px] px-1 py-px rounded" style={{ background: 'rgba(22,163,74,0.1)', color: '#16a34a' }}>
                       NEW
                     </span>
                   )}
@@ -105,16 +97,16 @@ export function Layout({ children }: LayoutProps) {
             <ConnectKitButton />
             <button
               className="md:hidden p-2 rounded-lg"
-              style={{ background: 'rgba(255,255,255,0.04)' }}
+              style={{ background: '#f3f4f6' }}
               onClick={() => setMobileOpen(v => !v)}
             >
-              {mobileOpen ? <X size={16} className="text-white" /> : <Menu size={16} className="text-white" />}
+              {mobileOpen ? <X size={16} style={{ color:'#374151' }} /> : <Menu size={16} style={{ color:'#374151' }} />}
             </button>
           </div>
         </div>
 
         {/* Spectral border */}
-        <div className="h-[1.5px]" style={{ background: SPECTRAL, opacity: 0.35 }} />
+        <div className="h-[1.5px]" style={{ background: SPECTRAL, opacity: 0.7 }} />
       </header>
 
       {/* Mobile menu overlay */}
@@ -126,9 +118,9 @@ export function Layout({ children }: LayoutProps) {
             exit={{ opacity: 0, y: -8 }}
             className="fixed top-14 left-0 right-0 z-40 md:hidden p-3"
             style={{
-              background: 'rgba(10,10,20,0.97)',
+              background: 'rgba(255,255,255,0.98)',
               backdropFilter: 'blur(24px)',
-              borderBottom: '1px solid rgba(255,255,255,0.05)',
+              borderBottom: '1px solid rgba(0,0,0,0.07)',
             }}
           >
             {NAV_ITEMS.map(({ path, label, icon: Icon }) => (
@@ -138,14 +130,14 @@ export function Layout({ children }: LayoutProps) {
                 onClick={() => setMobileOpen(false)}
                 className="flex items-center gap-3 px-4 py-3 rounded-xl mb-1 no-underline"
                 style={{
-                  background: loc.pathname === path ? 'rgba(139,92,246,0.1)' : 'transparent',
-                  color: loc.pathname === path ? '#a78bfa' : 'rgba(255,255,255,0.6)',
+                  background: loc.pathname === path ? 'rgba(99,102,241,0.06)' : 'transparent',
+                  color: loc.pathname === path ? '#6366f1' : '#374151',
                 }}
               >
                 <Icon size={16} />
                 <span className="text-sm font-medium">{label}</span>
                 {label === 'IDE' && (
-                  <span className="text-[8px] px-1.5 py-px rounded" style={{ background: 'rgba(52,211,153,0.12)', color: '#34d399' }}>NEW</span>
+                  <span className="text-[8px] px-1.5 py-px rounded" style={{ background: 'rgba(22,163,74,0.1)', color: '#16a34a' }}>NEW</span>
                 )}
               </Link>
             ))}

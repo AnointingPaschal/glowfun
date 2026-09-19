@@ -1,14 +1,12 @@
 import { useState, useMemo, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Flame, Clock, Zap, Search, Rocket, TrendingUp, RefreshCw } from 'lucide-react'
+import { Flame, Clock, TrendingUp, Search, Rocket, RefreshCw } from 'lucide-react'
 import { useTokenList } from '@/hooks/useTokenList'
 import { TokenCard } from '@/components/TokenCard'
-import { GlassCard } from '@/components/GlassCard'
 import { prefetchAllMarketData } from '@/hooks/useMarketPrice'
 
-const SPECTRAL = 'linear-gradient(90deg, #5fbeff, #af8ff4, #f05c6b, #ffcd83, #7ef1b3)'
-type SortMode = 'new' | 'hot' | 'trending'
+type SortMode = 'new' | 'hot'
 
 export function FeedPage() {
   const { addresses, isLoading } = useTokenList()
@@ -16,149 +14,95 @@ export function FeedPage() {
   const [search, setSearch] = useState('')
   const [marketReady, setMarketReady] = useState(false)
 
-  // Pre-warm market data cache so every TokenCard gets prices instantly
-  useEffect(() => {
-    prefetchAllMarketData().finally(() => setMarketReady(true))
-  }, [])
-
-  const sorted = useMemo(() => {
-    const base = [...addresses]
-    if (sort === 'new') return base.reverse()
-    // For 'hot' / 'trending' — TokenCard renders market data internally
-    // so ordering here is best-effort (volume not available client-side without full fetch)
-    return base.reverse()
-  }, [addresses, sort])
+  useEffect(() => { prefetchAllMarketData().finally(() => setMarketReady(true)) }, [])
 
   const filtered = useMemo(() => {
-    if (!search) return sorted
+    const base = [...addresses].reverse()
+    if (!search) return base
     const q = search.toLowerCase()
-    // Filter by address prefix only (name/symbol live inside TokenCard)
-    return sorted.filter(a => a.toLowerCase().startsWith(q) || a.toLowerCase().includes(q))
-  }, [sorted, search])
+    return base.filter(a => a.toLowerCase().includes(q))
+  }, [addresses, sort, search])
 
   return (
     <div>
       {/* Hero */}
-      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="mb-8 text-center">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full mb-4 text-xs font-medium"
-          style={{ background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.18)', color: '#a78bfa' }}>
-          <Zap size={10} />Arc Mainnet · USDC-Powered
+      <motion.div initial={{ opacity:0, y:12 }} animate={{ opacity:1, y:0 }} className="mb-6 text-center">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full mb-4 text-xs font-semibold" style={{ background:'rgba(99,102,241,0.08)', border:'1px solid rgba(99,102,241,0.15)', color:'#6366f1' }}>
+          ⚡ Arc Mainnet · USDC-Powered
         </div>
-        <h1 className="text-4xl md:text-5xl font-bold text-white mb-3"
-          style={{ fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '-0.03em' }}>
+        <h1 className="text-4xl font-bold mb-2" style={{ fontFamily:'Space Grotesk,sans-serif', letterSpacing:'-0.03em', color:'#111827' }}>
           The meme token{' '}
-          <span style={{ background: SPECTRAL, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
-            launchpad
-          </span>
+          <span style={{ background:'linear-gradient(135deg,#6366f1,#8b5cf6)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text' }}>launchpad</span>
         </h1>
-        <p className="text-sm max-w-md mx-auto mb-6" style={{ color: 'rgba(255,255,255,0.5)' }}>
-          Launch and trade tokens on a bonding curve. No liquidity needed. Powered by USDC on Arc.
-        </p>
+        <p className="text-sm max-w-md mx-auto mb-5" style={{ color:'#6b7280' }}>Launch and trade tokens on a bonding curve. No liquidity needed. Powered by USDC on Arc.</p>
         <div className="flex items-center justify-center gap-3">
           <Link to="/launch">
-            <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+            <motion.button whileHover={{ scale:1.02 }} whileTap={{ scale:0.98 }}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
-              style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)', boxShadow: '0 4px 20px rgba(139,92,246,0.3)' }}>
-              <Rocket size={14} />Launch a Token
+              style={{ background:'linear-gradient(135deg,#6366f1,#8b5cf6)', boxShadow:'0 4px 16px rgba(99,102,241,0.3)' }}>
+              <Rocket size={14}/>Launch a Token
             </motion.button>
           </Link>
-          <Link to="/trending">
-            <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+          <Link to="/">
+            <motion.button whileHover={{ scale:1.02 }} whileTap={{ scale:0.98 }}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium"
-              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.7)' }}>
-              <TrendingUp size={14} />Dex Explorer
+              style={{ background:'#fff', border:'1px solid rgba(0,0,0,0.1)', color:'#374151' }}>
+              <TrendingUp size={14}/>Dex Explorer
             </motion.button>
           </Link>
         </div>
       </motion.div>
 
-      {/* Market data status */}
+      {/* Market loading */}
       {!marketReady && (
-        <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-xl text-xs"
-          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.35)' }}>
-          <RefreshCw size={11} className="animate-spin"/>
-          Fetching live market prices from DexScreener…
+        <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-xl text-xs" style={{ background:'#fff', border:'1px solid rgba(0,0,0,0.07)', color:'#9ca3af' }}>
+          <RefreshCw size={11} className="animate-spin"/>Fetching live market prices…
         </div>
       )}
 
       {/* Controls */}
-      <div className="flex items-center gap-3 mb-5 flex-wrap">
-        <div className="flex gap-1 p-1 rounded-xl"
-          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <div className="flex gap-1 p-1 rounded-xl" style={{ background:'#fff', border:'1px solid rgba(0,0,0,0.08)' }}>
           {[
-            { id: 'new',      label: 'New',      icon: Clock },
-            { id: 'hot',      label: 'Hot',      icon: Flame },
-            { id: 'trending', label: 'Trending', icon: TrendingUp },
+            { id:'new', label:'New', icon:Clock },
+            { id:'hot', label:'Hot', icon:Flame },
           ].map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setSort(id as SortMode)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-              style={{
-                background: sort === id ? 'rgba(139,92,246,0.15)' : 'transparent',
-                color:      sort === id ? '#a78bfa' : 'rgba(255,255,255,0.4)',
-                border:     sort === id ? '1px solid rgba(139,92,246,0.2)' : '1px solid transparent',
-              }}>
-              <Icon size={11} />{label}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+              style={{ background:sort===id?'#6366f1':'transparent', color:sort===id?'#fff':'#6b7280' }}>
+              <Icon size={11}/>{label}
             </button>
           ))}
         </div>
-
-        <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-xl"
-          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', maxWidth: 260 }}>
-          <Search size={13} style={{ color: 'rgba(255,255,255,0.3)', flexShrink: 0 }} />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search tokens..."
-            className="text-xs text-white bg-transparent outline-none w-full placeholder-white/20" />
+        <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background:'#fff', border:'1px solid rgba(0,0,0,0.08)', maxWidth:240 }}>
+          <Search size={12} style={{ color:'#9ca3af', flexShrink:0 }}/>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search tokens…"
+            className="text-xs bg-transparent outline-none w-full" style={{ color:'#111827' }}/>
         </div>
-
-        <span className="text-xs ml-auto" style={{ color: 'rgba(255,255,255,0.3)' }}>
-          {filtered.length} token{filtered.length !== 1 ? 's' : ''}
-        </span>
+        <span className="text-xs" style={{ color:'#9ca3af' }}>{filtered.length} tokens</span>
       </div>
 
-      {/* Token grid */}
+      {/* Grid */}
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <GlassCard key={i} className="p-4 animate-pulse">
-              <div className="flex gap-3">
-                <div className="w-14 h-14 rounded-xl flex-shrink-0" style={{ background: 'rgba(255,255,255,0.06)' }} />
-                <div className="flex-1 space-y-2">
-                  <div className="flex justify-between">
-                    <div className="h-4 w-28 rounded" style={{ background: 'rgba(255,255,255,0.08)' }} />
-                    <div className="h-4 w-16 rounded" style={{ background: 'rgba(255,255,255,0.08)' }} />
-                  </div>
-                  <div className="h-3 w-36 rounded" style={{ background: 'rgba(255,255,255,0.05)' }} />
-                  <div className="h-1.5 w-full rounded-full" style={{ background: 'rgba(255,255,255,0.04)' }} />
-                </div>
-              </div>
-            </GlassCard>
+          {Array.from({length:6}).map((_,i)=>(
+            <div key={i} className="rounded-2xl p-4 animate-pulse" style={{ background:'#fff', border:'1px solid rgba(0,0,0,0.07)' }}>
+              <div className="flex gap-3"><div className="w-12 h-12 rounded-xl" style={{background:'#f3f4f6'}}/><div className="flex-1 space-y-2"><div className="h-4 w-28 rounded" style={{background:'#e5e7eb'}}/><div className="h-3 w-20 rounded" style={{background:'#f3f4f6'}}/><div className="h-1.5 w-full rounded-full" style={{background:'#f3f4f6'}}/></div></div>
+            </div>
           ))}
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-16">
-          <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center"
-            style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.12)' }}>
-            <Flame size={24} style={{ color: 'rgba(255,255,255,0.2)' }} />
+          <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ background:'rgba(99,102,241,0.06)', border:'1px solid rgba(99,102,241,0.1)' }}>
+            <Flame size={24} style={{ color:'rgba(99,102,241,0.4)' }}/>
           </div>
-          <p className="text-sm font-medium text-white mb-1">
-            {search ? 'No matching tokens' : 'No tokens yet'}
-          </p>
-          <p className="text-xs mb-4" style={{ color: 'rgba(255,255,255,0.35)' }}>
-            {search ? 'Try a different search term' : 'Be the first to launch a token on GlowFun'}
-          </p>
-          {!search && (
-            <Link to="/launch">
-              <button className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
-                style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)' }}>
-                Launch First Token
-              </button>
-            </Link>
-          )}
+          <p className="text-sm font-medium mb-1" style={{ color:'#374151' }}>{search?'No matching tokens':'No tokens yet'}</p>
+          <p className="text-xs mb-4" style={{ color:'#9ca3af' }}>{search?'Try a different search':'Be the first to launch on GlowFun'}</p>
+          {!search && <Link to="/launch"><button className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background:'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>Launch First Token</button></Link>}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {filtered.map((addr, i) => (
-            <TokenCard key={addr} address={addr as `0x${string}`} index={i} />
-          ))}
+          {filtered.map((addr, i) => <TokenCard key={addr} address={addr as `0x${string}`} index={i}/>)}
         </div>
       )}
     </div>

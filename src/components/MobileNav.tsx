@@ -18,10 +18,10 @@ export function MobileNav() {
     <nav
       className="fixed bottom-0 left-0 right-0 z-50 md:hidden"
       style={{
-        background: 'rgba(8,8,18,0.96)',
-        backdropFilter: 'blur(24px)',
+        background: 'rgba(255,255,255,0.97)',
+        backdropFilter: 'blur(16px)',
         WebkitBackdropFilter: 'blur(24px)',
-        borderTop: '1px solid rgba(255,255,255,0.06)',
+        borderTop: '1px solid rgba(0,0,0,0.08)',
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       }}
     >
@@ -39,17 +39,17 @@ export function MobileNav() {
                 <motion.div
                   layoutId="mobile-nav-pill"
                   className="absolute inset-0 rounded-xl"
-                  style={{ background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.15)' }}
+                  style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.12)' }}
                   transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                 />
               )}
               <Icon
                 size={18}
-                style={{ color: active ? '#a78bfa' : 'rgba(255,255,255,0.35)', position: 'relative' }}
+                style={{ color: active ? '#6366f1' : '#9ca3af', position: 'relative' }}
               />
               <span
                 className="text-[9px] font-medium relative"
-                style={{ color: active ? '#a78bfa' : 'rgba(255,255,255,0.3)' }}
+                style={{ color: active ? '#6366f1' : '#9ca3af' }}
               >
                 {label}
               </span>

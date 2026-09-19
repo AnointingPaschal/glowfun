@@ -1,58 +1,44 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+:root {
+  --bg:        #f4f4f8;
+  --surface:   #ffffff;
+  --border:    rgba(0,0,0,0.08);
+  --border2:   rgba(0,0,0,0.05);
+  --text1:     #111827;
+  --text2:     #6b7280;
+  --text3:     #9ca3af;
+  --green:     #16a34a;
+  --greenBg:   rgba(22,163,74,0.08);
+  --red:       #dc2626;
+  --redBg:     rgba(220,38,38,0.08);
+  --accent:    #6366f1;
+}
+
+html { font-family: 'Space Grotesk', system-ui, sans-serif; }
 
 body {
-  font-family: 'Inter', system-ui, sans-serif;
-  background: #0a0a14;
-  color: white;
+  background: var(--bg);
+  color: var(--text1);
   min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
 }
 
-::selection { background: rgba(139, 92, 246, 0.35); }
-
-::-webkit-scrollbar { width: 4px; height: 4px; }
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 8px; }
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
-input[type="number"]::-webkit-inner-spin-button,
-input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-
-.line-clamp-1 { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; }
-.line-clamp-2 { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.line-clamp-3 { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
-
-/* Sonner toast override */
-[data-sonner-toaster] [data-type] {
-  background: rgba(15, 15, 25, 0.96) !important;
-  border: 1px solid rgba(255,255,255,0.08) !important;
-  color: white !important;
-  backdrop-filter: blur(20px);
-  border-radius: 12px !important;
-}
-
-/* ConnectKit button polish */
-[data-testid="connect-button"] { font-family: 'Space Grotesk', sans-serif !important; }
-
-/* ── Mobile bottom nav padding ────────────────────────────── */
+/* Mobile tweaks */
 @media (max-width: 767px) {
-  main { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)) !important; }
-}
-
-/* ── Monaco editor overrides ──────────────────────────────── */
-.monaco-editor .suggest-widget { z-index: 9999 !important; }
-.monaco-editor .overflow-guard { border-radius: 0 !important; }
-
-/* ── Range input (IDE sliders/dropdowns) ─────────────────── */
-select option { background: #0a0a14; color: white; }
-
-/* ── Touch improvements ───────────────────────────────────── */
-@media (hover: none) and (pointer: coarse) {
+  main { padding-bottom: calc(64px + env(safe-area-inset-bottom,0px)) !important; }
+  input, select { font-size: 16px !important; }
   button, a { -webkit-tap-highlight-color: transparent; }
-  input, select { font-size: 16px !important; } /* Prevent zoom on iOS */
 }
+
+/* TradingView chart overrides */
+.tv-lightweight-charts canvas { border-radius: 0 !important; }
