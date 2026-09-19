@@ -33,7 +33,7 @@ async function fetchDexScreenerAll(): Promise<any[]> {
     ...queries.map(q =>
       fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`, { signal: AbortSignal.timeout(10_000) })
         .then(r => r.ok ? r.json() : { pairs: [] })
-        .then((d: any) => (d.pairs ?? []).filter((p: any) => p?.chainId === 'arc'))
+        .then((d: any) => (d.pairs ?? []).filter((p: any) => { const c=(p?.chainId??'').toLowerCase(); return c==='arc'||c.includes('arc')||c==='5042' }))
         .catch(() => [])
     ),
   ])
@@ -50,12 +50,12 @@ async function fetchDexScreenerAll(): Promise<any[]> {
   const profileAddrs: string[] = []
   if (profilesRes.status === 'fulfilled') {
     for (const p of profilesRes.value) {
-      if (p?.chainId === 'arc' && p?.tokenAddress) profileAddrs.push(p.tokenAddress)
+      if (p?.tokenAddress) profileAddrs.push(p.tokenAddress)  // collect all, filter by pair later
     }
   }
   if (boostsRes.status === 'fulfilled') {
     for (const p of boostsRes.value) {
-      if (p?.chainId === 'arc' && p?.tokenAddress) profileAddrs.push(p.tokenAddress)
+      if (p?.tokenAddress) profileAddrs.push(p.tokenAddress)  // collect all, filter by pair later
     }
   }
 
@@ -68,7 +68,7 @@ async function fetchDexScreenerAll(): Promise<any[]> {
         const r = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${chunk}`, { signal: AbortSignal.timeout(10_000) })
         if (r.ok) {
           const d: any = await r.json()
-          const arcPairs = (d.pairs ?? []).filter((p: any) => p?.chainId === 'arc')
+          const arcPairs = (d.pairs ?? []).filter((p: any) => { const c=(p?.chainId??'').toLowerCase(); return c==='arc'||c.includes('arc')||c==='5042' })
           pairs.push(...arcPairs)
         }
       } catch {}
