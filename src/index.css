@@ -1,20 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
 :root {
-  --bg:        #f4f4f8;
-  --surface:   #ffffff;
-  --border:    rgba(0,0,0,0.08);
-  --border2:   rgba(0,0,0,0.05);
-  --text1:     #111827;
-  --text2:     #6b7280;
-  --text3:     #9ca3af;
-  --green:     #16a34a;
-  --greenBg:   rgba(22,163,74,0.08);
-  --red:       #dc2626;
-  --redBg:     rgba(220,38,38,0.08);
-  --accent:    #6366f1;
+  --bg:      #f4f4f8;
+  --surface: #ffffff;
+  --border:  rgba(0,0,0,0.08);
+  --text1:   #111827;
+  --text2:   #6b7280;
+  --text3:   #9ca3af;
+  --green:   #16a34a;
+  --red:     #dc2626;
+  --accent:  #6366f1;
 }
 
 html { font-family: 'Space Grotesk', system-ui, sans-serif; }
@@ -26,19 +25,16 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Scrollbar */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 8px; }
 .scrollbar-hide::-webkit-scrollbar { display: none; }
 .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
-/* Mobile tweaks */
 @media (max-width: 767px) {
-  main { padding-bottom: calc(64px + env(safe-area-inset-bottom,0px)) !important; }
+  main { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)) !important; }
   input, select { font-size: 16px !important; }
   button, a { -webkit-tap-highlight-color: transparent; }
 }
 
-/* TradingView chart overrides */
 .tv-lightweight-charts canvas { border-radius: 0 !important; }
