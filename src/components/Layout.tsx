@@ -22,6 +22,7 @@ export function Layout({ children }: LayoutProps) {
   const loc = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
   const isIDE = loc.pathname === '/ide'
+  const isFullHeight = isIDE || loc.pathname === '/trending'
   const { SITE_TITLE, SITE_LOGO } = useConfig()
 
   const siteName = SITE_TITLE || 'GlowFun'
@@ -155,12 +156,12 @@ export function Layout({ children }: LayoutProps) {
       {/* Main content */}
       <main
         className="relative z-10"
-        style={isIDE
+        style={isFullHeight
           ? { position: 'fixed' as const, top: 0, left: 0, right: 0, bottom: 0, paddingTop: 56, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' }
           : { paddingTop: 80, paddingBottom: 80, paddingLeft: 16, paddingRight: 16 }
         }
       >
-        {isIDE ? children : <div className="max-w-6xl mx-auto">{children}</div>}
+        {isFullHeight ? children : <div className="max-w-6xl mx-auto">{children}</div>}
       </main>
 
       {/* Mobile bottom navigation */}
