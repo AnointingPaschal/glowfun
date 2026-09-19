@@ -31,9 +31,18 @@ const KV_KEYS = [
   { key: 'SITE_LOGO', label: 'Site Logo URL', placeholder: 'https://... (square image, shown in navbar)', category: 'site', secret: false },
   { key: 'SITE_DESCRIPTION', label: 'Site Description', placeholder: 'Launch and trade meme tokens on Arc', category: 'site', secret: false },
   { key: 'TWITTER_HANDLE', label: 'Twitter Handle', placeholder: '@glowfun', category: 'site', secret: false },
-  { key: 'CREATION_FEE_USDC', label: 'Creation Fee (USDC)', placeholder: '0', category: 'fees', secret: false },
-  { key: 'PROTOCOL_FEE_BPS', label: 'Protocol Fee (basis points)', placeholder: '100', category: 'fees', secret: false },
-  { key: 'GRADUATION_THRESHOLD_USDC', label: 'Graduation Threshold (USDC)', placeholder: '69000', category: 'fees', secret: false },
+  { key: 'RPC_URL', label: 'Custom RPC URL', placeholder: 'https://rpc.arc.io (leave blank for default)', category: 'contract', secret: false },
+  { key: 'CREATION_FEE_USDC', label: 'Creation Fee display (USDC)', placeholder: '10', category: 'fees', secret: false },
+  { key: 'PROTOCOL_FEE_BPS', label: 'Protocol Fee display (basis points)', placeholder: '100', category: 'fees', secret: false },
+  { key: 'GRADUATION_THRESHOLD_USDC', label: 'Graduation Threshold display (USDC)', placeholder: '69000', category: 'fees', secret: false },
+  { key: 'REFERRAL_FEE_BPS', label: 'Referral Fee display (basis points)', placeholder: '2500', category: 'fees', secret: false },
+  { key: 'ANTI_SNIPE_DURATION', label: 'Anti-Snipe Window (seconds)', placeholder: '60', category: 'fees', secret: false },
+  { key: 'ANTI_SNIPE_TAX_BPS', label: 'Anti-Snipe Tax (basis points)', placeholder: '500', category: 'fees', secret: false },
+  { key: 'MAX_BUY_BPS', label: 'Max Buy per TX (basis points of curve)', placeholder: '500', category: 'fees', secret: false },
+  { key: 'BUY_COOLDOWN_SECONDS', label: 'Buy Cooldown (seconds)', placeholder: '30', category: 'fees', secret: false },
+  { key: 'CREATOR_LOCK_DAYS', label: 'Creator Lock Duration (days)', placeholder: '7', category: 'fees', secret: false },
+  { key: 'PER_TOKEN_GRAD_FEE_BPS', label: 'Per-Token Graduation Platform Fee (bps)', placeholder: '100', category: 'fees', secret: false },
+  { key: 'CREATOR_GRAD_FEE_BPS', label: 'Creator Graduation Bonus (basis points)', placeholder: '500', category: 'fees', secret: false },
 ]
 
 const CATEGORIES = [
@@ -77,17 +86,36 @@ export function AdminPage() {
   const { data: creationFee } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'creationFee', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
   const { data: gradThresh } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'graduationThreshold', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
   const { data: creatorGradFeeBps } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'creatorGraduationFeeBps', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
+  const { data: referralFeeBps } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'referralFeeBps', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
+  const { data: antiSnipeDuration } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'antiSnipeDuration', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
+  const { data: antiSnipeTaxBps } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'antiSnipeTaxBps', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
+  const { data: maxBuyBps } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'maxBuyBps', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
+  const { data: buyCooldown } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'buyCooldown', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
+  const { data: creatorLockDuration } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'creatorLockDuration', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
+  const { data: perTokenGradFeeBps } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'perTokenGraduationFeeBps', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
+  const { data: kingOfHill } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'kingOfHill', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
+  const { data: kingRaised } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'kingOfHillRaised', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
   const { data: paused } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'paused', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
   const { data: tokenCount } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'tokenCount', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
   const { data: allTokens } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'allTokens', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
 
-  // Onchain input state
+  // Onchain input state — existing
   const [creationFeeInput, setCreationFeeInput] = useState('')
   const [feeBpsInput, setFeeBpsInput] = useState('')
   const [creatorGradFeeInput, setCreatorGradFeeInput] = useState('')
   const [feeRecipInput, setFeeRecipInput] = useState('')
   const [gradRecipInput, setGradRecipInput] = useState('')
   const [gradThreshInput, setGradThreshInput] = useState('')
+  // V2 inputs
+  const [referralFeeBpsInput, setReferralFeeBpsInput] = useState('')
+  const [antiSnipeDurInput, setAntiSnipeDurInput] = useState('')
+  const [antiSnipeTaxInput, setAntiSnipeTaxInput] = useState('')
+  const [maxBuyBpsInput, setMaxBuyBpsInput] = useState('')
+  const [buyCooldownInput, setBuyCooldownInput] = useState('')
+  const [creatorLockInput, setCreatorLockInput] = useState('')
+  const [perTokenGradFeeInput, setPerTokenGradFeeInput] = useState('')
+  const [blacklistTokenInput, setBlacklistTokenInput] = useState('')
+  const [blacklistWalletInput, setBlacklistWalletInput] = useState('')
 
   const adminAction = (fn: any) => {
     if (wrong) { switchChain({ chainId: CHAIN_ID as any }); return }
@@ -390,6 +418,70 @@ export function AdminPage() {
                         </button>
                       </div>
                     ))}
+                  </div>
+                </GlassCard>
+
+                {/* V2: Advanced Fee Controls */}
+                <GlassCard className="p-4">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Zap size={14} style={{ color: '#f59e0b' }} />
+                    <span className="text-sm font-semibold text-white">Advanced Fee Controls (V2)</span>
+                  </div>
+                  <div className="space-y-4">
+                    {[
+                      { label: 'Referral Fee (bps of protocol fee, max 5000 = 50%)', value: referralFeeBpsInput, setValue: setReferralFeeBpsInput, current: referralFeeBps !== undefined ? `Current: ${Number(referralFeeBps as bigint)} bps = ${Number(referralFeeBps as bigint) / 100}% of trade fee to referrer` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setReferralFeeBps', args: [BigInt(referralFeeBpsInput || '0')], chainId: CHAIN_ID as any }), valid: referralFeeBpsInput !== '' && Number(referralFeeBpsInput) <= 5000 },
+                      { label: 'Anti-Snipe Window (seconds, max 300)', value: antiSnipeDurInput, setValue: setAntiSnipeDurInput, current: antiSnipeDuration !== undefined ? `Current: ${Number(antiSnipeDuration as bigint)}s` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setAntiSnipeConfig', args: [BigInt(antiSnipeDurInput || '0'), BigInt(antiSnipeTaxInput || Number(antiSnipeTaxBps as bigint ?? 500).toString())], chainId: CHAIN_ID as any }), valid: antiSnipeDurInput !== '' },
+                      { label: 'Anti-Snipe Tax (bps, max 2000 = 20%)', value: antiSnipeTaxInput, setValue: setAntiSnipeTaxInput, current: antiSnipeTaxBps !== undefined ? `Current: ${Number(antiSnipeTaxBps as bigint)} bps = ${Number(antiSnipeTaxBps as bigint) / 100}%` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setAntiSnipeConfig', args: [BigInt(antiSnipeDurInput || Number(antiSnipeDuration as bigint ?? 60).toString()), BigInt(antiSnipeTaxInput || '0')], chainId: CHAIN_ID as any }), valid: antiSnipeTaxInput !== '' && Number(antiSnipeTaxInput) <= 2000 },
+                      { label: 'Max Buy per TX (bps of curve, 0=off, max 5000=50%)', value: maxBuyBpsInput, setValue: setMaxBuyBpsInput, current: maxBuyBps !== undefined ? `Current: ${Number(maxBuyBps as bigint)} bps = ${Number(maxBuyBps as bigint) / 100}% of curve tokens per tx` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setMaxBuyBps', args: [BigInt(maxBuyBpsInput || '0')], chainId: CHAIN_ID as any }), valid: maxBuyBpsInput !== '' && Number(maxBuyBpsInput) <= 5000 },
+                      { label: 'Buy Cooldown (seconds between buys, 0=off, max 300)', value: buyCooldownInput, setValue: setBuyCooldownInput, current: buyCooldown !== undefined ? `Current: ${Number(buyCooldown as bigint)}s` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setBuyCooldown', args: [BigInt(buyCooldownInput || '0')], chainId: CHAIN_ID as any }), valid: buyCooldownInput !== '' && Number(buyCooldownInput) <= 300 },
+                      { label: 'Creator Lock Duration (seconds, max 30 days = 2592000)', value: creatorLockInput, setValue: setCreatorLockInput, current: creatorLockDuration !== undefined ? `Current: ${Number(creatorLockDuration as bigint)}s = ${(Number(creatorLockDuration as bigint) / 86400).toFixed(1)} days` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setCreatorLockDuration', args: [BigInt(creatorLockInput || '0')], chainId: CHAIN_ID as any }), valid: creatorLockInput !== '' && Number(creatorLockInput) <= 2592000 },
+                      { label: 'Per-Token Graduation Platform Fee (bps, max 500 = 5%)', value: perTokenGradFeeInput, setValue: setPerTokenGradFeeInput, current: perTokenGradFeeBps !== undefined ? `Current: ${Number(perTokenGradFeeBps as bigint)} bps = ${Number(perTokenGradFeeBps as bigint) / 100}% of graduation USDC to platform` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setPerTokenGraduationFeeBps', args: [BigInt(perTokenGradFeeInput || '0')], chainId: CHAIN_ID as any }), valid: perTokenGradFeeInput !== '' && Number(perTokenGradFeeInput) <= 500 },
+                    ].map(({ label, value, setValue, current, fn, valid }) => (
+                      <div key={label} className="flex gap-3 items-end">
+                        <label className="flex-1 space-y-1.5">
+                          <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.5)' }}>{label}</span>
+                          {current && <div className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>{current}</div>}
+                          <input value={value} onChange={e => setValue(e.target.value)} className="w-full px-3 py-2.5 rounded-xl text-sm text-white outline-none" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }} />
+                        </label>
+                        <button onClick={fn} disabled={!valid || isAdminPending || isAdminConfirming} className="px-4 py-2.5 rounded-xl text-sm font-medium disabled:opacity-40 flex items-center gap-1.5" style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)', color: 'white' }}>
+                          {isAdminPending || isAdminConfirming ? <Loader2 size={12} className="animate-spin" /> : <><Save size={12} />Set</>}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </GlassCard>
+
+                {/* V2: Blacklists + King of Hill */}
+                <GlassCard className="p-4">
+                  <div className="flex items-center gap-2 mb-4">
+                    <AlertTriangle size={14} style={{ color: '#f87171' }} />
+                    <span className="text-sm font-semibold text-white">Blacklists & King of Hill</span>
+                  </div>
+                  <div className="space-y-4">
+                    {/* King of Hill */}
+                    <div className="rounded-xl p-3" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)' }}>
+                      <p className="text-xs font-semibold text-yellow-400 mb-1">👑 King of the Hill</p>
+                      <p className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>Token: <span className="font-mono text-white">{kingOfHill ? (kingOfHill as string).slice(0, 10) + '...' : 'None yet'}</span></p>
+                      <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Raised: <span className="text-yellow-300">${kingRaised ? (Number(kingRaised as bigint) / 1e6).toFixed(2) : '0'} USDC</span></p>
+                    </div>
+                    {/* Blacklist token */}
+                    <div className="flex gap-3 items-end">
+                      <label className="flex-1 space-y-1.5">
+                        <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.5)' }}>Blacklist / Unblacklist Token Address</span>
+                        <input value={blacklistTokenInput} onChange={e => setBlacklistTokenInput(e.target.value)} placeholder="0x..." className="w-full px-3 py-2.5 rounded-xl text-sm text-white outline-none" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }} />
+                      </label>
+                      <button onClick={() => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'blacklistToken', args: [blacklistTokenInput as `0x${string}`, true], chainId: CHAIN_ID as any })} disabled={!blacklistTokenInput || isAdminPending} className="px-3 py-2.5 rounded-xl text-sm font-medium disabled:opacity-40" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#f87171' }}>Block</button>
+                      <button onClick={() => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'blacklistToken', args: [blacklistTokenInput as `0x${string}`, false], chainId: CHAIN_ID as any })} disabled={!blacklistTokenInput || isAdminPending} className="px-3 py-2.5 rounded-xl text-sm font-medium disabled:opacity-40" style={{ background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.2)', color: '#34d399' }}>Allow</button>
+                    </div>
+                    {/* Blacklist wallet */}
+                    <div className="flex gap-3 items-end">
+                      <label className="flex-1 space-y-1.5">
+                        <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.5)' }}>Blacklist / Unblacklist Wallet Address</span>
+                        <input value={blacklistWalletInput} onChange={e => setBlacklistWalletInput(e.target.value)} placeholder="0x..." className="w-full px-3 py-2.5 rounded-xl text-sm text-white outline-none" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }} />
+                      </label>
+                      <button onClick={() => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'blacklistWallet', args: [blacklistWalletInput as `0x${string}`, true], chainId: CHAIN_ID as any })} disabled={!blacklistWalletInput || isAdminPending} className="px-3 py-2.5 rounded-xl text-sm font-medium disabled:opacity-40" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#f87171' }}>Block</button>
+                      <button onClick={() => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'blacklistWallet', args: [blacklistWalletInput as `0x${string}`, false], chainId: CHAIN_ID as any })} disabled={!blacklistWalletInput || isAdminPending} className="px-3 py-2.5 rounded-xl text-sm font-medium disabled:opacity-40" style={{ background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.2)', color: '#34d399' }}>Allow</button>
+                    </div>
                   </div>
                 </GlassCard>
 

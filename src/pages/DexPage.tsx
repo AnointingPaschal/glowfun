@@ -130,11 +130,12 @@ function useGlowTokens(addresses: `0x${string}`[]) {
   const pairs: Pair[] = []
   for (let i = 0; i < addresses.length; i++) {
     const m = meta?.slice(i * 9, i * 9 + 9) ?? []
-    const s = states?.slice(i * 4, i * 4 + 4) ?? []
+    const statesArr = (states as unknown as any[]) ?? []
+    const s = statesArr.slice(i * 4, i * 4 + 4)
     if (m[0]?.status !== 'success') continue
     const st = s[0]?.result as any
-    const priceRaw = s[1]?.result as bigint ?? 0n
-    const mcapRaw = s[2]?.result as bigint ?? 0n
+    const priceRaw = s[1]?.result as unknown as bigint ?? 0n
+    const mcapRaw = s[2]?.result as unknown as bigint ?? 0n
     const priceUsd = Number(priceRaw) / 1e42
     const mcapUsd = Number(mcapRaw) / 1e6
     const createdAt = Number(m[4]?.result ?? 0)
@@ -156,7 +157,7 @@ function useGlowTokens(addresses: `0x${string}`[]) {
       } : { creator: '0x' as `0x${string}`, virtualUsdcReserves: 0n, virtualTokenReserves: 0n, realUsdcRaised: 0n, realTokensSold: 0n, graduated: false, createdAt: 0n },
       price: priceRaw,
       marketCap: mcapRaw,
-      progress: s[3]?.result as bigint ?? 0n,
+      progress: s[3]?.result as unknown as bigint ?? 0n,
     }
     pairs.push({
       id: `gf-${addresses[i]}`,

@@ -67,7 +67,8 @@ function usePortfolio(userAddress: `0x${string}` | undefined, tokenAddresses: `0
 
   const portfolio = tokensWithBalance.map((t, i) => {
     const balance = t.balance ?? 0n
-    const price = prices?.[i]?.result as bigint | undefined
+    const pricesArr = prices as unknown as any[]
+    const price = pricesArr?.[i]?.result as bigint | undefined
     // price is in USDC per token, scaled by 1e30: value = balance * price / 1e30 / 1e18 * 1e6
     // = balance * price / 1e42
     const valueUsdc = price ? (Number(balance) * Number(price)) / 1e42 : 0

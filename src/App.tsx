@@ -7,6 +7,7 @@ import { TrendingPage } from '@/pages/DexPage'
 import { WalletPage } from '@/pages/WalletPage'
 import { AdminPage } from '@/pages/AdminPage'
 import { IDEPage } from '@/pages/IDEPage'
+import ApiPage from '@/pages/ApiPage'
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
         <Route path="/wallet" element={<WalletPage />} />
         <Route path="/admin" element={<AdminPage />} />
         <Route path="/ide" element={<IDEPage />} />
+        <Route path="/api-docs" element={<ApiPage />} />
       </Routes>
     </Layout>
   )
