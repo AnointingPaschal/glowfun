@@ -74,16 +74,13 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
     // ── Constants ─────────────────────────────────────────────────────
     uint256 public constant BPS_DENOMINATOR            = 10_000;
     uint256 public constant MAX_PROTOCOL_FEE_BPS       = 500;
-    uint256 public constant MAX_PAUSE_DURATION          = 7 days;
+    uint256 private constant MAX_PAUSE_DURATION         = 7 days;
 
-    uint256 public constant CURVE_TOKENS_FOR_SALE      = 800_000_000e18;
-    uint256 public constant GRADUATION_TOKEN_RESERVE    = 200_000_000e18;
+    uint256 private constant INITIAL_VIRTUAL_USDC_RESERVES  = 30_000e6;
+    uint256 private constant INITIAL_VIRTUAL_TOKEN_RESERVES  = 1_073_000_191e18;
 
-    uint256 public constant INITIAL_VIRTUAL_USDC_RESERVES   = 30_000e6;
-    uint256 public constant INITIAL_VIRTUAL_TOKEN_RESERVES   = 1_073_000_191e18;
-
-    uint256 public constant DEFAULT_GRADUATION_THRESHOLD = 69_000e6;
-    uint256 public constant DEFAULT_PROTOCOL_FEE_BPS     = 100;
+    uint256 private constant DEFAULT_GRADUATION_THRESHOLD = 69_000e6;
+    uint256 private constant DEFAULT_PROTOCOL_FEE_BPS    = 100;
 
     // ── Structs ───────────────────────────────────────────────────────
     struct TokenState {
@@ -158,13 +155,6 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
     error InvalidAllocation();
 
     // ── Events ────────────────────────────────────────────────────────
-    event TokenLaunched(
-        address indexed token,
-        address indexed creator,
-        string name,
-        string symbol,
-        uint256 timestamp
-    );
     event TokenLaunchedV2(
         address indexed token,
         address indexed creator,
@@ -395,7 +385,7 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
     }
 
     function getBuyQuote(address token, uint256 usdcIn) external view returns (uint256 tokensOut) {
-        TokenState storage s = _activeViewTokenState(token);
+        TokenState storage s = _activeTokenState(token);
         if (usdcIn == 0) return 0;
         uint256 usdcForCurve = usdcIn - (usdcIn * protocolFeeBps) / BPS_DENOMINATOR;
         tokensOut = _getBuyAmount(s.virtualUsdcReserves, s.virtualTokenReserves, usdcForCurve);
@@ -404,7 +394,7 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
     }
 
     function getSellQuote(address token, uint256 tokensIn) external view returns (uint256 usdcOutNet) {
-        TokenState storage s = _activeViewTokenState(token);
+        TokenState storage s = _activeTokenState(token);
         if (tokensIn == 0 || tokensIn > s.realTokensSold) return 0;
         uint256 gross = _getSellAmount(s.virtualUsdcReserves, s.virtualTokenReserves, tokensIn);
         if (gross > s.realUsdcRaised) gross = s.realUsdcRaised;
@@ -584,10 +574,6 @@ contract GlowFunFactory is Ownable, Pausable, ReentrancyGuard {
         if (state.graduated) revert TokenAlreadyGraduated();
     }
 
-    function _activeViewTokenState(address token) internal view returns (TokenState storage state) {
-        state = _validTokenState(token);
-        if (state.graduated) revert TokenAlreadyGraduated();
-    }
 
     function _validTokenState(address token) internal view returns (TokenState storage state) {
         if (!isLaunchedToken[token]) revert InvalidToken();
