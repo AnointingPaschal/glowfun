@@ -180,19 +180,6 @@ export function FeedPage() {
         ))}
       </div>
 
-<<<<<<< HEAD
-      {/* ── King + Hot horizontal scroll ─────────────────────────── */}
-      {addresses.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-1.5"><Flame size={12} style={{color:'var(--red)'}}/><span className="text-xs font-bold" style={{color:'var(--text1)'}}>Trending</span></div>
-            <Link to="/" className="text-[9px] no-underline" style={{color:'var(--accent)'}}>See all →</Link>
-          </div>
-          <div className="flex gap-2.5 overflow-x-auto scrollbar-hide pb-1">
-            {total > 0 && <KingCard address={addresses[addresses.length-1] as `0x${string}`}/>}
-            {[...addresses].reverse().slice(0,5).map((a,i)=><HotCard key={a} address={a as `0x${string}`} rank={i+1}/>)}
-          </div>
-=======
       {/* ── Token grid ────────────────────────────────────────── */}
       {isLoading && !addresses.length ? (
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2.5">
@@ -224,7 +211,6 @@ export function FeedPage() {
           {displayed.map((addr, i) => (
             <TokenCard key={addr} address={addr as `0x${string}`} index={i}/>
           ))}
->>>>>>> 801c1d5 (fix: admin KV unknown key (add PINATA_JWT/RPC_URL/SITE_LOGO/REFERRAL_FEE_BPS); dark mode for LaunchPage+WalletPage; desktop multi-column layout (1400px max, 4-col feed, 2-col wallet+launch))
         </div>
       )}
 

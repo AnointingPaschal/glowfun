@@ -14,36 +14,6 @@ import { formatUsdc, formatAddress } from '@/utils/format'
 import { useTokenList } from '@/hooks/useTokenList'
 import { FACTORY_ADDRESS, USDC_ADDRESS, CHAIN_ID, EXPLORER_BASE } from '@/constants'
 
-function fmtUsd(n: number) { return n>=1e6?`$${(n/1e6).toFixed(2)}M`:n>=1e3?`$${(n/1e3).toFixed(1)}K`:`$${n.toFixed(2)}` }
-
-<<<<<<< HEAD
-/* ── Tab button ─────────────────────────────────────────────────── */
-function Tab({ id, label, icon: Icon, active, onClick }: any) {
-  return (
-    <button onClick={onClick} className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all"
-      style={{ background:active?'#6366f1':'transparent', color:active?'var(--surface)':'#9ca3af' }}>
-      <Icon size={12}/>{label}
-    </button>
-  )
-}
-
-/* ── Stat card ───────────────────────────────────────────────────── */
-function StatCard({ label, value, icon: Icon, color }: any) {
-  return (
-    <div className="flex items-center gap-3 p-3.5 rounded-2xl" style={card}>
-      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background:`${color}12` }}>
-        <Icon size={16} style={{ color }}/>
-      </div>
-      <div>
-        <div className="text-[10px] font-semibold uppercase tracking-widest" style={{ color:'#9ca3af' }}>{label}</div>
-        <div className="text-sm font-bold" style={{ color:'#111827', fontFamily:'Space Grotesk,sans-serif' }}>{value}</div>
-      </div>
-    </div>
-  )
-}
-
-=======
->>>>>>> 801c1d5 (fix: admin KV unknown key (add PINATA_JWT/RPC_URL/SITE_LOGO/REFERRAL_FEE_BPS); dark mode for LaunchPage+WalletPage; desktop multi-column layout (1400px max, 4-col feed, 2-col wallet+launch))
 type WTab = 'overview'|'portfolio'|'send'|'receive'|'activity'
 
 const TABS: { id: WTab; label: string; icon: any }[] = [
@@ -186,18 +156,9 @@ export function WalletPage() {
           ))}
         </div>
 
-<<<<<<< HEAD
-      {/* ── Tab bar ───────────────────────────────────────────── */}
-      <div className="flex gap-1 p-1 rounded-2xl mb-4" style={{ background:'var(--surface)', border:'1px solid rgba(0,0,0,0.08)' }}>
-        {[['overview','Overview',BarChart3],['portfolio','Portfolio',Coins],['send','Send',Send],['receive','Receive',ArrowDownLeft],['activity','Activity',Activity]].map(([id,label,Icon]:any)=>(
-          <Tab key={id} id={id} label={label} icon={Icon} active={tab===id} onClick={()=>setTab(id)}/>
-        ))}
-      </div>
-=======
         <AnimatePresence mode="wait">
           <motion.div key={tab} initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0, y:-4 }} transition={{ duration:0.15 }}>
             <div className="rounded-2xl p-5" style={{ background:'var(--surface)', border:'1px solid var(--border)' }}>
->>>>>>> 801c1d5 (fix: admin KV unknown key (add PINATA_JWT/RPC_URL/SITE_LOGO/REFERRAL_FEE_BPS); dark mode for LaunchPage+WalletPage; desktop multi-column layout (1400px max, 4-col feed, 2-col wallet+launch))
 
               {/* Overview */}
               {tab==='overview' && (
@@ -251,15 +212,6 @@ export function WalletPage() {
                 </div>
               )}
 
-<<<<<<< HEAD
-            {/* Receive */}
-            {tab==='receive' && evmAddr && (
-              <div className="text-center space-y-4">
-                <h3 className="text-sm font-bold" style={{ color:'#111827' }}>Your Wallet Address</h3>
-                <div className="flex justify-center">
-                  <div className="p-4 rounded-2xl" style={{ background:'var(--surface)', border:'1px solid rgba(0,0,0,0.08)' }}>
-                    <QRCodeSVG value={evmAddr} size={160} level="H"/>
-=======
               {/* Send */}
               {tab==='send' && (
                 <div className="space-y-4">
@@ -315,7 +267,6 @@ export function WalletPage() {
                   <div className="flex items-start gap-2 p-3 rounded-xl" style={{ background:'rgba(245,158,11,0.06)', border:'1px solid rgba(245,158,11,0.15)' }}>
                     <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" style={{ color:'var(--gold)' }}/>
                     <p className="text-xs text-left" style={{ color:'var(--text2)' }}>Only send Arc Mainnet (chain ID {CHAIN_ID}) assets to this address.</p>
->>>>>>> 801c1d5 (fix: admin KV unknown key (add PINATA_JWT/RPC_URL/SITE_LOGO/REFERRAL_FEE_BPS); dark mode for LaunchPage+WalletPage; desktop multi-column layout (1400px max, 4-col feed, 2-col wallet+launch))
                   </div>
                 </div>
               )}
