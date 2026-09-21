@@ -1,669 +1,704 @@
 import { useState, useEffect } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchChain, useReadContract } from 'wagmi'
 import { ConnectKitButton } from 'connectkit'
 import { toast } from 'sonner'
-import { GlassCard } from '@/components/GlassCard'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
 import { useConfig } from '@/context/ConfigContext'
 import { formatUsdc, formatAddress } from '@/utils/format'
 import {
   Shield, Settings, Key, Database, Globe, Loader2, Check, Eye, EyeOff,
-  RefreshCw, Save, ExternalLink, AlertTriangle, Users, BarChart2, Image, MessageSquare,
-  DollarSign, Zap, Lock, Unlock
+  RefreshCw, Save, ExternalLink, AlertTriangle, BarChart2, Image,
+  MessageSquare, DollarSign, Zap, Lock, Unlock, Users, Crown,
+  Ban, Activity, ChevronRight, Server, Sliders
 } from 'lucide-react'
 import { parseOnchainError } from '@/utils/errors'
 
-const SPECTRAL = 'linear-gradient(90deg, #5fbeff, #af8ff4, #f05c6b, #ffcd83, #7ef1b3)'
+const SPECTRAL = 'linear-gradient(90deg,#5fbeff,#af8ff4,#f05c6b,#ffcd83,#7ef1b3)'
 
-// Keys that live in Cloudflare KV (via /api/config)
 const KV_KEYS = [
-  { key: 'FACTORY_ADDRESS', label: 'Factory Contract Address', placeholder: '0x...', category: 'contract', secret: false },
-  { key: 'USDC_ADDRESS', label: 'USDC Contract Address', placeholder: '0x3600000000000000000000000000000000000000', category: 'contract', secret: false },
-  { key: 'FEE_RECIPIENT', label: 'Fee Recipient Address', placeholder: '0x...', category: 'contract', secret: false },
-  { key: 'GRADUATION_RECIPIENT', label: 'Graduation Recipient Address', placeholder: '0x...', category: 'contract', secret: false },
-  { key: 'WALLETCONNECT_PROJECT_ID', label: 'WalletConnect Project ID', placeholder: 'Get from cloud.walletconnect.com', category: 'keys', secret: false },
-  { key: 'CIRCLE_APP_ID', label: 'Circle App ID', placeholder: 'Get from Circle Dev Console', category: 'keys', secret: false },
-  { key: 'CIRCLE_API_KEY', label: 'Circle API Key', placeholder: 'TEST_API_KEY:...', category: 'keys', secret: true },
-  { key: 'ADMIN_SECRET', label: 'Admin Panel Password', placeholder: 'Strong password', category: 'keys', secret: true },
-  { key: 'R2_PUBLIC_URL', label: 'R2 Public URL (for images)', placeholder: 'https://images.glowfun.pages.dev', category: 'storage', secret: false },
-  { key: 'PINATA_JWT', label: 'Pinata JWT (for IPFS uploads)', placeholder: 'eyJhbGci... from app.pinata.cloud', category: 'storage', secret: true },
-  { key: 'SITE_TITLE', label: 'Site Name', placeholder: 'GlowFun', category: 'site', secret: false },
-  { key: 'SITE_LOGO', label: 'Site Logo URL', placeholder: 'https://... (square image, shown in navbar)', category: 'site', secret: false },
-  { key: 'SITE_DESCRIPTION', label: 'Site Description', placeholder: 'Launch and trade meme tokens on Arc', category: 'site', secret: false },
-  { key: 'TWITTER_HANDLE', label: 'Twitter Handle', placeholder: '@glowfun', category: 'site', secret: false },
-  { key: 'RPC_URL', label: 'Custom RPC URL', placeholder: 'https://rpc.arc.io (leave blank for default)', category: 'contract', secret: false },
-  { key: 'CREATION_FEE_USDC', label: 'Creation Fee display (USDC)', placeholder: '10', category: 'fees', secret: false },
-  { key: 'PROTOCOL_FEE_BPS', label: 'Protocol Fee display (basis points)', placeholder: '100', category: 'fees', secret: false },
-  { key: 'GRADUATION_THRESHOLD_USDC', label: 'Graduation Threshold display (USDC)', placeholder: '69000', category: 'fees', secret: false },
-  { key: 'REFERRAL_FEE_BPS', label: 'Referral Fee display (basis points)', placeholder: '2500', category: 'fees', secret: false },
-  { key: 'ANTI_SNIPE_DURATION', label: 'Anti-Snipe Window (seconds)', placeholder: '60', category: 'fees', secret: false },
-  { key: 'ANTI_SNIPE_TAX_BPS', label: 'Anti-Snipe Tax (basis points)', placeholder: '500', category: 'fees', secret: false },
-  { key: 'MAX_BUY_BPS', label: 'Max Buy per TX (basis points of curve)', placeholder: '500', category: 'fees', secret: false },
-  { key: 'BUY_COOLDOWN_SECONDS', label: 'Buy Cooldown (seconds)', placeholder: '30', category: 'fees', secret: false },
-  { key: 'CREATOR_LOCK_DAYS', label: 'Creator Lock Duration (days)', placeholder: '7', category: 'fees', secret: false },
-  { key: 'PER_TOKEN_GRAD_FEE_BPS', label: 'Per-Token Graduation Platform Fee (bps)', placeholder: '100', category: 'fees', secret: false },
-  { key: 'CREATOR_GRAD_FEE_BPS', label: 'Creator Graduation Bonus (basis points)', placeholder: '500', category: 'fees', secret: false },
+  { key: 'FACTORY_ADDRESS',          label: 'Factory Contract',         placeholder: '0x...',                                                    category: 'contract', secret: false },
+  { key: 'USDC_ADDRESS',             label: 'USDC Contract',            placeholder: '0x3600000000000000000000000000000000000000',               category: 'contract', secret: false },
+  { key: 'FEE_RECIPIENT',            label: 'Fee Recipient',            placeholder: '0x...',                                                    category: 'contract', secret: false },
+  { key: 'GRADUATION_RECIPIENT',     label: 'Graduation Recipient',     placeholder: '0x...',                                                    category: 'contract', secret: false },
+  { key: 'RPC_URL',                  label: 'Custom RPC URL',           placeholder: 'https://rpc.arc.io',                                       category: 'contract', secret: false },
+  { key: 'WALLETCONNECT_PROJECT_ID', label: 'WalletConnect Project ID', placeholder: 'Get from cloud.walletconnect.com',                         category: 'keys',    secret: false },
+  { key: 'CIRCLE_APP_ID',            label: 'Circle App ID',            placeholder: 'Get from Circle Dev Console',                              category: 'keys',    secret: false },
+  { key: 'CIRCLE_API_KEY',           label: 'Circle API Key',           placeholder: 'TEST_API_KEY:...',                                         category: 'keys',    secret: true  },
+  { key: 'ADMIN_SECRET',             label: 'Admin Password',           placeholder: 'Strong password',                                          category: 'keys',    secret: true  },
+  { key: 'PINATA_JWT',               label: 'Pinata JWT (IPFS)',        placeholder: 'eyJhbGci... from app.pinata.cloud',                        category: 'storage', secret: true  },
+  { key: 'R2_PUBLIC_URL',            label: 'R2 Public URL',            placeholder: 'https://pub-xxx.r2.dev',                                   category: 'storage', secret: false },
+  { key: 'SITE_TITLE',               label: 'Site Name',                placeholder: 'GlowFun',                                                  category: 'site',    secret: false },
+  { key: 'SITE_LOGO',                label: 'Site Logo URL',            placeholder: 'https://... (square image)',                               category: 'site',    secret: false },
+  { key: 'SITE_DESCRIPTION',         label: 'Site Description',         placeholder: 'Launch and trade meme tokens on Arc',                      category: 'site',    secret: false },
+  { key: 'TWITTER_HANDLE',           label: 'Twitter Handle',           placeholder: '@glowfun',                                                 category: 'site',    secret: false },
+  { key: 'CREATION_FEE_USDC',        label: 'Creation Fee display',     placeholder: '10',                                                       category: 'fees',    secret: false },
+  { key: 'PROTOCOL_FEE_BPS',         label: 'Protocol Fee (bps)',       placeholder: '100',                                                      category: 'fees',    secret: false },
+  { key: 'GRADUATION_THRESHOLD_USDC',label: 'Graduation Threshold',     placeholder: '69000',                                                    category: 'fees',    secret: false },
+  { key: 'REFERRAL_FEE_BPS',         label: 'Referral Fee (bps)',       placeholder: '2500',                                                     category: 'fees',    secret: false },
 ]
 
-const CATEGORIES = [
-  { id: 'all', label: 'All Settings', icon: Settings },
-  { id: 'contract', label: 'Contract', icon: Zap },
-  { id: 'keys', label: 'API Keys', icon: Key },
-  { id: 'fees', label: 'Fees', icon: DollarSign },
-  { id: 'site', label: 'Site', icon: Globe },
-  { id: 'storage', label: 'Storage', icon: Database },
+const SECTIONS = [
+  { id: 'overview',  label: 'Overview',      icon: Activity  },
+  { id: 'config',    label: 'Configuration', icon: Key       },
+  { id: 'onchain',   label: 'On-Chain',      icon: Zap       },
+  { id: 'tokens',    label: 'Tokens',        icon: BarChart2 },
+  { id: 'comments',  label: 'Comments',      icon: MessageSquare },
 ]
 
-type Tab = 'config' | 'onchain' | 'tokens' | 'comments'
+const CATS = [
+  { id: 'all',      label: 'All',       icon: Settings  },
+  { id: 'contract', label: 'Contract',  icon: Zap       },
+  { id: 'keys',     label: 'API Keys',  icon: Key       },
+  { id: 'fees',     label: 'Fees',      icon: DollarSign},
+  { id: 'site',     label: 'Site',      icon: Globe     },
+  { id: 'storage',  label: 'Storage',   icon: Database  },
+]
+
+/* ── Reusable sub-components ───────────────────────────────────────────── */
+
+function SectionCard({ title, icon: Icon, accent = '#a78bfa', children }: {
+  title: string; icon: any; accent?: string; children: React.ReactNode
+}) {
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      <div className="flex items-center gap-2.5 px-5 py-4" style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface2)' }}>
+        <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: `${accent}18` }}>
+          <Icon size={14} style={{ color: accent }} />
+        </div>
+        <span className="text-sm font-semibold" style={{ color: 'var(--text1)' }}>{title}</span>
+      </div>
+      <div className="p-5">{children}</div>
+    </div>
+  )
+}
+
+function StatCard({ label, value, icon: Icon, accent = '#a78bfa', sub }: {
+  label: string; value: string; icon: any; accent?: string; sub?: string
+}) {
+  return (
+    <div className="rounded-xl p-4" style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs" style={{ color: 'var(--text2)' }}>{label}</span>
+        <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: `${accent}18` }}>
+          <Icon size={13} style={{ color: accent }} />
+        </div>
+      </div>
+      <div className="text-lg font-bold" style={{ color: 'var(--text1)' }}>{value}</div>
+      {sub && <div className="text-xs mt-0.5" style={{ color: 'var(--text2)' }}>{sub}</div>}
+    </div>
+  )
+}
+
+function FieldRow({ label, placeholder, value, onChange, onSave, saving, saved, secret, note }: {
+  label: string; placeholder: string; value: string;
+  onChange: (v: string) => void; onSave: () => void;
+  saving: boolean; saved: boolean; secret: boolean; note?: string
+}) {
+  const [show, setShow] = useState(false)
+  return (
+    <div className="py-4" style={{ borderBottom: '1px solid var(--border)' }}>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="text-xs font-medium mb-1" style={{ color: 'var(--text1)' }}>{label}</div>
+          {note && <div className="text-xs mb-2" style={{ color: 'var(--text2)' }}>{note}</div>}
+          <div className="relative">
+            <input
+              type={secret && !show ? 'password' : 'text'}
+              value={value}
+              onChange={e => onChange(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && onSave()}
+              placeholder={placeholder}
+              className="w-full px-3 py-2 rounded-lg text-sm outline-none pr-8"
+              style={{
+                background: 'var(--surface3)',
+                border: '1px solid var(--border2)',
+                color: 'var(--text1)',
+                fontFamily: secret ? 'monospace' : 'inherit',
+              }}
+            />
+            {secret && (
+              <button onClick={() => setShow(s => !s)} className="absolute right-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text3)' }}>
+                {show ? <EyeOff size={13} /> : <Eye size={13} />}
+              </button>
+            )}
+          </div>
+        </div>
+        <button
+          onClick={onSave}
+          disabled={saving}
+          className="mt-6 px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 flex-shrink-0 transition-all"
+          style={saved
+            ? { background: 'rgba(34,197,94,0.1)', color: '#34d399', border: '1px solid rgba(34,197,94,0.2)' }
+            : { background: 'var(--accent)', color: 'white', border: 'none' }
+          }
+        >
+          {saving ? <Loader2 size={11} className="animate-spin" />
+            : saved ? <><Check size={11} />Saved</>
+            : <><Save size={11} />Save</>}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function OnchainInput({ label, note, value, onChange, onSet, disabled, placeholder = '' }: {
+  label: string; note?: string; value: string; onChange: (v: string) => void;
+  onSet: () => void; disabled: boolean; placeholder?: string
+}) {
+  return (
+    <div className="py-3" style={{ borderBottom: '1px solid var(--border)' }}>
+      <div className="text-xs font-medium mb-0.5" style={{ color: 'var(--text1)' }}>{label}</div>
+      {note && <div className="text-xs mb-2" style={{ color: 'var(--text2)' }}>{note}</div>}
+      <div className="flex gap-2 mt-1.5">
+        <input
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
+          style={{ background: 'var(--surface3)', border: '1px solid var(--border2)', color: 'var(--text1)' }}
+        />
+        <button
+          onClick={onSet}
+          disabled={disabled || !value}
+          className="px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 flex-shrink-0 disabled:opacity-40"
+          style={{ background: 'var(--accent)', color: 'white' }}
+        >
+          <Save size={11} />Set
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/* ── Main AdminPage ─────────────────────────────────────────────────────── */
 
 export function AdminPage() {
   const [authed, setAuthed] = useState(false)
-  const [pw, setPw] = useState('')
-  const [authError, setAuthError] = useState('')
+  const [pw, setPw]         = useState('')
+  const [authErr, setAuthErr] = useState('')
+  const [section, setSection] = useState('overview')
+  const [cat, setCat]         = useState('all')
 
-  // Config state from KV
-  const [kvValues, setKvValues] = useState<Record<string, string>>({})
-  const [editValues, setEditValues] = useState<Record<string, string>>({})
-  const [saving, setSaving] = useState<Record<string, boolean>>({})
-  const [saved, setSaved] = useState<Record<string, boolean>>({})
-  const [showSecret, setShowSecret] = useState<Record<string, boolean>>({})
-  const [loadingConfig, setLoadingConfig] = useState(false)
-  const [activeCategory, setActiveCategory] = useState('all')
-  const [tab, setTab] = useState<Tab>('config')
+  const [kvValues, setKvValues]   = useState<Record<string, string>>({})
+  const [editVals, setEditVals]   = useState<Record<string, string>>({})
+  const [saving, setSaving]       = useState<Record<string, boolean>>({})
+  const [saved, setSaved]         = useState<Record<string, boolean>>({})
+  const [loading, setLoading]     = useState(false)
 
-  // Onchain admin
   const { FACTORY_ADDRESS, CHAIN_ID, EXPLORER_BASE } = useConfig()
   const { address, chainId, isConnected } = useAccount()
   const { switchChain } = useSwitchChain()
   const wrong = isConnected && chainId !== CHAIN_ID
-  const { writeContract: adminWrite, data: adminHash, isPending: isAdminPending } = useWriteContract()
-  const { isLoading: isAdminConfirming } = useWaitForTransactionReceipt({ hash: adminHash })
+  const { writeContract: adminWrite, data: adminHash, isPending: adminPending } = useWriteContract()
+  const { isLoading: adminConfirming } = useWaitForTransactionReceipt({ hash: adminHash })
+  const adminBusy = adminPending || adminConfirming
 
   // Onchain reads
-  const { data: feeRecipient, refetch: rfFeeRecip } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'feeRecipient', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
-  const { data: gradRecipient } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'graduationRecipient', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
-  const { data: feeBps } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'protocolFeeBps', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
-  const { data: creationFee } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'creationFee', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
-  const { data: gradThresh } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'graduationThreshold', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
-  const { data: creatorGradFeeBps } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'creatorGraduationFeeBps', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
-  const { data: referralFeeBps } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'referralFeeBps', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
-  const { data: antiSnipeDuration } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'antiSnipeDuration', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
-  const { data: antiSnipeTaxBps } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'antiSnipeTaxBps', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
-  const { data: maxBuyBps } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'maxBuyBps', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
-  const { data: buyCooldown } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'buyCooldown', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
-  const { data: creatorLockDuration } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'creatorLockDuration', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
-  const { data: perTokenGradFeeBps } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'perTokenGraduationFeeBps', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
-  const { data: kingOfHill } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'kingOfHill', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
-  const { data: kingRaised } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'kingOfHillRaised', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
-  const { data: paused } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'paused', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
-  const { data: tokenCount } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'launchedTokensCount', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
-  const tokenCountNum = tokenCount ? Number(tokenCount) : 0
-  const { data: allTokens } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'getTokensPaginated', args: [BigInt(0), BigInt(tokenCountNum)], chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS && tokenCountNum > 0 } })
+  const q = { enabled: !!FACTORY_ADDRESS }
+  const args = (fn: string) => ({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: fn as any, chainId: CHAIN_ID as any, query: q })
+  const { data: feeBps }           = useReadContract(args('protocolFeeBps'))
+  const { data: creationFee }      = useReadContract(args('creationFee'))
+  const { data: gradThresh }       = useReadContract(args('graduationThreshold'))
+  const { data: creatorGradBps }   = useReadContract(args('creatorGraduationFeeBps'))
+  const { data: referralBps }      = useReadContract(args('referralFeeBps'))
+  const { data: antiSnipeDur }     = useReadContract(args('antiSnipeDuration'))
+  const { data: antiSnipeTax }     = useReadContract(args('antiSnipeTaxBps'))
+  const { data: maxBuyBps }        = useReadContract(args('maxBuyBps'))
+  const { data: buyCooldown }      = useReadContract(args('buyCooldown'))
+  const { data: creatorLock }      = useReadContract(args('creatorLockDuration'))
+  const { data: perGradBps }       = useReadContract(args('perTokenGraduationFeeBps'))
+  const { data: feeRecipient }     = useReadContract(args('feeRecipient'))
+  const { data: gradRecipient }    = useReadContract(args('graduationRecipient'))
+  const { data: paused }           = useReadContract(args('paused'))
+  const { data: kingToken }        = useReadContract(args('kingOfHill'))
+  const { data: kingRaised }       = useReadContract(args('kingOfHillRaised'))
+  const { data: tokenCountRaw }    = useReadContract(args('launchedTokensCount'))
+  const tokenCountNum = tokenCountRaw ? Number(tokenCountRaw) : 0
+  const { data: allTokens }        = useReadContract({
+    address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'getTokensPaginated',
+    args: [BigInt(0), BigInt(Math.max(tokenCountNum, 1))],
+    chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS && tokenCountNum > 0 }
+  })
 
-  // Onchain input state — existing
-  const [creationFeeInput, setCreationFeeInput] = useState('')
-  const [feeBpsInput, setFeeBpsInput] = useState('')
-  const [creatorGradFeeInput, setCreatorGradFeeInput] = useState('')
-  const [feeRecipInput, setFeeRecipInput] = useState('')
-  const [gradRecipInput, setGradRecipInput] = useState('')
-  const [gradThreshInput, setGradThreshInput] = useState('')
-  // V2 inputs
-  const [referralFeeBpsInput, setReferralFeeBpsInput] = useState('')
-  const [antiSnipeDurInput, setAntiSnipeDurInput] = useState('')
-  const [antiSnipeTaxInput, setAntiSnipeTaxInput] = useState('')
-  const [maxBuyBpsInput, setMaxBuyBpsInput] = useState('')
-  const [buyCooldownInput, setBuyCooldownInput] = useState('')
-  const [creatorLockInput, setCreatorLockInput] = useState('')
-  const [perTokenGradFeeInput, setPerTokenGradFeeInput] = useState('')
-  const [blacklistTokenInput, setBlacklistTokenInput] = useState('')
-  const [blacklistWalletInput, setBlacklistWalletInput] = useState('')
+  // Input state
+  const [inp, setInp] = useState<Record<string, string>>({})
+  const i = (key: string) => inp[key] ?? ''
+  const si = (key: string) => (val: string) => setInp(s => ({ ...s, [key]: val }))
 
-  const adminAction = (fn: any) => {
+  const adminCall = (fn: string, fnArgs: any[]) => {
     if (wrong) { switchChain({ chainId: CHAIN_ID as any }); return }
-    adminWrite(fn, {
+    adminWrite({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: fn, args: fnArgs, chainId: CHAIN_ID as any } as any, {
       onSuccess: () => toast.success('Transaction submitted'),
       onError: (e) => toast.error(parseOnchainError(e)),
     })
   }
 
-  const checkAuth = () => {
-    const stored = kvValues['ADMIN_SECRET'] || 'glowfun_admin_change_me'
-    if (pw === stored) { setAuthed(true); setAuthError('') }
-    else setAuthError('Incorrect password.')
-  }
-
   const loadConfig = async () => {
-    setLoadingConfig(true)
+    setLoading(true)
     try {
-      const res = await fetch('/api/config')
-      const data = await res.json() as Record<string, string>
-      setKvValues(data)
-      setEditValues(data)
-    } catch {
-      toast.error('Could not load config from KV. Is the Worker deployed?')
-    }
-    setLoadingConfig(false)
+      const d = await fetch('/api/config').then(r => r.json()) as Record<string, string>
+      setKvValues(d); setEditVals(d)
+    } catch { toast.error('Could not load KV config — is the Worker deployed?') }
+    setLoading(false)
   }
 
   useEffect(() => { loadConfig() }, [])
 
   const saveKey = async (key: string) => {
-    const value = editValues[key] ?? ''
+    const value = editVals[key] ?? ''
     setSaving(s => ({ ...s, [key]: true }))
     try {
       const res = await fetch('/api/config', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Admin-Token': pw,
-        },
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Token': pw },
         body: JSON.stringify({ key, value }),
       })
-      const data = await res.json() as any
-      if (!data.ok) throw new Error(data.error ?? 'Failed to save')
+      const d = await res.json() as any
+      if (!d.ok) throw new Error(d.error ?? 'Failed')
       setKvValues(v => ({ ...v, [key]: value }))
       setSaved(s => ({ ...s, [key]: true }))
-      toast.success(`${key} saved to KV storage`)
+      toast.success(`${key} saved`)
       setTimeout(() => setSaved(s => ({ ...s, [key]: false })), 2000)
-    } catch (e: any) {
-      toast.error(e.message ?? 'Save failed')
-    }
+    } catch (e: any) { toast.error(e.message) }
     setSaving(s => ({ ...s, [key]: false }))
   }
 
-  const saveAllInCategory = async (category: string) => {
-    const keys = KV_KEYS.filter(k => category === 'all' || k.category === category).map(k => k.key)
-    for (const key of keys) {
-      if (editValues[key] !== undefined) await saveKey(key)
-    }
-  }
+  const n = (v: any) => Number(v as bigint)
 
-  const filteredKeys = KV_KEYS.filter(k => activeCategory === 'all' || k.category === activeCategory)
-
+  /* ── Login screen ──────────────────────────────────────────────────── */
   if (!authed) {
     return (
       <div className="flex items-center justify-center min-h-[70vh]">
-        <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-sm">
-          <GlassCard className="p-8" glow>
-            <div className="text-center mb-6">
-              <div className="w-14 h-14 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)' }}>
-                <Shield size={24} className="text-white" />
+        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-sm">
+          <div className="rounded-2xl p-8" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', boxShadow: '0 8px 32px rgba(99,102,241,0.3)' }}>
+                <Shield size={28} className="text-white" />
               </div>
-              <h1 className="text-xl font-bold text-white" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>Admin Access</h1>
-              <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>Enter your admin password to continue</p>
+              <h1 className="text-xl font-bold mb-1" style={{ color: 'var(--text1)', fontFamily: 'Space Grotesk,sans-serif' }}>Admin Panel</h1>
+              <p className="text-sm" style={{ color: 'var(--text2)' }}>Enter your password to continue</p>
             </div>
             <div className="space-y-3">
               <input
-                type="password"
-                value={pw}
-                onChange={e => setPw(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && checkAuth()}
-                placeholder="Admin password"
-                className="w-full px-4 py-3 rounded-xl text-sm text-white outline-none"
-                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
+                type="password" value={pw}
+                onChange={e => { setPw(e.target.value); setAuthErr('') }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    const stored = kvValues['ADMIN_SECRET'] || 'glowfun_admin_change_me'
+                    if (pw === stored) { setAuthed(true); setAuthErr('') } else setAuthErr('Incorrect password.')
+                  }
+                }}
+                placeholder="Password"
+                className="w-full px-4 py-3 rounded-xl text-sm outline-none"
+                style={{ background: 'var(--surface3)', border: `1px solid ${authErr ? 'rgba(239,68,68,0.4)' : 'var(--border2)'}`, color: 'var(--text1)' }}
                 autoFocus
               />
-              {authError && <p className="text-xs text-red-400">{authError}</p>}
-              <button onClick={checkAuth} className="w-full py-3 rounded-xl text-sm font-semibold text-white" style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)' }}>
-                Unlock Admin Panel
+              {authErr && <p className="text-xs" style={{ color: '#f87171' }}>{authErr}</p>}
+              <button
+                onClick={() => {
+                  const stored = kvValues['ADMIN_SECRET'] || 'glowfun_admin_change_me'
+                  if (pw === stored) { setAuthed(true); setAuthErr('') } else setAuthErr('Incorrect password.')
+                }}
+                className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}
+              >
+                Unlock
               </button>
             </div>
-          </GlassCard>
+          </div>
         </motion.div>
       </div>
     )
   }
 
+  const filteredKeys = KV_KEYS.filter(k => cat === 'all' || k.category === cat)
+
+  /* ── Main layout ───────────────────────────────────────────────────── */
   return (
-    <div className="max-w-5xl mx-auto">
-      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <div className="flex items-center gap-2 mb-0.5">
-              <div className="h-[3px] w-8 rounded-full" style={{ background: SPECTRAL }} />
-              <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.3)' }}>Admin</span>
-            </div>
-            <h1 className="text-2xl font-bold text-white" style={{ fontFamily: 'Space Grotesk, sans-serif', letterSpacing: '-0.02em' }}>Control Panel</h1>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-6xl mx-auto">
+
+      {/* Top bar */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <div className="h-[3px] w-6 rounded-full" style={{ background: SPECTRAL }} />
+            <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text2)' }}>Admin</span>
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={loadConfig} disabled={loadingConfig} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.6)' }}>
-              <RefreshCw size={12} className={loadingConfig ? 'animate-spin' : ''} />Refresh
-            </button>
-            <button onClick={() => setAuthed(false)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.4)' }}>
-              <Lock size={12} />Lock
-            </button>
-          </div>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text1)', letterSpacing: '-0.02em', fontFamily: 'Space Grotesk,sans-serif' }}>Control Panel</h1>
         </div>
-
-        {/* Stats row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-          {[
-            { label: 'Tokens Launched', value: tokenCount ? tokenCount.toString() : '—', icon: Zap, color: '#a78bfa' },
-            { label: 'Factory', value: FACTORY_ADDRESS ? formatAddress(FACTORY_ADDRESS) : 'Not set', icon: Settings, color: '#34d399' },
-            { label: 'Protocol Fee', value: feeBps !== undefined ? `${Number(feeBps as bigint) / 100}%` : '—', icon: DollarSign, color: '#fb923c' },
-            { label: 'Status', value: paused ? 'PAUSED' : 'Active', icon: paused ? Lock : Unlock, color: paused ? '#f87171' : '#34d399' },
-          ].map(({ label, value, icon: Icon, color }) => (
-            <GlassCard key={label} className="p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <Icon size={13} style={{ color }} />
-                <span className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>{label}</span>
-              </div>
-              <div className="text-sm font-bold text-white truncate">{value}</div>
-            </GlassCard>
-          ))}
+        <div className="flex items-center gap-2">
+          <button onClick={loadConfig} disabled={loading} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all hover:opacity-80"
+            style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text2)' }}>
+            <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />Refresh
+          </button>
+          <button onClick={() => setAuthed(false)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium hover:opacity-80"
+            style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text2)' }}>
+            <Lock size={11} />Lock
+          </button>
         </div>
+      </div>
 
-        {/* Tabs */}
-        <div className="flex gap-1 mb-5 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-          {([
-            { id: 'config', label: 'Configuration', icon: Key },
-            { id: 'onchain', label: 'Onchain Settings', icon: Zap },
-            { id: 'tokens', label: 'All Tokens', icon: BarChart2 },
-            { id: 'comments', label: 'Comments', icon: MessageSquare },
-          ] as const).map(({ id, label, icon: Icon }) => (
-            <button key={id} onClick={() => setTab(id)} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-all" style={{
-              background: tab === id ? 'rgba(139,92,246,0.15)' : 'transparent',
-              color: tab === id ? '#a78bfa' : 'rgba(255,255,255,0.4)',
-              border: tab === id ? '1px solid rgba(139,92,246,0.2)' : '1px solid transparent',
-            }}>
-              <Icon size={12} /><span className="hidden sm:block">{label}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* CONFIG TAB */}
-        {tab === 'config' && (
-          <div className="space-y-4">
-            <GlassCard className="p-4">
-              <div className="flex items-start gap-2">
-                <Database size={14} style={{ color: '#a78bfa', marginTop: 1, flexShrink: 0 }} />
-                <div className="text-xs" style={{ color: 'rgba(255,255,255,0.45)' }}>
-                  All settings below are stored in <strong className="text-white/60">Cloudflare KV</strong> and read by the Workers at runtime. Changes take effect immediately without a redeploy. Secret values are masked.
-                </div>
-              </div>
-            </GlassCard>
-
-            {/* Category filter */}
-            <div className="flex gap-2 flex-wrap">
-              {CATEGORIES.map(({ id, label, icon: Icon }) => (
-                <button key={id} onClick={() => setActiveCategory(id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all" style={{
-                  background: activeCategory === id ? 'rgba(139,92,246,0.15)' : 'rgba(255,255,255,0.04)',
-                  color: activeCategory === id ? '#a78bfa' : 'rgba(255,255,255,0.5)',
-                  border: activeCategory === id ? '1px solid rgba(139,92,246,0.2)' : '1px solid rgba(255,255,255,0.06)',
+      <div className="flex gap-5">
+        {/* Sidebar */}
+        <aside className="w-44 flex-shrink-0 hidden md:block">
+          <nav className="sticky top-20 space-y-1">
+            {SECTIONS.map(({ id, label, icon: Icon }) => (
+              <button key={id} onClick={() => setSection(id)}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-left transition-all"
+                style={{
+                  background: section === id ? 'rgba(99,102,241,0.12)' : 'transparent',
+                  color: section === id ? '#818cf8' : 'var(--text2)',
+                  border: section === id ? '1px solid rgba(99,102,241,0.2)' : '1px solid transparent',
                 }}>
-                  <Icon size={11} />{label}
-                </button>
-              ))}
-            </div>
-
-            {/* Save all in category */}
-            <div className="flex justify-end">
-              <button onClick={() => saveAllInCategory(activeCategory)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white" style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)' }}>
-                <Save size={12} />Save All {activeCategory !== 'all' ? CATEGORIES.find(c => c.id === activeCategory)?.label : 'Settings'}
+                <Icon size={14} />
+                {label}
+                {section === id && <ChevronRight size={12} className="ml-auto opacity-60" />}
               </button>
-            </div>
+            ))}
+          </nav>
+        </aside>
 
-            {/* KV fields */}
-            <div className="space-y-3">
-              {filteredKeys.map(({ key, label, placeholder, secret }) => {
-                const val = editValues[key] ?? ''
-                const isSaving = saving[key]
-                const isSaved = saved[key]
-                const isDirty = val !== (kvValues[key] ?? '')
-                const show = showSecret[key]
-
-                return (
-                  <GlassCard key={key} className="p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <div className="text-xs font-semibold text-white">{label}</div>
-                        <div className="text-xs mt-0.5 font-mono" style={{ color: 'rgba(255,255,255,0.25)' }}>{key}</div>
-                      </div>
-                      {isDirty && <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(251,191,36,0.1)', color: '#fbbf24' }}>unsaved</span>}
-                    </div>
-                    <div className="flex gap-2">
-                      <div className="flex-1 relative">
-                        <input
-                          type={secret && !show ? 'password' : 'text'}
-                          value={val}
-                          onChange={e => setEditValues(v => ({ ...v, [key]: e.target.value }))}
-                          placeholder={placeholder}
-                          className="w-full px-3 py-2.5 rounded-xl text-sm text-white outline-none pr-8"
-                          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', fontFamily: secret ? 'monospace' : 'inherit' }}
-                        />
-                        {secret && (
-                          <button onClick={() => setShowSecret(s => ({ ...s, [key]: !s[key] }))} className="absolute right-2.5 top-1/2 -translate-y-1/2" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                            {show ? <EyeOff size={13} /> : <Eye size={13} />}
-                          </button>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => saveKey(key)}
-                        disabled={isSaving}
-                        className="px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 flex-shrink-0"
-                        style={{ background: isSaved ? 'rgba(52,211,153,0.15)' : 'linear-gradient(135deg, #8b5cf6, #ec4899)', color: isSaved ? '#34d399' : 'white', border: isSaved ? '1px solid rgba(52,211,153,0.2)' : 'none' }}
-                      >
-                        {isSaving ? <Loader2 size={12} className="animate-spin" /> : isSaved ? <><Check size={12} />Saved</> : <><Save size={12} />Save</>}
-                      </button>
-                    </div>
-                  </GlassCard>
-                )
-              })}
-            </div>
+        {/* Mobile section pills */}
+        <div className="md:hidden w-full -mx-0 mb-4 overflow-x-auto scrollbar-hide">
+          <div className="flex gap-2 pb-1">
+            {SECTIONS.map(({ id, label, icon: Icon }) => (
+              <button key={id} onClick={() => setSection(id)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium flex-shrink-0 transition-all"
+                style={{
+                  background: section === id ? 'rgba(99,102,241,0.12)' : 'var(--surface2)',
+                  color: section === id ? '#818cf8' : 'var(--text2)',
+                  border: section === id ? '1px solid rgba(99,102,241,0.2)' : '1px solid var(--border)',
+                }}>
+                <Icon size={12} />{label}
+              </button>
+            ))}
           </div>
-        )}
+        </div>
 
-        {/* ONCHAIN TAB */}
-        {tab === 'onchain' && (
-          <div className="space-y-4">
-            {!isConnected ? (
-              <GlassCard className="p-8 text-center">
-                <p className="text-sm text-white mb-3">Connect your wallet to manage onchain settings</p>
-                <ConnectKitButton />
-              </GlassCard>
-            ) : (
-              <>
-                {wrong && (
-                  <GlassCard className="p-4 flex items-center gap-3">
-                    <AlertTriangle size={14} style={{ color: '#fbbf24' }} />
-                    <span className="text-sm" style={{ color: '#fbbf24' }}>Wrong network. </span>
-                    <button onClick={() => switchChain({ chainId: CHAIN_ID as any })} className="text-sm underline" style={{ color: '#fbbf24' }}>Switch to Arc Mainnet</button>
-                  </GlassCard>
-                )}
+        {/* Main content */}
+        <div className="flex-1 min-w-0 space-y-4">
 
-                <GlassCard className="p-4">
-                  <div className="flex items-center gap-2 mb-4">
-                    <DollarSign size={14} style={{ color: '#a78bfa' }} />
-                    <span className="text-sm font-semibold text-white">Fee Settings</span>
-                  </div>
-                  <div className="space-y-4">
+          {/* ── OVERVIEW ── */}
+          <AnimatePresence mode="wait">
+            {section === 'overview' && (
+              <motion.div key="overview" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="space-y-4">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <StatCard label="Tokens Launched" value={tokenCountNum ? tokenCountNum.toString() : '—'} icon={Zap} accent="#a78bfa" />
+                  <StatCard label="Protocol Fee" value={feeBps !== undefined ? `${n(feeBps) / 100}%` : '—'} icon={DollarSign} accent="#fb923c" sub={`${n(feeBps ?? 0)} bps`} />
+                  <StatCard label="Creation Fee" value={creationFee !== undefined ? `$${n(creationFee) / 1e6}` : '—'} icon={Server} accent="#34d399" />
+                  <StatCard label="Status" value={paused ? 'Paused' : 'Active'} icon={paused ? Lock : Unlock} accent={paused ? '#f87171' : '#34d399'} />
+                </div>
+
+                <SectionCard title="Platform" icon={Activity} accent="#6366f1">
+                  <div className="space-y-2 text-sm">
                     {[
-                      { label: 'Creation Fee (USDC, 0 = free)', value: creationFeeInput, setValue: setCreationFeeInput, current: creationFee !== undefined ? `Current: ${Number(creationFee as bigint) / 1e6} USDC` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setCreationFee', args: [BigInt(Math.round(parseFloat(creationFeeInput || '0') * 1e6))], chainId: CHAIN_ID as any }), valid: creationFeeInput !== '' },
-                      { label: 'Protocol Fee on Trades (bps, max 500 = 5%)', value: feeBpsInput, setValue: setFeeBpsInput, current: feeBps !== undefined ? `Current: ${Number(feeBps as bigint)} bps = ${Number(feeBps as bigint) / 100}%` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setProtocolFeeBps', args: [BigInt(feeBpsInput || '0')], chainId: CHAIN_ID as any }), valid: feeBpsInput !== '' && Number(feeBpsInput) <= 500 },
-                      { label: 'Creator Graduation Bonus (bps, max 2000 = 20%)', value: creatorGradFeeInput, setValue: setCreatorGradFeeInput, current: creatorGradFeeBps !== undefined ? `Current: ${Number(creatorGradFeeBps as bigint)} bps = ${Number(creatorGradFeeBps as bigint) / 100}% of graduation USDC to creator` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setCreatorGraduationFeeBps', args: [BigInt(creatorGradFeeInput || '0')], chainId: CHAIN_ID as any }), valid: creatorGradFeeInput !== '' && Number(creatorGradFeeInput) <= 2000 },
-                      { label: 'Graduation Threshold (USDC, min $1,000)', value: gradThreshInput, setValue: setGradThreshInput, current: gradThresh !== undefined ? `Current: $${(Number(gradThresh as bigint) / 1e6).toLocaleString()} USDC` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setGraduationThreshold', args: [BigInt(Math.round(parseFloat(gradThreshInput || '0') * 1e6))], chainId: CHAIN_ID as any }), valid: !!gradThreshInput && parseFloat(gradThreshInput) >= 1000 },
-                    ].map(({ label, value, setValue, current, fn, valid }) => (
-                      <div key={label} className="flex gap-3 items-end">
-                        <label className="flex-1 space-y-1.5">
-                          <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.5)' }}>{label}</span>
-                          {current && <div className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>{current}</div>}
-                          <input value={value} onChange={e => setValue(e.target.value)} className="w-full px-3 py-2.5 rounded-xl text-sm text-white outline-none" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }} />
-                        </label>
-                        <button onClick={fn} disabled={!valid || isAdminPending || isAdminConfirming} className="px-4 py-2.5 rounded-xl text-sm font-medium disabled:opacity-40 flex items-center gap-1.5" style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)', color: 'white' }}>
-                          {isAdminPending || isAdminConfirming ? <Loader2 size={12} className="animate-spin" /> : <><Save size={12} />Set</>}
-                        </button>
+                      ['Factory', FACTORY_ADDRESS ? formatAddress(FACTORY_ADDRESS) : 'Not set'],
+                      ['Fee Recipient', feeRecipient ? formatAddress(feeRecipient as string) : '—'],
+                      ['Graduation Recipient', gradRecipient ? formatAddress(gradRecipient as string) : '—'],
+                      ['Graduation Threshold', gradThresh !== undefined ? `$${(n(gradThresh) / 1e6).toLocaleString()} USDC` : '—'],
+                      ['Creator Grad Bonus', creatorGradBps !== undefined ? `${n(creatorGradBps) / 100}%` : '—'],
+                      ['Referral Fee', referralBps !== undefined ? `${n(referralBps) / 100}% of trade fee` : '—'],
+                    ].map(([k, v]) => (
+                      <div key={k} className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid var(--border)' }}>
+                        <span style={{ color: 'var(--text2)' }}>{k}</span>
+                        <span className="font-mono text-xs" style={{ color: 'var(--text1)' }}>{v}</span>
                       </div>
                     ))}
                   </div>
-                </GlassCard>
+                </SectionCard>
 
-                <GlassCard className="p-4">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Users size={14} style={{ color: '#a78bfa' }} />
-                    <span className="text-sm font-semibold text-white">Recipients</span>
-                  </div>
-                  <div className="space-y-4">
-                    {[
-                      { label: 'Fee Recipient (propose — new address must call acceptFeeRecipient)', value: feeRecipInput, setValue: setFeeRecipInput, current: feeRecipient ? `Current: ${formatAddress(feeRecipient as string)}` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'proposeFeeRecipient', args: [feeRecipInput as `0x${string}`], chainId: CHAIN_ID as any }) },
-                      { label: 'Graduation Recipient (propose — new address must call acceptGraduationRecipient)', value: gradRecipInput, setValue: setGradRecipInput, current: gradRecipient ? `Current: ${formatAddress(gradRecipient as string)}` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'proposeGraduationRecipient', args: [gradRecipInput as `0x${string}`], chainId: CHAIN_ID as any }) },
-                    ].map(({ label, value, setValue, current, fn }) => (
-                      <div key={label} className="flex gap-3 items-end">
-                        <label className="flex-1 space-y-1.5">
-                          <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.5)' }}>{label}</span>
-                          {current && <div className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>{current}</div>}
-                          <input value={value} onChange={e => setValue(e.target.value)} placeholder="0x..." className="w-full px-3 py-2.5 rounded-xl text-sm text-white outline-none" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }} />
-                        </label>
-                        <button onClick={fn} disabled={!value || isAdminPending || isAdminConfirming} className="px-4 py-2.5 rounded-xl text-sm font-medium disabled:opacity-40 flex items-center gap-1.5" style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)', color: 'white' }}>
-                          {isAdminPending || isAdminConfirming ? <Loader2 size={12} className="animate-spin" /> : <><Save size={12} />Set</>}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </GlassCard>
-
-                {/* V2: Advanced Fee Controls */}
-                <GlassCard className="p-4">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Zap size={14} style={{ color: '#f59e0b' }} />
-                    <span className="text-sm font-semibold text-white">Advanced Fee Controls (V2)</span>
-                  </div>
-                  <div className="space-y-4">
-                    {[
-                      { label: 'Referral Fee (bps of protocol fee, max 5000 = 50%)', value: referralFeeBpsInput, setValue: setReferralFeeBpsInput, current: referralFeeBps !== undefined ? `Current: ${Number(referralFeeBps as bigint)} bps = ${Number(referralFeeBps as bigint) / 100}% of trade fee to referrer` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setReferralFeeBps', args: [BigInt(referralFeeBpsInput || '0')], chainId: CHAIN_ID as any }), valid: referralFeeBpsInput !== '' && Number(referralFeeBpsInput) <= 5000 },
-                      { label: 'Anti-Snipe Window (seconds, max 300)', value: antiSnipeDurInput, setValue: setAntiSnipeDurInput, current: antiSnipeDuration !== undefined ? `Current: ${Number(antiSnipeDuration as bigint)}s` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setAntiSnipeConfig', args: [BigInt(antiSnipeDurInput || '0'), BigInt(antiSnipeTaxInput || Number(antiSnipeTaxBps as bigint ?? 500).toString())], chainId: CHAIN_ID as any }), valid: antiSnipeDurInput !== '' },
-                      { label: 'Anti-Snipe Tax (bps, max 2000 = 20%)', value: antiSnipeTaxInput, setValue: setAntiSnipeTaxInput, current: antiSnipeTaxBps !== undefined ? `Current: ${Number(antiSnipeTaxBps as bigint)} bps = ${Number(antiSnipeTaxBps as bigint) / 100}%` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setAntiSnipeConfig', args: [BigInt(antiSnipeDurInput || Number(antiSnipeDuration as bigint ?? 60).toString()), BigInt(antiSnipeTaxInput || '0')], chainId: CHAIN_ID as any }), valid: antiSnipeTaxInput !== '' && Number(antiSnipeTaxInput) <= 2000 },
-                      { label: 'Max Buy per TX (bps of curve, 0=off, max 5000=50%)', value: maxBuyBpsInput, setValue: setMaxBuyBpsInput, current: maxBuyBps !== undefined ? `Current: ${Number(maxBuyBps as bigint)} bps = ${Number(maxBuyBps as bigint) / 100}% of curve tokens per tx` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setMaxBuyBps', args: [BigInt(maxBuyBpsInput || '0')], chainId: CHAIN_ID as any }), valid: maxBuyBpsInput !== '' && Number(maxBuyBpsInput) <= 5000 },
-                      { label: 'Buy Cooldown (seconds between buys, 0=off, max 300)', value: buyCooldownInput, setValue: setBuyCooldownInput, current: buyCooldown !== undefined ? `Current: ${Number(buyCooldown as bigint)}s` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setBuyCooldown', args: [BigInt(buyCooldownInput || '0')], chainId: CHAIN_ID as any }), valid: buyCooldownInput !== '' && Number(buyCooldownInput) <= 300 },
-                      { label: 'Creator Lock Duration (seconds, max 30 days = 2592000)', value: creatorLockInput, setValue: setCreatorLockInput, current: creatorLockDuration !== undefined ? `Current: ${Number(creatorLockDuration as bigint)}s = ${(Number(creatorLockDuration as bigint) / 86400).toFixed(1)} days` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setCreatorLockDuration', args: [BigInt(creatorLockInput || '0')], chainId: CHAIN_ID as any }), valid: creatorLockInput !== '' && Number(creatorLockInput) <= 2592000 },
-                      { label: 'Per-Token Graduation Platform Fee (bps, max 500 = 5%)', value: perTokenGradFeeInput, setValue: setPerTokenGradFeeInput, current: perTokenGradFeeBps !== undefined ? `Current: ${Number(perTokenGradFeeBps as bigint)} bps = ${Number(perTokenGradFeeBps as bigint) / 100}% of graduation USDC to platform` : '', fn: () => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'setPerTokenGraduationFeeBps', args: [BigInt(perTokenGradFeeInput || '0')], chainId: CHAIN_ID as any }), valid: perTokenGradFeeInput !== '' && Number(perTokenGradFeeInput) <= 500 },
-                    ].map(({ label, value, setValue, current, fn, valid }) => (
-                      <div key={label} className="flex gap-3 items-end">
-                        <label className="flex-1 space-y-1.5">
-                          <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.5)' }}>{label}</span>
-                          {current && <div className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>{current}</div>}
-                          <input value={value} onChange={e => setValue(e.target.value)} className="w-full px-3 py-2.5 rounded-xl text-sm text-white outline-none" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }} />
-                        </label>
-                        <button onClick={fn} disabled={!valid || isAdminPending || isAdminConfirming} className="px-4 py-2.5 rounded-xl text-sm font-medium disabled:opacity-40 flex items-center gap-1.5" style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)', color: 'white' }}>
-                          {isAdminPending || isAdminConfirming ? <Loader2 size={12} className="animate-spin" /> : <><Save size={12} />Set</>}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </GlassCard>
-
-                {/* V2: Blacklists + King of Hill */}
-                <GlassCard className="p-4">
-                  <div className="flex items-center gap-2 mb-4">
-                    <AlertTriangle size={14} style={{ color: '#f87171' }} />
-                    <span className="text-sm font-semibold text-white">Blacklists & King of Hill</span>
-                  </div>
-                  <div className="space-y-4">
-                    {/* King of Hill */}
-                    <div className="rounded-xl p-3" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)' }}>
-                      <p className="text-xs font-semibold text-yellow-400 mb-1">👑 King of the Hill</p>
-                      <p className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>Token: <span className="font-mono text-white">{kingOfHill ? (kingOfHill as string).slice(0, 10) + '...' : 'None yet'}</span></p>
-                      <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Raised: <span className="text-yellow-300">${kingRaised ? (Number(kingRaised as bigint) / 1e6).toFixed(2) : '0'} USDC</span></p>
-                    </div>
-                    {/* Blacklist token */}
-                    <div className="flex gap-3 items-end">
-                      <label className="flex-1 space-y-1.5">
-                        <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.5)' }}>Blacklist / Unblacklist Token Address</span>
-                        <input value={blacklistTokenInput} onChange={e => setBlacklistTokenInput(e.target.value)} placeholder="0x..." className="w-full px-3 py-2.5 rounded-xl text-sm text-white outline-none" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }} />
-                      </label>
-                      <button onClick={() => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'blacklistToken', args: [blacklistTokenInput as `0x${string}`, true], chainId: CHAIN_ID as any })} disabled={!blacklistTokenInput || isAdminPending} className="px-3 py-2.5 rounded-xl text-sm font-medium disabled:opacity-40" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#f87171' }}>Block</button>
-                      <button onClick={() => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'blacklistToken', args: [blacklistTokenInput as `0x${string}`, false], chainId: CHAIN_ID as any })} disabled={!blacklistTokenInput || isAdminPending} className="px-3 py-2.5 rounded-xl text-sm font-medium disabled:opacity-40" style={{ background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.2)', color: '#34d399' }}>Allow</button>
-                    </div>
-                    {/* Blacklist wallet */}
-                    <div className="flex gap-3 items-end">
-                      <label className="flex-1 space-y-1.5">
-                        <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.5)' }}>Blacklist / Unblacklist Wallet Address</span>
-                        <input value={blacklistWalletInput} onChange={e => setBlacklistWalletInput(e.target.value)} placeholder="0x..." className="w-full px-3 py-2.5 rounded-xl text-sm text-white outline-none" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }} />
-                      </label>
-                      <button onClick={() => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'blacklistWallet', args: [blacklistWalletInput as `0x${string}`, true], chainId: CHAIN_ID as any })} disabled={!blacklistWalletInput || isAdminPending} className="px-3 py-2.5 rounded-xl text-sm font-medium disabled:opacity-40" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#f87171' }}>Block</button>
-                      <button onClick={() => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'blacklistWallet', args: [blacklistWalletInput as `0x${string}`, false], chainId: CHAIN_ID as any })} disabled={!blacklistWalletInput || isAdminPending} className="px-3 py-2.5 rounded-xl text-sm font-medium disabled:opacity-40" style={{ background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.2)', color: '#34d399' }}>Allow</button>
-                    </div>
-                  </div>
-                </GlassCard>
-
-                <GlassCard className="p-4">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Shield size={14} style={{ color: '#a78bfa' }} />
-                    <span className="text-sm font-semibold text-white">Emergency Controls</span>
-                  </div>
-                  <div className="flex gap-3">
-                    <button onClick={() => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'pause', chainId: CHAIN_ID as any })} disabled={!!paused || isAdminPending} className="flex-1 py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-1.5 disabled:opacity-40" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#f87171' }}>
-                      <Lock size={13} />Pause Contract
-                    </button>
-                    <button onClick={() => adminAction({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'unpause', chainId: CHAIN_ID as any })} disabled={!paused || isAdminPending} className="flex-1 py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-1.5 disabled:opacity-40" style={{ background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.2)', color: '#34d399' }}>
-                      <Unlock size={13} />Unpause Contract
-                    </button>
-                  </div>
-                  <div className="mt-2 text-xs text-center" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                    Status: <span style={{ color: paused ? '#f87171' : '#34d399' }}>{paused === undefined ? 'Loading...' : paused ? 'PAUSED' : 'Active'}</span>
-                  </div>
-                </GlassCard>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* TOKENS TAB */}
-        {tab === 'tokens' && (
-          <>
-          <TokenMetadataEditor factoryAddress={FACTORY_ADDRESS} chainId={CHAIN_ID} />
-          <GlassCard className="overflow-hidden mt-4">
-            <div className="p-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-white">All Launched Tokens</span>
-                <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(139,92,246,0.1)', color: '#a78bfa' }}>{tokenCount?.toString() ?? '0'} tokens</span>
-              </div>
-            </div>
-            <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-              {!FACTORY_ADDRESS ? (
-                <div className="p-8 text-center text-sm" style={{ color: 'rgba(255,255,255,0.3)' }}>Set FACTORY_ADDRESS in Configuration tab first.</div>
-              ) : !allTokens || (allTokens as unknown as string[]).length === 0 ? (
-                <div className="p-8 text-center text-sm" style={{ color: 'rgba(255,255,255,0.3)' }}>No tokens launched yet.</div>
-              ) : (
-                [...(allTokens as unknown as string[])].reverse().map((addr, i) => (
-                  <div key={addr} className="flex items-center justify-between px-4 py-3">
+                {kingToken && kingToken !== '0x0000000000000000000000000000000000000000' && (
+                  <SectionCard title="King of the Hill" icon={Crown} accent="#f59e0b">
                     <div className="flex items-center gap-3">
-                      <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold" style={{ background: `hsl(${parseInt(addr.slice(2,6),16)%360},60%,35%)`, color: 'white' }}>{i + 1}</div>
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style={{ background: 'rgba(245,158,11,0.12)' }}>👑</div>
                       <div>
-                        <div className="text-xs font-mono text-white">{formatAddress(addr)}</div>
+                        <div className="text-sm font-mono font-medium" style={{ color: 'var(--text1)' }}>{formatAddress(kingToken as string)}</div>
+                        <div className="text-xs mt-0.5" style={{ color: 'var(--text2)' }}>${(n(kingRaised ?? 0) / 1e6).toFixed(2)} USDC raised</div>
                       </div>
+                      {EXPLORER_BASE && (
+                        <a href={`${EXPLORER_BASE}/address/${kingToken}`} target="_blank" rel="noreferrer" className="ml-auto">
+                          <ExternalLink size={14} style={{ color: 'var(--text2)' }} />
+                        </a>
+                      )}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <a href={`/token/${addr}`} className="text-xs px-2.5 py-1 rounded-lg no-underline" style={{ background: 'rgba(139,92,246,0.1)', color: '#a78bfa' }}>View</a>
-                      <a href={`${EXPLORER_BASE}/address/${addr}`} target="_blank" rel="noopener noreferrer" className="text-xs px-2.5 py-1 rounded-lg no-underline flex items-center gap-1" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.4)' }}>
-                        <ExternalLink size={10} />Explorer
-                      </a>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </GlassCard>
-          </>
-        )}
+                  </SectionCard>
+                )}
+              </motion.div>
+            )}
 
-        {/* COMMENTS TAB */}
-        {tab === 'comments' && (
-          <GlassCard className="overflow-hidden">
-            <div className="p-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-              <span className="text-sm font-semibold text-white">Recent Comments (All Tokens)</span>
-            </div>
-            <AdminComments />
-          </GlassCard>
-        )}
-      </motion.div>
-    </div>
+            {/* ── CONFIG ── */}
+            {section === 'config' && (
+              <motion.div key="config" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="space-y-4">
+
+                <div className="p-4 rounded-xl flex items-start gap-3" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.12)' }}>
+                  <Database size={14} style={{ color: '#818cf8', marginTop: 2, flexShrink: 0 }} />
+                  <p className="text-xs leading-relaxed" style={{ color: 'var(--text2)' }}>
+                    All values are stored in <strong style={{ color: 'var(--text1)' }}>Cloudflare KV</strong> and read at runtime. Changes take effect immediately — no redeploy needed.
+                  </p>
+                </div>
+
+                {/* Category pills */}
+                <div className="flex gap-2 flex-wrap">
+                  {CATS.map(({ id, label, icon: Icon }) => (
+                    <button key={id} onClick={() => setCat(id)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                      style={{
+                        background: cat === id ? 'rgba(99,102,241,0.12)' : 'var(--surface2)',
+                        color: cat === id ? '#818cf8' : 'var(--text2)',
+                        border: cat === id ? '1px solid rgba(99,102,241,0.2)' : '1px solid var(--border)',
+                      }}>
+                      <Icon size={11} />{label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                  {filteredKeys.map(({ key, label, placeholder, secret }) => (
+                    <FieldRow
+                      key={key}
+                      label={label}
+                      placeholder={placeholder}
+                      value={editVals[key] ?? ''}
+                      onChange={v => setEditVals(s => ({ ...s, [key]: v }))}
+                      onSave={() => saveKey(key)}
+                      saving={!!saving[key]}
+                      saved={!!saved[key]}
+                      secret={secret}
+                    />
+                  ))}
+                  {filteredKeys.length === 0 && (
+                    <div className="p-8 text-center text-sm" style={{ color: 'var(--text2)' }}>No settings in this category.</div>
+                  )}
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => filteredKeys.forEach(({ key }) => saveKey(key))}
+                    className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
+                    style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}
+                  >
+                    <Save size={13} />Save All
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
+            {/* ── ON-CHAIN ── */}
+            {section === 'onchain' && (
+              <motion.div key="onchain" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="space-y-4">
+                {!isConnected ? (
+                  <div className="rounded-2xl p-10 text-center" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                    <Zap size={24} className="mx-auto mb-3" style={{ color: 'var(--text2)' }} />
+                    <p className="text-sm mb-4" style={{ color: 'var(--text2)' }}>Connect wallet to manage on-chain settings</p>
+                    <ConnectKitButton />
+                  </div>
+                ) : (
+                  <>
+                    {wrong && (
+                      <div className="flex items-center gap-3 p-4 rounded-xl" style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.2)' }}>
+                        <AlertTriangle size={14} style={{ color: '#fbbf24' }} />
+                        <span className="text-sm" style={{ color: '#fbbf24' }}>Wrong network.</span>
+                        <button onClick={() => switchChain({ chainId: CHAIN_ID as any })} className="text-sm underline" style={{ color: '#fbbf24' }}>Switch to Arc Mainnet</button>
+                      </div>
+                    )}
+
+                    <SectionCard title="Fee Settings" icon={DollarSign} accent="#fb923c">
+                      <OnchainInput label="Creation Fee (USDC)" note={creationFee !== undefined ? `Current: $${n(creationFee) / 1e6} USDC` : ''} value={i('creationFee')} onChange={si('creationFee')} disabled={adminBusy} placeholder="10" onSet={() => adminCall('setCreationFee', [BigInt(Math.round(parseFloat(i('creationFee') || '0') * 1e6))])} />
+                      <OnchainInput label="Protocol Fee (bps, max 500)" note={feeBps !== undefined ? `Current: ${n(feeBps)} bps = ${n(feeBps) / 100}%` : ''} value={i('feeBps')} onChange={si('feeBps')} disabled={adminBusy} placeholder="100" onSet={() => adminCall('setProtocolFeeBps', [BigInt(i('feeBps') || '0')])} />
+                      <OnchainInput label="Creator Graduation Bonus (bps, max 2000)" note={creatorGradBps !== undefined ? `Current: ${n(creatorGradBps)} bps = ${n(creatorGradBps) / 100}%` : ''} value={i('creatorGradBps')} onChange={si('creatorGradBps')} disabled={adminBusy} placeholder="500" onSet={() => adminCall('setCreatorGraduationFeeBps', [BigInt(i('creatorGradBps') || '0')])} />
+                      <OnchainInput label="Graduation Threshold (USDC, min $1,000)" note={gradThresh !== undefined ? `Current: $${(n(gradThresh) / 1e6).toLocaleString()}` : ''} value={i('gradThresh')} onChange={si('gradThresh')} disabled={adminBusy} placeholder="69000" onSet={() => adminCall('setGraduationThreshold', [BigInt(Math.round(parseFloat(i('gradThresh') || '0') * 1e6))])} />
+                    </SectionCard>
+
+                    <SectionCard title="Anti-Bot Controls" icon={Sliders} accent="#6366f1">
+                      <OnchainInput label="Referral Fee (bps of protocol fee, max 5000)" note={referralBps !== undefined ? `Current: ${n(referralBps)} bps = ${n(referralBps) / 100}%` : ''} value={i('referralBps')} onChange={si('referralBps')} disabled={adminBusy} placeholder="2500" onSet={() => adminCall('setReferralFeeBps', [BigInt(i('referralBps') || '0')])} />
+                      <OnchainInput label="Anti-Snipe Duration (seconds)" note={antiSnipeDur !== undefined ? `Current: ${n(antiSnipeDur)}s` : ''} value={i('antiSnipeDur')} onChange={si('antiSnipeDur')} disabled={adminBusy} placeholder="60" onSet={() => adminCall('setAntiSnipeConfig', [BigInt(i('antiSnipeDur') || '0'), BigInt(i('antiSnipeTax') || n(antiSnipeTax ?? 500).toString())])} />
+                      <OnchainInput label="Anti-Snipe Tax (bps, max 2000)" note={antiSnipeTax !== undefined ? `Current: ${n(antiSnipeTax)} bps = ${n(antiSnipeTax) / 100}%` : ''} value={i('antiSnipeTax')} onChange={si('antiSnipeTax')} disabled={adminBusy} placeholder="500" onSet={() => adminCall('setAntiSnipeConfig', [BigInt(i('antiSnipeDur') || n(antiSnipeDur ?? 60).toString()), BigInt(i('antiSnipeTax') || '0')])} />
+                      <OnchainInput label="Max Buy per TX (bps of curve, 0=off)" note={maxBuyBps !== undefined ? `Current: ${n(maxBuyBps)} bps = ${n(maxBuyBps) / 100}%` : ''} value={i('maxBuyBps')} onChange={si('maxBuyBps')} disabled={adminBusy} placeholder="500" onSet={() => adminCall('setMaxBuyBps', [BigInt(i('maxBuyBps') || '0')])} />
+                      <OnchainInput label="Buy Cooldown (seconds, 0=off, max 300)" note={buyCooldown !== undefined ? `Current: ${n(buyCooldown)}s` : ''} value={i('buyCooldown')} onChange={si('buyCooldown')} disabled={adminBusy} placeholder="30" onSet={() => adminCall('setBuyCooldown', [BigInt(i('buyCooldown') || '0')])} />
+                      <OnchainInput label="Creator Lock Duration (seconds, max 2592000 = 30d)" note={creatorLock !== undefined ? `Current: ${n(creatorLock)}s = ${(n(creatorLock) / 86400).toFixed(1)} days` : ''} value={i('creatorLock')} onChange={si('creatorLock')} disabled={adminBusy} placeholder="604800" onSet={() => adminCall('setCreatorLockDuration', [BigInt(i('creatorLock') || '0')])} />
+                      <OnchainInput label="Per-Token Graduation Platform Fee (bps, max 500)" note={perGradBps !== undefined ? `Current: ${n(perGradBps)} bps = ${n(perGradBps) / 100}%` : ''} value={i('perGradBps')} onChange={si('perGradBps')} disabled={adminBusy} placeholder="100" onSet={() => adminCall('setPerTokenGraduationFeeBps', [BigInt(i('perGradBps') || '0')])} />
+                    </SectionCard>
+
+                    <SectionCard title="Recipients (Two-Step)" icon={Users} accent="#34d399">
+                      <p className="text-xs mb-4" style={{ color: 'var(--text2)' }}>Propose a new address — the new address must call <code className="text-xs px-1 py-0.5 rounded" style={{ background: 'var(--surface3)', color: 'var(--text1)' }}>acceptFeeRecipient()</code> or <code className="text-xs px-1 py-0.5 rounded" style={{ background: 'var(--surface3)', color: 'var(--text1)' }}>acceptGraduationRecipient()</code> to confirm.</p>
+                      <OnchainInput label="Propose Fee Recipient" note={feeRecipient ? `Current: ${formatAddress(feeRecipient as string)}` : ''} value={i('feeRecip')} onChange={si('feeRecip')} disabled={adminBusy} placeholder="0x..." onSet={() => adminCall('proposeFeeRecipient', [i('feeRecip') as `0x${string}`])} />
+                      <OnchainInput label="Propose Graduation Recipient" note={gradRecipient ? `Current: ${formatAddress(gradRecipient as string)}` : ''} value={i('gradRecip')} onChange={si('gradRecip')} disabled={adminBusy} placeholder="0x..." onSet={() => adminCall('proposeGraduationRecipient', [i('gradRecip') as `0x${string}`])} />
+                    </SectionCard>
+
+                    <SectionCard title="Blacklists" icon={Ban} accent="#f87171">
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-xs font-medium block mb-1.5" style={{ color: 'var(--text2)' }}>Token Address</label>
+                          <div className="flex gap-2">
+                            <input value={i('blToken')} onChange={e => setInp(s => ({ ...s, blToken: e.target.value }))} placeholder="0x..." className="flex-1 px-3 py-2 rounded-lg text-sm outline-none" style={{ background: 'var(--surface3)', border: '1px solid var(--border2)', color: 'var(--text1)' }} />
+                            <button onClick={() => adminCall('blacklistToken', [i('blToken') as `0x${string}`, true])} disabled={!i('blToken') || adminBusy} className="px-3 py-2 rounded-lg text-xs font-semibold disabled:opacity-40" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#f87171' }}>Block</button>
+                            <button onClick={() => adminCall('blacklistToken', [i('blToken') as `0x${string}`, false])} disabled={!i('blToken') || adminBusy} className="px-3 py-2 rounded-lg text-xs font-semibold disabled:opacity-40" style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.2)', color: '#34d399' }}>Allow</button>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium block mb-1.5" style={{ color: 'var(--text2)' }}>Wallet Address</label>
+                          <div className="flex gap-2">
+                            <input value={i('blWallet')} onChange={e => setInp(s => ({ ...s, blWallet: e.target.value }))} placeholder="0x..." className="flex-1 px-3 py-2 rounded-lg text-sm outline-none" style={{ background: 'var(--surface3)', border: '1px solid var(--border2)', color: 'var(--text1)' }} />
+                            <button onClick={() => adminCall('blacklistWallet', [i('blWallet') as `0x${string}`, true])} disabled={!i('blWallet') || adminBusy} className="px-3 py-2 rounded-lg text-xs font-semibold disabled:opacity-40" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#f87171' }}>Block</button>
+                            <button onClick={() => adminCall('blacklistWallet', [i('blWallet') as `0x${string}`, false])} disabled={!i('blWallet') || adminBusy} className="px-3 py-2 rounded-lg text-xs font-semibold disabled:opacity-40" style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.2)', color: '#34d399' }}>Allow</button>
+                          </div>
+                        </div>
+                      </div>
+                    </SectionCard>
+
+                    <SectionCard title="Emergency Controls" icon={Shield} accent="#a78bfa">
+                      <div className="flex gap-3">
+                        <button onClick={() => adminCall('pause', [])} disabled={!!paused || adminBusy} className="flex-1 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-40 transition-opacity hover:opacity-80" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.18)', color: '#f87171' }}>
+                          <Lock size={14} />Pause
+                        </button>
+                        <button onClick={() => adminCall('unpause', [])} disabled={!paused || adminBusy} className="flex-1 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-40 transition-opacity hover:opacity-80" style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.18)', color: '#34d399' }}>
+                          <Unlock size={14} />Unpause
+                        </button>
+                      </div>
+                      <div className="mt-3 text-center text-xs" style={{ color: 'var(--text2)' }}>
+                        Status: <span style={{ color: paused ? '#f87171' : '#34d399', fontWeight: 600 }}>{paused === undefined ? '...' : paused ? 'PAUSED' : 'Active'}</span>
+                      </div>
+                    </SectionCard>
+                  </>
+                )}
+              </motion.div>
+            )}
+
+            {/* ── TOKENS ── */}
+            {section === 'tokens' && (
+              <motion.div key="tokens" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="space-y-4">
+                <TokenMetadataEditor factoryAddress={FACTORY_ADDRESS} chainId={CHAIN_ID} />
+
+                <SectionCard title={`All Tokens (${tokenCountNum})`} icon={BarChart2} accent="#a78bfa">
+                  {!FACTORY_ADDRESS ? (
+                    <p className="text-sm py-4 text-center" style={{ color: 'var(--text2)' }}>Set FACTORY_ADDRESS in Configuration first.</p>
+                  ) : tokenCountNum === 0 ? (
+                    <p className="text-sm py-4 text-center" style={{ color: 'var(--text2)' }}>No tokens launched yet.</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {allTokens && [...(allTokens as unknown as string[])].reverse().map((addr, i) => (
+                        <div key={addr} className="flex items-center justify-between py-3 px-2 rounded-xl transition-colors hover:bg-white/[0.02]">
+                          <div className="flex items-center gap-3">
+                            <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0" style={{ background: `hsl(${parseInt(addr.slice(2,6),16)%360},55%,28%)`, color: 'white' }}>{i + 1}</div>
+                            <span className="text-xs font-mono" style={{ color: 'var(--text1)' }}>{formatAddress(addr)}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <a href={`/token/${addr}`} className="text-xs px-2.5 py-1 rounded-lg no-underline" style={{ background: 'rgba(99,102,241,0.1)', color: '#818cf8' }}>View</a>
+                            {EXPLORER_BASE && (
+                              <a href={`${EXPLORER_BASE}/address/${addr}`} target="_blank" rel="noreferrer" className="text-xs px-2.5 py-1 rounded-lg no-underline flex items-center gap-1" style={{ background: 'var(--surface2)', color: 'var(--text2)' }}>
+                                <ExternalLink size={9} />Exp
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </SectionCard>
+              </motion.div>
+            )}
+
+            {/* ── COMMENTS ── */}
+            {section === 'comments' && (
+              <motion.div key="comments" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+                <SectionCard title="Recent Comments" icon={MessageSquare} accent="#a78bfa">
+                  <AdminComments />
+                </SectionCard>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+    </motion.div>
   )
 }
 
+/* ── Comments sub-component ─────────────────────────────────────────────── */
 function AdminComments() {
   const [comments, setComments] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading]   = useState(true)
+  const { EXPLORER_BASE } = useConfig()
 
   useEffect(() => {
     fetch('/api/comments?limit=50')
-      .then(r => r.json())
-      .then((d: any) => { setComments(d.comments ?? []); setLoading(false) })
+      .then(r => r.json()).then((d: any) => { setComments(d.comments ?? []); setLoading(false) })
       .catch(() => setLoading(false))
   }, [])
 
   if (loading) return (
-    <div className="flex items-center justify-center py-12">
-      <Loader2 size={20} className="animate-spin" style={{ color: 'rgba(255,255,255,0.3)' }} />
+    <div className="flex items-center justify-center py-10">
+      <Loader2 size={18} className="animate-spin" style={{ color: 'var(--text3)' }} />
     </div>
   )
-
-  if (comments.length === 0) return (
-    <div className="p-8 text-center text-sm" style={{ color: 'rgba(255,255,255,0.3)' }}>No comments yet.</div>
-  )
+  if (!comments.length) return <p className="text-sm py-8 text-center" style={{ color: 'var(--text2)' }}>No comments yet.</p>
 
   return (
-    <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+    <div className="space-y-1">
       {comments.map(c => (
-        <div key={c.id} className="px-4 py-3">
-          <div className="flex items-center gap-2 mb-1">
+        <div key={c.id} className="px-3 py-3 rounded-xl" style={{ borderBottom: '1px solid var(--border)' }}>
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="text-xs font-mono" style={{ color: '#a78bfa' }}>{formatAddress(c.author)}</span>
-            <span className="text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>on</span>
-            <a href={`/token/${c.token_address}`} className="text-xs font-mono no-underline" style={{ color: 'rgba(255,255,255,0.4)' }}>{formatAddress(c.token_address)}</a>
-            <span className="text-xs ml-auto" style={{ color: 'rgba(255,255,255,0.2)' }}>{new Date(c.created_at).toLocaleString()}</span>
+            <span className="text-xs" style={{ color: 'var(--text3)' }}>on</span>
+            <a href={`/token/${c.token_address}`} className="text-xs font-mono no-underline" style={{ color: 'var(--text2)' }}>{formatAddress(c.token_address)}</a>
+            <span className="ml-auto text-xs" style={{ color: 'var(--text3)' }}>{new Date(c.created_at).toLocaleString()}</span>
           </div>
-          <p className="text-sm" style={{ color: 'rgba(255,255,255,0.7)' }}>{c.content}</p>
+          <p className="text-sm" style={{ color: 'var(--text1)' }}>{c.content}</p>
         </div>
       ))}
     </div>
   )
 }
 
-function TokenMetadataEditor({ factoryAddress, chainId }: { factoryAddress: `0x${string}` | undefined, chainId: number }) {
+/* ── Token Metadata Editor ───────────────────────────────────────────────── */
+function TokenMetadataEditor({ factoryAddress, chainId }: { factoryAddress: `0x${string}` | undefined; chainId: number }) {
   const [tokenAddr, setTokenAddr] = useState('')
-  const [imageUri, setImageUri] = useState('')
-  const [description, setDescription] = useState('')
-  const [twitter, setTwitter] = useState('')
-  const [telegram, setTelegram] = useState('')
-  const [website, setWebsite] = useState('')
+  const [fields, setFields]       = useState({ imageUri: '', description: '', twitter: '', telegram: '', website: '' })
   const { writeContract, data: hash, isPending } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
-
-  const isValid = tokenAddr.startsWith('0x') && tokenAddr.length === 42
-
-  function handleSave() {
-    if (!factoryAddress || !isValid) return
-    writeContract({
-      address: factoryAddress,
-      abi: FACTORY_ABI,
-      functionName: 'updateTokenMetadata',
-      args: [tokenAddr as `0x${string}`, imageUri, description, twitter, telegram, website],
-      chainId: chainId as any,
-    } as any)
-  }
+  const { isLoading: confirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+  const valid = tokenAddr.startsWith('0x') && tokenAddr.length === 42
 
   return (
-    <GlassCard className="overflow-hidden">
-      <div className="p-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        <div className="flex items-center gap-2">
-          <Image size={14} style={{ color: '#a78bfa' }} />
-          <span className="text-sm font-semibold text-white">Update Token Metadata On-Chain</span>
-        </div>
-        <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
-          Update logo, description and socials permanently on-chain. Changes reflect everywhere the CA is read — wallets, explorers, DEXes.
-        </p>
-      </div>
-      <div className="p-4 space-y-3">
+    <SectionCard title="Update Token Metadata" icon={Image} accent="#6366f1">
+      <p className="text-xs mb-4" style={{ color: 'var(--text2)' }}>Permanently update logo, description, and socials on-chain. Changes reflect everywhere the CA is read.</p>
+      <div className="space-y-3">
         <div>
-          <label className="text-xs mb-1 block" style={{ color: 'rgba(255,255,255,0.5)' }}>Token Contract Address</label>
-          <input value={tokenAddr} onChange={e => setTokenAddr(e.target.value)} placeholder="0x..." className="w-full rounded-lg px-3 py-2 text-sm text-white border outline-none font-mono" style={{ background: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.08)' }} />
+          <label className="text-xs font-medium block mb-1" style={{ color: 'var(--text2)' }}>Token Contract Address</label>
+          <input value={tokenAddr} onChange={e => setTokenAddr(e.target.value)} placeholder="0x..." className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono" style={{ background: 'var(--surface3)', border: '1px solid var(--border2)', color: 'var(--text1)' }} />
         </div>
         <div>
-          <label className="text-xs mb-1 block" style={{ color: 'rgba(255,255,255,0.5)' }}>Logo URL (use IPFS for permanence: ipfs://Qm...)</label>
-          <input value={imageUri} onChange={e => setImageUri(e.target.value)} placeholder="ipfs://Qm... or https://..." className="w-full rounded-lg px-3 py-2 text-sm text-white border outline-none" style={{ background: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.08)' }} />
+          <label className="text-xs font-medium block mb-1" style={{ color: 'var(--text2)' }}>Logo URL (IPFS preferred: ipfs://Qm...)</label>
+          <input value={fields.imageUri} onChange={e => setFields(f => ({ ...f, imageUri: e.target.value }))} placeholder="ipfs://Qm... or https://..." className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ background: 'var(--surface3)', border: '1px solid var(--border2)', color: 'var(--text1)' }} />
         </div>
         <div>
-          <label className="text-xs mb-1 block" style={{ color: 'rgba(255,255,255,0.5)' }}>Description</label>
-          <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Token description..." rows={2} className="w-full rounded-lg px-3 py-2 text-sm text-white border outline-none resize-none" style={{ background: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.08)' }} />
+          <label className="text-xs font-medium block mb-1" style={{ color: 'var(--text2)' }}>Description</label>
+          <textarea value={fields.description} onChange={e => setFields(f => ({ ...f, description: e.target.value }))} placeholder="Token description..." rows={2} className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none" style={{ background: 'var(--surface3)', border: '1px solid var(--border2)', color: 'var(--text1)' }} />
         </div>
         <div className="grid grid-cols-3 gap-2">
-          {[['Twitter','@handle',twitter,setTwitter],['Telegram','@group',telegram,setTelegram],['Website','https://...',website,setWebsite]].map(([label,ph,val,setter]) => (
-            <div key={label as string}>
-              <label className="text-xs mb-1 block" style={{ color: 'rgba(255,255,255,0.5)' }}>{label as string}</label>
-              <input value={val as string} onChange={e => (setter as (v:string)=>void)(e.target.value)} placeholder={ph as string} className="w-full rounded-lg px-3 py-2 text-sm text-white border outline-none" style={{ background: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.08)' }} />
+          {(['twitter','telegram','website'] as const).map(k => (
+            <div key={k}>
+              <label className="text-xs font-medium block mb-1 capitalize" style={{ color: 'var(--text2)' }}>{k}</label>
+              <input value={fields[k]} onChange={e => setFields(f => ({ ...f, [k]: e.target.value }))} placeholder={k === 'website' ? 'https://' : '@handle'} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ background: 'var(--surface3)', border: '1px solid var(--border2)', color: 'var(--text1)' }} />
             </div>
           ))}
         </div>
         {isSuccess && (
-          <div className="flex items-center gap-2 text-xs py-2 px-3 rounded-lg" style={{ background: 'rgba(34,197,94,0.1)', color: '#4ade80' }}>
-            <Check size={12} /> Metadata updated on-chain
+          <div className="flex items-center gap-2 text-xs py-2 px-3 rounded-lg" style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.15)', color: '#4ade80' }}>
+            <Check size={12} />Metadata updated on-chain successfully
           </div>
         )}
-        <button onClick={handleSave} disabled={!isValid || isPending || isConfirming || !factoryAddress} className="w-full py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-opacity disabled:opacity-40" style={{ background: 'linear-gradient(135deg,#7c3aed,#4f46e5)', color: 'white' }}>
-          {isPending || isConfirming ? <><Loader2 size={14} className="animate-spin" />Confirming...</> : <><Save size={14} />Save Metadata On-Chain</>}
+        <button
+          onClick={() => {
+            if (!factoryAddress || !valid) return
+            writeContract({ address: factoryAddress, abi: FACTORY_ABI, functionName: 'updateTokenMetadata', args: [tokenAddr as `0x${string}`, fields.imageUri, fields.description, fields.twitter, fields.telegram, fields.website], chainId: chainId as any } as any)
+          }}
+          disabled={!valid || isPending || confirming || !factoryAddress}
+          className="w-full py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-40 transition-opacity hover:opacity-90"
+          style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: 'white' }}
+        >
+          {isPending || confirming ? <><Loader2 size={14} className="animate-spin" />Confirming...</> : <><Save size={14} />Save Metadata On-Chain</>}
         </button>
       </div>
-    </GlassCard>
+    </SectionCard>
   )
 }
