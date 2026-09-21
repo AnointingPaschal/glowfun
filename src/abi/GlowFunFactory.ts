@@ -2,8 +2,8 @@
 export const FACTORY_ABI = [
   // ── View functions ────────────────────────────────────────────────────────
   { name: 'VERSION',            type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
-  { name: 'allTokens',          type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'address[]' }] },
-  { name: 'tokenCount',         type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { name: 'launchedTokensCount', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { name: 'launchedTokens',     type: 'function', stateMutability: 'view', inputs: [{ name: 'index', type: 'uint256' }], outputs: [{ type: 'address' }] },
   { name: 'getTokensPaginated', type: 'function', stateMutability: 'view',
     inputs: [{ name: 'offset', type: 'uint256' }, { name: 'limit', type: 'uint256' }],
     outputs: [{ name: 'result', type: 'address[]' }] },
@@ -54,25 +54,7 @@ export const FACTORY_ABI = [
   { name: 'getMarketCap',    type: 'function', stateMutability: 'view', inputs: [{ name: 'token', type: 'address' }], outputs: [{ type: 'uint256' }] },
   { name: 'getProgress',     type: 'function', stateMutability: 'view', inputs: [{ name: 'token', type: 'address' }], outputs: [{ type: 'uint256' }] },
   { name: 'isCreatorLocked', type: 'function', stateMutability: 'view', inputs: [{ name: 'token', type: 'address' }], outputs: [{ type: 'bool' }] },
-  { name: 'getConfig',       type: 'function', stateMutability: 'view', inputs: [],
-    outputs: [
-      { name: 'usdc_',                      type: 'address' },
-      { name: 'feeRecipient_',              type: 'address' },
-      { name: 'graduationRecipient_',       type: 'address' },
-      { name: 'graduationThreshold_',       type: 'uint256' },
-      { name: 'protocolFeeBps_',            type: 'uint256' },
-      { name: 'creationFee_',               type: 'uint256' },
-      { name: 'creatorGraduationFeeBps_',   type: 'uint256' },
-      { name: 'referralFeeBps_',            type: 'uint256' },
-      { name: 'antiSnipeDuration_',         type: 'uint256' },
-      { name: 'antiSnipeTaxBps_',           type: 'uint256' },
-      { name: 'maxBuyBps_',                 type: 'uint256' },
-      { name: 'buyCooldown_',               type: 'uint256' },
-      { name: 'creatorLockDuration_',       type: 'uint256' },
-      { name: 'perTokenGraduationFeeBps_',  type: 'uint256' },
-      { name: 'kingOfHill_',               type: 'address' },
-      { name: 'kingOfHillRaised_',          type: 'uint256' },
-    ] },
+  // V2: config read via individual public state vars (getConfig removed)
 
   // Config state
   { name: 'usdc',                     type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
@@ -125,11 +107,10 @@ export const FACTORY_ABI = [
   { name: 'buyTokens', type: 'function', stateMutability: 'nonpayable',
     inputs: [
       { name: 'token',        type: 'address' },
-      { name: 'usdcAmount',   type: 'uint256' },
       { name: 'minTokensOut', type: 'uint256' },
       { name: 'referrer',     type: 'address' },
     ],
-    outputs: [] },
+    outputs: [{ name: 'usdcIn', type: 'uint256' }, { name: 'tokensOut', type: 'uint256' }] },
 
   { name: 'sellTokens', type: 'function', stateMutability: 'nonpayable',
     inputs: [
@@ -154,6 +135,21 @@ export const FACTORY_ABI = [
   { name: 'unlockCreatorTokens',    type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'token', type: 'address' }], outputs: [] },
 
   // ── Admin ─────────────────────────────────────────────────────────────────
+  { name: 'updateConfig', type: 'function', stateMutability: 'nonpayable',
+    inputs: [{ name: 's', type: 'tuple', components: [
+      { name: 'graduationThreshold',     type: 'uint256' },
+      { name: 'protocolFeeBps',          type: 'uint256' },
+      { name: 'creationFee',             type: 'uint256' },
+      { name: 'creatorGraduationFeeBps', type: 'uint256' },
+      { name: 'referralFeeBps',          type: 'uint256' },
+      { name: 'antiSnipeDuration',       type: 'uint256' },
+      { name: 'antiSnipeTaxBps',         type: 'uint256' },
+      { name: 'maxBuyBps',               type: 'uint256' },
+      { name: 'buyCooldown',             type: 'uint256' },
+      { name: 'creatorLockDuration',     type: 'uint256' },
+      { name: 'perTokenGraduationFeeBps', type: 'uint256' },
+    ]}],
+    outputs: [] },
   { name: 'setProtocolFeeBps',           type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'bps', type: 'uint256' }], outputs: [] },
   { name: 'setCreationFee',              type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'fee', type: 'uint256' }], outputs: [] },
   { name: 'setGraduationThreshold',      type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'threshold', type: 'uint256' }], outputs: [] },
@@ -227,6 +223,7 @@ export const FACTORY_ABI = [
     { name: 'usdcRaised',  type: 'uint256', indexed: false },
     { name: 'timestamp',   type: 'uint256', indexed: false },
   ]},
+  { name: 'ConfigUpdated', type: 'event', inputs: [] },
   { name: 'ReferralEarned', type: 'event', inputs: [
     { name: 'referrer', type: 'address', indexed: true  },
     { name: 'token',    type: 'address', indexed: true  },

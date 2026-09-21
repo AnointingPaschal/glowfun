@@ -97,8 +97,9 @@ export function AdminPage() {
   const { data: kingOfHill } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'kingOfHill', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
   const { data: kingRaised } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'kingOfHillRaised', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
   const { data: paused } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'paused', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
-  const { data: tokenCount } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'tokenCount', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
-  const { data: allTokens } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'allTokens', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
+  const { data: tokenCount } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'launchedTokensCount', chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS } })
+  const tokenCountNum = tokenCount ? Number(tokenCount) : 0
+  const { data: allTokens } = useReadContract({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'getTokensPaginated', args: [BigInt(0), BigInt(tokenCountNum)], chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS && tokenCountNum > 0 } })
 
   // Onchain input state — existing
   const [creationFeeInput, setCreationFeeInput] = useState('')
@@ -522,10 +523,10 @@ export function AdminPage() {
             <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
               {!FACTORY_ADDRESS ? (
                 <div className="p-8 text-center text-sm" style={{ color: 'rgba(255,255,255,0.3)' }}>Set FACTORY_ADDRESS in Configuration tab first.</div>
-              ) : !allTokens || (allTokens as string[]).length === 0 ? (
+              ) : !allTokens || (allTokens as unknown as string[]).length === 0 ? (
                 <div className="p-8 text-center text-sm" style={{ color: 'rgba(255,255,255,0.3)' }}>No tokens launched yet.</div>
               ) : (
-                [...(allTokens as string[])].reverse().map((addr, i) => (
+                [...(allTokens as unknown as string[])].reverse().map((addr, i) => (
                   <div key={addr} className="flex items-center justify-between px-4 py-3">
                     <div className="flex items-center gap-3">
                       <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold" style={{ background: `hsl(${parseInt(addr.slice(2,6),16)%360},60%,35%)`, color: 'white' }}>{i + 1}</div>
