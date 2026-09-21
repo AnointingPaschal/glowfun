@@ -144,7 +144,7 @@ async function dbSave(tokens:Token[],env:Env){
         t.priceUsd,t.change5m??null,t.change1h??null,t.change6h??null,t.change24h??null,
         t.liqUsd,t.volUsd,t.mcapUsd,t.ageSec,t.buys24h,t.sells24h,t.txns5m,t.vol5m,
         t.dexId,t.updatedAt
-      ))
+      )))
     }
   } catch(e){console.error('[D1]',e)}
 }
