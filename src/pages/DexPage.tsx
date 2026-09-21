@@ -134,7 +134,7 @@ function TokenRow({token,onClick}:{token:Token;onClick:()=>void}){
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[13px] font-bold leading-tight" style={{color:'#111827'}}>{token.symbol}</span>
-            {token.age!=null&&<span className="text-[9px] font-semibold" style={{color:'#16a34a'}}>▼{fA(token.age)}</span>}
+            {token.age!=null&&<span className="text-[9px] font-semibold" style={{color:'#16a34a'}}><span style={{fontSize:10}}>🌱</span>{fA(token.age)}</span>}
             {score!=null&&(
               <span className="text-[8px] font-bold px-1 py-px rounded flex items-center gap-0.5" style={{background:'#fef9c3',color:'#854d0e',border:'1px solid #fde68a'}}>
                 ⚡{score}
@@ -402,9 +402,9 @@ export function TrendingPage(){
             </div>
           ))
           :displayed.length===0
-            ?<div className="py-12 text-center"><p className="text-sm font-medium" style={{color:'#9ca3af'}}>{search?'No matching tokens':'No tokens found — fetching from DexScreener…'}</p></div>
+            ?<div className="py-12 text-center"><p className="text-sm font-medium" style={{color:'#9ca3af'}}>{search?'No matching tokens':'No tokens found'}</p></div>
             :displayed.map((t,i)=><TokenRow key={`${t.chain}:${t.address}:${i}`} token={t} onClick={()=>navigate(`/dex/${t.address}`,{state:{token:t}})}/>)}
-        {silent&&<div className="flex items-center justify-center gap-1.5 py-2 text-[9px]" style={{color:'#9ca3af'}}><Loader2 size={9} className="animate-spin"/>Refreshing from DexScreener…</div>}
+        {silent&&<div className="flex items-center justify-center gap-1.5 py-2 text-[9px]" style={{color:'#9ca3af'}}><Loader2 size={9} className="animate-spin"/>Refreshing…</div>}
       </div>
 
       {/* ── Sheets ─────────────────────────────────────────── */}

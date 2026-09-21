@@ -179,19 +179,80 @@ function sortByTab(tokens:Token[], tab:string): Token[] {
 }
 
 /* ── Main fetch → save → return ─────────────────────────────────────── */
+/* ── GeckoTerminal discovery (supplements DexScreener) ──────────────────── */
+const GT_NETS: Record<string,string> = {
+  arc:'arc', ethereum:'eth', solana:'solana', bsc:'bsc', base:'base',
+  polygon:'polygon_pos', avalanche:'avax', arbitrum:'arbitrum',
+  optimism:'optimism', hyperevm:'hyperevm',
+}
+
+function normGT(pool: any, net: string): Token | null {
+  const a = pool.attributes ?? {}
+  const baseId = pool.relationships?.base_token?.data?.id ?? ''
+  const addr = (baseId.includes('_') ? baseId.split('_').slice(1).join('_') : '').toLowerCase()
+  if (!addr) return null
+  const sym = (a.name ?? '').split(' / ')[0] || '?'
+  const cid = net === 'eth' ? 'ethereum' : net === 'polygon_pos' ? 'polygon' : net === 'avax' ? 'avalanche' : net
+  return {
+    address: addr, name: a.name ?? sym, symbol: sym, chain: cid,
+    logoUrl: a.base_token_image_url ?? `https://dd.dexscreener.com/ds-data/tokens/${cid}/${addr}.png`,
+    chainLogoUrl: `https://dd.dexscreener.com/ds-data/chains/${cid}.png`,
+    dexLogoUrl: '',
+    priceUsd:    parseFloat(a.base_token_price_usd ?? '0') || 0,
+    change5m:    a.price_change_percentage?.m5  != null ? parseFloat(a.price_change_percentage.m5)  : undefined,
+    change1h:    a.price_change_percentage?.h1  != null ? parseFloat(a.price_change_percentage.h1)  : undefined,
+    change6h:    a.price_change_percentage?.h6  != null ? parseFloat(a.price_change_percentage.h6)  : undefined,
+    change24h:   a.price_change_percentage?.h24 != null ? parseFloat(a.price_change_percentage.h24) : undefined,
+    liquidityUsd: parseFloat(a.reserve_in_usd ?? '0') || undefined,
+    volumeUsd:    parseFloat(a.volume_usd?.h24 ?? '0') || undefined,
+    vol5m:        parseFloat(a.volume_usd?.m5 ?? '0')  || undefined,
+    txns5m:       (a.transactions?.m5?.buys ?? 0) + (a.transactions?.m5?.sells ?? 0) || undefined,
+    mcapUsd:      parseFloat(a.fdv_usd ?? '0') || undefined,
+    age:          a.pool_created_at ? Math.floor((Date.now() - new Date(a.pool_created_at).getTime()) / 1000) : undefined,
+    buys24h: a.transactions?.h24?.buys, sells24h: a.transactions?.h24?.sells,
+    pairAddress: (a.address ?? '').toLowerCase(), dexId: undefined,
+    source: 'live', updatedAt: Date.now(),
+  }
+}
+
+async function fetchGeckoTerminal(chain: string): Promise<Token[]> {
+  const nets = chain === 'all' ? Object.entries(GT_NETS) : [[chain, GT_NETS[chain] ?? chain]].filter(([,v])=>v)
+  const tokens: Token[] = []
+  for (const [chainKey, net] of nets.slice(0, 6)) {
+    const urls = [
+      ...[1,2,3,4,5].map(p=>`https://api.geckoterminal.com/api/v2/networks/${net}/trending_pools?page=${p}`),
+      ...[1,2,3,4,5].map(p=>`https://api.geckoterminal.com/api/v2/networks/${net}/new_pools?page=${p}`),
+      ...[1,2,3].map(p=>`https://api.geckoterminal.com/api/v2/networks/${net}/pools?page=${p}&sort=h24_volume_usd_liquidity_desc`),
+    ]
+    const results = await Promise.allSettled(
+      urls.map(u => fetch(u, {signal: AbortSignal.timeout(8_000)})
+        .then(r=>r.ok?r.json():{data:[]}).then((d:any)=>d.data??[]).catch(()=>[]))
+    )
+    for (const r of results) {
+      if (r.status !== 'fulfilled') continue
+      for (const pool of r.value) {
+        const t = normGT(pool, net)
+        if (t && !tokens.some(x=>x.address===t.address&&x.chain===t.chain)) tokens.push(t)
+      }
+    }
+  }
+  return tokens
+}
+
 async function fetchFresh(chain: string, env: Env): Promise<Token[]> {
   // 1. Load existing tokens from D1 (our permanent store)
   const existing = await d1Load(chain, env)
   const map = new Map<string,Token>()
   existing.forEach(t => map.set(`${t.chain}:${t.address}`, t))
 
-  // 2. Discover new tokens from DexScreener
+  // 2. Discover from BOTH DexScreener AND GeckoTerminal simultaneously
   const addrs = await fetchBoostProfiles(chain)
   const queries = CHAIN_QUERIES[chain] ?? CHAIN_QUERIES.all
 
-  const [fromAddrs, fromSearch] = await Promise.allSettled([
+  const [fromAddrs, fromSearch, fromGecko] = await Promise.allSettled([
     fetchByAddresses(addrs, chain),
     fetchBySearch(queries, chain),
+    fetchGeckoTerminal(chain),   // ← GeckoTerminal: 13 pages × N chains
   ])
 
   // 3. Merge new pairs into existing map (new data overwrites old prices)
@@ -200,12 +261,19 @@ async function fetchFresh(chain: string, env: Env): Promise<Token[]> {
     ...(fromSearch.status==='fulfilled'?fromSearch.value:[]),
   ]
   let added=0
+  // Merge DexScreener pairs
   for (const p of allPairs) {
     if (!matchChain(p.chainId??'',chain)) continue
     const t=normDS(p,chain); if (!t) continue
     const key=`${t.chain}:${t.address}`
     const ex=map.get(key)
     if (!ex||(t.volumeUsd??0)>=(ex.volumeUsd??0)) { if(!ex)added++; map.set(key,t) }
+  }
+  // Merge GeckoTerminal tokens (fill gaps DS doesn't cover, DS data wins on overlap)
+  const geckoTokens = fromGecko.status==='fulfilled' ? fromGecko.value : []
+  for (const t of geckoTokens) {
+    const key=`${t.chain}:${t.address}`
+    if (!map.has(key)) { map.set(key,t); added++ }  // GT only fills gaps
   }
 
   console.log(`[${chain}] existing=${existing.length} new=${added} total=${map.size}`)

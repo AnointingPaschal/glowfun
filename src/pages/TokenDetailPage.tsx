@@ -245,7 +245,7 @@ export function TokenDetailPage() {
             </div>
           </div>
           <p className="text-xs mb-3" style={{ color: '#9ca3af' }}>
-            Updated {ageFmt(token.age)} ago · DexScreener + GeckoTerminal · Arc Mainnet
+
           </p>
 
           {/* Change pills row */}
@@ -288,7 +288,6 @@ export function TokenDetailPage() {
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs" style={{ color: '#6b7280' }}>
             {token.change24h != null && <span className="font-semibold" style={{ color: ch24Pos ? '#16a34a' : '#dc2626' }}>24H {ch24Pos?'+':''}{token.change24h.toFixed(2)}%</span>}
             {token.change1h != null && <span>· 1H {token.change1h>=0?'+':''}{token.change1h.toFixed(2)}%</span>}
-            {token.pairAddress && <a href={`https://dexscreener.com/arc/${token.pairAddress}`} target="_blank" rel="noopener" className="underline font-medium" style={{ color: '#6366f1' }}>· View on DexScreener</a>}
           </div>
         </div>
 
@@ -429,7 +428,7 @@ export function TokenDetailPage() {
           { k: 'Pair Contract',  v: token.pairAddress, copy: true },
           { k: 'DEX Protocol',   v: token.dexId || '—' },
           { k: 'Blockchain',     v: 'Arc Mainnet' },
-          { k: 'Data Source',    v: token.source || 'DexScreener + GeckoTerminal' },
+
           { k: 'Change 5M',      v: pct(token.change5m) ?? '—' },
           { k: 'Change 1H',      v: pct(token.change1h) ?? '—' },
           { k: 'Change 6H',      v: pct(token.change6h) ?? '—' },
