@@ -287,28 +287,32 @@ export function LaunchPage() {
           {/* ── 1. Coin Details ── */}
           <Section title="Coin Details" sub="The basics — name, ticker, image and description" icon={Sparkles} color="#818cf8">
 
-            {/* Image + Name/Ticker */}
-            <div className="flex gap-4 mb-4">
-              <div className="flex-shrink-0">
-                <Field label="Logo"><div className="w-28"><ImageUpload value={form.imageUri} onChange={url=>setForm(f=>({...f,imageUri:url}))}/></div></Field>
-              </div>
-              <div className="flex-1 min-w-0 space-y-3">
-                <div className="grid grid-cols-2 gap-2.5">
-                  <Field label="Name" required tip="Full token name, up to 64 characters.">
-                    <input className={inputCls} style={inputSty} placeholder="e.g. Glow Cat" value={form.name} onChange={up('name')} maxLength={64}/>
-                  </Field>
-                  <Field label="Ticker" required tip="Symbol shown in wallets and DEXes. Auto-uppercased. Max 12 chars.">
-                    <input className={`${inputCls} uppercase font-mono tracking-widest`} style={inputSty} placeholder="GCAT" value={form.symbol} onChange={up('symbol')} maxLength={12}/>
-                  </Field>
+            {/* Logo upload — full width, centered */}
+            <div className="flex flex-col items-center mb-4">
+              <Field label="Token Logo">
+                <div className="w-32 mx-auto"><ImageUpload value={form.imageUri} onChange={url=>setForm(f=>({...f,imageUri:url}))}/></div>
+              </Field>
+            </div>
+
+            {/* Name + Ticker side by side */}
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <Field label="Name" required tip="Full token name, up to 64 characters.">
+                <input className={inputCls} style={inputSty} placeholder="e.g. Glow Cat" value={form.name} onChange={up('name')} maxLength={64}/>
+              </Field>
+              <Field label="Ticker" required tip="Symbol shown in wallets and DEXes. Auto-uppercased.">
+                <input className={`${inputCls} uppercase font-mono tracking-widest`} style={inputSty} placeholder="GCAT" value={form.symbol} onChange={up('symbol')} maxLength={12}/>
+              </Field>
+            </div>
+
+            {/* Description full width */}
+            <div className="mb-4">
+              <Field label="Description" tip="Shown on your token page. Max 500 chars.">
+                <div className="relative">
+                  <textarea className={`${inputCls} resize-none`} style={{...inputSty,minHeight:88}} rows={3}
+                    placeholder="Tell people what makes your token special…" value={form.description} onChange={up('description') as any} maxLength={500}/>
+                  <span className="absolute bottom-2 right-3 text-[8px] tabular-nums" style={{color:'var(--text3)'}}>{form.description.length}/500</span>
                 </div>
-                <Field label="Description" tip="Shown on your token page. Max 500 chars.">
-                  <div className="relative">
-                    <textarea className={`${inputCls} resize-none`} style={{...inputSty,minHeight:76}} rows={3}
-                      placeholder="Tell people what makes your token special…" value={form.description} onChange={up('description') as any} maxLength={500}/>
-                    <span className="absolute bottom-2 right-3 text-[8px] tabular-nums" style={{color:'var(--text3)'}}>{form.description.length}/500</span>
-                  </div>
-                </Field>
-              </div>
+              </Field>
             </div>
 
             {/* Socials toggle */}
@@ -481,6 +485,56 @@ export function LaunchPage() {
             )}
             {isConnected&&needApprove&&!busy&&<p className="text-center text-[10px]" style={{color:'var(--text3)'}}>Step 1 of 2 · approve USDC, then launch fires automatically</p>}
           </div>
+
+          {/* ── Launch Summary ── */}
+          <div className="rounded-2xl overflow-hidden" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
+            <div className="px-5 py-3" style={{borderBottom:'1px solid var(--border)'}}>
+              <span className="text-[9px] font-bold uppercase tracking-[0.18em]" style={{color:'var(--text3)'}}>Launch Summary</span>
+            </div>
+            <div className="p-5">
+              <div className="grid grid-cols-2 gap-x-8 gap-y-0">
+                {[
+                  {k:'Network',   v:'Arc Mainnet'},
+                  {k:'Currency',  v:'USDC'},
+                  {k:'Supply',    v:fmt(supply)},
+                  {k:'Curve',     v:`${curvePct.toFixed(0)}%`},
+                  {k:'Creator',   v:`${creatorPct.toFixed(0)}%`, hi:creatorBps>0},
+                  {k:'DEX Liq.',  v:`${dexPct.toFixed(1)}%`},
+                  {k:'Graduates', v:gradLabel, hi:true},
+                  ...(fee>0n?[{k:'Launch fee',v:fmtUsdc(fee),hi:false}]:[]),
+                ].map(({k,v,hi})=>(
+                  <div key={k} className="flex justify-between items-center py-2 border-b text-xs" style={{borderColor:'var(--border)'}}>
+                    <span style={{color:'var(--text2)'}}>{k}</span>
+                    <span className="font-semibold tabular-nums" style={{color:(hi??false)?'#818cf8':'var(--text1)'}}>{v}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* ── Checklist ── */}
+          <div className="rounded-2xl p-5" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
+            <span className="text-[9px] font-bold uppercase tracking-[0.18em] block mb-3" style={{color:'var(--text3)'}}>Checklist</span>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              {[
+                {l:'Name set',         done:!!form.name.trim()},
+                {l:'Ticker set',       done:!!form.symbol.trim()},
+                {l:'Logo uploaded',    done:!!form.imageUri},
+                {l:'Description',      done:!!form.description.trim()},
+                {l:'Social links',     done:!!(form.twitter||form.telegram||form.website)},
+                {l:'Wallet connected', done:isConnected},
+                {l:'Enough USDC',      done:fee===0n||usdcBalance>=fee},
+              ].map(({l,done})=>(
+                <div key={l} className="flex items-center gap-2 py-1.5">
+                  <div className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 transition-all"
+                    style={{background:done?'rgba(34,197,94,0.12)':'var(--surface2)',border:`1px solid ${done?'rgba(34,197,94,0.3)':'var(--border)'}`}}>
+                    {done&&<Check size={8} style={{color:'var(--green)'}}/>}
+                  </div>
+                  <span className="text-[10px]" style={{color:done?'var(--text1)':'var(--text3)'}}>{l}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* ═══ PREVIEW COLUMN ════════════════════════════════════ */}
@@ -523,41 +577,6 @@ export function LaunchPage() {
             </div>
           </div>
 
-          {/* Launch summary */}
-          <div className="rounded-2xl overflow-hidden" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
-            <div className="px-4 py-2.5" style={{borderBottom:'1px solid var(--border)'}}><span className="text-[8.5px] font-bold uppercase tracking-[0.15em]" style={{color:'var(--text3)'}}>Summary</span></div>
-            <div className="p-4 divide-y" style={{borderColor:'var(--border)'}}>
-              {[
-                {k:'Network',v:'Arc Mainnet'},{k:'Currency',v:'USDC'},{k:'Supply',v:fmt(supply)},
-                {k:'Curve',v:`${curvePct.toFixed(0)}%`},{k:'Creator',v:`${creatorPct.toFixed(0)}%`,hi:creatorBps>0},
-                {k:'DEX Liq.',v:`${dexPct.toFixed(1)}%`},{k:'Graduates',v:gradLabel,hi:true},
-                ...(fee>0n?[{k:'Launch fee',v:fmtUsdc(fee),hi:false}]:[]),
-              ].map(({k,v,hi})=>(
-                <div key={k} className="flex justify-between py-1.5 text-xs"><span style={{color:'var(--text2)'}}>{k}</span><span className="font-semibold" style={{color:hi?'#818cf8':'var(--text1)'}}>{v}</span></div>
-              ))}
-            </div>
-          </div>
-
-          {/* Checklist */}
-          <div className="rounded-2xl p-4" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
-            <span className="text-[8.5px] font-bold uppercase tracking-[0.15em] block mb-3" style={{color:'var(--text3)'}}>Checklist</span>
-            {[
-              {l:'Name set',           done:!!form.name.trim()},
-              {l:'Ticker set',         done:!!form.symbol.trim()},
-              {l:'Logo uploaded',      done:!!form.imageUri},
-              {l:'Description',        done:!!form.description.trim()},
-              {l:'Social links',       done:!!(form.twitter||form.telegram||form.website)},
-              {l:'Wallet connected',   done:isConnected},
-              {l:'Enough USDC',        done:fee===0n||usdcBalance>=fee},
-            ].map(({l,done})=>(
-              <div key={l} className="flex items-center gap-2 py-1">
-                <div className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 transition-all" style={{background:done?'rgba(34,197,94,0.12)':'var(--surface2)',border:`1px solid ${done?'rgba(34,197,94,0.3)':'var(--border)'}`}}>
-                  {done&&<Check size={8} style={{color:'var(--green)'}}/>}
-                </div>
-                <span className="text-[10px]" style={{color:done?'var(--text1)':'var(--text3)'}}>{l}</span>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
     </div>
