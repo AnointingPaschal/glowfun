@@ -278,7 +278,7 @@ contract GlowFunFactory_V2 is Ownable, ReentrancyGuard, Pausable {
         address indexed token, address indexed creator,
         string name, string symbol,
         uint256 totalSupply, uint256 curveTokens, uint256 graduationTokens,
-        uint256 creatorTokens, uint256 graduationThreshold, uint256 timestamp
+        uint256 creatorTokens, uint256 graduationThreshold_, uint256 timestamp
     );
     event TokensBought(
         address indexed token, address indexed buyer, address indexed referrer,
