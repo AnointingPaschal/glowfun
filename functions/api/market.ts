@@ -145,10 +145,23 @@ async function dbSave(tokens: Token[], env: Env) {
 }
 
 /* ── DexScreener Arc discovery ────────────────────────────────────────── */
+// USDC is the base pair on Arc for virtually ALL tokens — key to getting them all
 const ARC_QUERIES = [
-  'arc','USDC arc','glow arc','cat arc','dog arc','inu arc','meme arc',
-  'ai arc','fun arc','token arc','pump arc','pepe arc','moon arc','baby arc',
-  'defi arc','nft arc','dao arc','swap arc','usdt arc','weth arc',
+  // Primary: USDC hits ALL Arc token/USDC pairs
+  'USDC','usdc',
+  // Arc-specific searches
+  'arc','ARC',
+  // Single letters — returns tokens starting with each letter on Arc
+  'a','b','c','d','e','f','g','h','i','j','k','l','m',
+  'n','o','p','q','r','s','t','u','v','w','x','y','z',
+  // Common meme/crypto terms Arc users use
+  'cat','dog','inu','meme','glow','fun','pump','ai','moon',
+  'baby','mini','pepe','shib','doge','nft','defi','dao',
+  'gm','wagmi','bull','bear','token','coin','swap',
+  // Arc token prefixes seen in DexScreener
+  'arcat','arcflow','arcfun','arcade','arcinu','arcdoge',
+  'arcoon','arcanine','arcash','arcveil','arckit','arcus','arcx',
+  'bcat','gdog','gcat','longcat','upcat','ucat',
 ]
 
 async function discoverArcAddresses(): Promise<Set<string>> {
@@ -362,9 +375,9 @@ export const onRequest: PagesFunction<Env> = async (ctx) => {
       tokens = sortTokens(fresh, tab)
       ctx.waitUntil(Promise.allSettled([
         dbSave(fresh, env),
-        env.CONFIG?.put(`arc:tokens:trending`, JSON.stringify(sortTokens(fresh,'trending')), {expirationTtl:300}),
-        env.CONFIG?.put(`arc:tokens:new`,      JSON.stringify(sortTokens(fresh,'new')),      {expirationTtl:300}),
-        env.CONFIG?.put(`arc:tokens:top`,      JSON.stringify(sortTokens(fresh,'top')),      {expirationTtl:300}),
+        env.CONFIG?.put(`arc:tokens:trending`, JSON.stringify(sortTokens(fresh,'trending')), {expirationTtl:60}),
+        env.CONFIG?.put(`arc:tokens:new`,      JSON.stringify(sortTokens(fresh,'new')),      {expirationTtl:15}),  // 15s for real-time
+        env.CONFIG?.put(`arc:tokens:top`,      JSON.stringify(sortTokens(fresh,'top')),      {expirationTtl:60}),
       ]))
     }
   }
@@ -378,5 +391,6 @@ export const onRequest: PagesFunction<Env> = async (ctx) => {
   const vol5m  = tokens.reduce((s,t)=>s+(t.vol5m||0),0)
   const txns   = tokens.reduce((s,t)=>s+(t.txns5m||0),0)
 
-  return j({success:true,data:{tokens:result,total,page,limit,stats:{vol5m,txns}}})
+  const newestAgeSec = result.length ? Math.min(...result.map(t=>t.ageSec||999999)) : 0
+  return j({success:true,data:{tokens:result,total,page,limit,stats:{vol5m,txns},newestAgeSec,fetchedAt:Date.now()}})
 }
