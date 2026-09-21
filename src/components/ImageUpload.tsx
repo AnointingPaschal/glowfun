@@ -1,6 +1,6 @@
-import { useState, useRef, useCallback } from 'react'
-import { Upload, X, Link, Loader2, Image } from 'lucide-react'
-import { toast } from 'sonner'
+import { useRef, useState, useCallback } from 'react'
+import { Upload, Link, X, CheckCircle, Loader2, Globe } from 'lucide-react'
+import { clsx } from 'clsx'
 
 interface ImageUploadProps {
   value: string
@@ -8,134 +8,237 @@ interface ImageUploadProps {
   label?: string
 }
 
-export function ImageUpload({ value, onChange, label = 'Token Logo' }: ImageUploadProps) {
-  const [mode, setMode] = useState<'upload' | 'url'>('upload')
-  const [dragging, setDragging] = useState(false)
-  const [uploading, setUploading] = useState(false)
+type UploadMode = 'upload' | 'url'
+type UploadState = 'idle' | 'uploading' | 'ipfs' | 'r2' | 'error'
+
+const IPFS_GATEWAYS = [
+  'https://gateway.pinata.cloud/ipfs/',
+  'https://ipfs.io/ipfs/',
+  'https://cloudflare-ipfs.com/ipfs/',
+]
+
+export function resolveImageUrl(url: string): string {
+  if (!url) return ''
+  if (url.startsWith('ipfs://')) {
+    const hash = url.slice(7)
+    return `${IPFS_GATEWAYS[0]}${hash}`
+  }
+  return url
+}
+
+export default function ImageUpload({ value, onChange, label = 'Token Logo' }: ImageUploadProps) {
+  const [mode, setMode] = useState<UploadMode>('upload')
   const [urlInput, setUrlInput] = useState('')
+  const [uploadState, setUploadState] = useState<UploadState>('idle')
+  const [uploadedHash, setUploadedHash] = useState('')
+  const [error, setError] = useState('')
+  const [dragOver, setDragOver] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const upload = useCallback(async (file: File) => {
-    if (!file.type.startsWith('image/')) { toast.error('Please select an image file.'); return }
-    if (file.size > 5 * 1024 * 1024) { toast.error('Logo must be under 5MB.'); return }
+  const displayUrl = resolveImageUrl(value)
 
-    setUploading(true)
+  const uploadFile = useCallback(async (file: File) => {
+    setError('')
+    setUploadState('uploading')
+
     try {
-      const fd = new FormData()
-      fd.append('file', file)
-      const res = await fetch('/api/upload', { method: 'POST', body: fd })
-      const data = await res.json() as { ok?: boolean; url?: string; error?: string }
-      if (data.ok && data.url) {
-        onChange(data.url)
-        toast.success('Logo uploaded!')
-      } else {
-        // Fallback: use object URL for preview (won't persist after page close)
-        const objectUrl = URL.createObjectURL(file)
-        onChange(objectUrl)
-        toast.info('Using local preview. R2 upload will activate after Cloudflare setup.')
+      // Try IPFS first
+      const form = new FormData()
+      form.append('file', file)
+      const ipfsRes = await fetch('/api/ipfs', { method: 'POST', body: form })
+
+      if (ipfsRes.ok) {
+        const { ipfsHash, ipfsUrl } = await ipfsRes.json() as { ipfsHash: string; ipfsUrl: string }
+        setUploadedHash(ipfsHash)
+        setUploadState('ipfs')
+        onChange(ipfsUrl) // store ipfs:// URL — permanent
+        return
       }
-    } catch {
-      const objectUrl = URL.createObjectURL(file)
-      onChange(objectUrl)
-      toast.info('Using local preview — R2 not configured yet.')
-    } finally {
-      setUploading(false)
+
+      // Fallback to R2
+      const r2Form = new FormData()
+      r2Form.append('file', file)
+      const r2Res = await fetch('/api/upload', { method: 'POST', body: r2Form })
+
+      if (r2Res.ok) {
+        const { url } = await r2Res.json() as { url: string }
+        setUploadState('r2')
+        onChange(url)
+        return
+      }
+
+      // Last resort: local object URL (preview only)
+      const localUrl = URL.createObjectURL(file)
+      setUploadState('idle')
+      onChange(localUrl)
+      setError('Stored locally for preview. Set PINATA_JWT in admin for permanent IPFS storage.')
+    } catch (e) {
+      setUploadState('error')
+      setError('Upload failed. Check your PINATA_JWT in Admin → Keys & APIs.')
     }
   }, [onChange])
 
-  const onDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault(); setDragging(false)
+  const handleFile = useCallback((file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setError('Please select an image file')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError('File must be under 5MB')
+      return
+    }
+    uploadFile(file)
+  }, [uploadFile])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
     const file = e.dataTransfer.files[0]
-    if (file) upload(file)
-  }, [upload])
+    if (file) handleFile(file)
+  }, [handleFile])
 
-  const onFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) upload(file)
-  }, [upload])
+  const handleUrlSubmit = useCallback(() => {
+    const url = urlInput.trim()
+    if (!url) return
+    // Normalize ipfs:// URLs
+    if (url.startsWith('ipfs://') || url.startsWith('https://') || url.startsWith('http://')) {
+      onChange(url)
+      setUrlInput('')
+    } else {
+      setError('Enter a valid URL (https://) or IPFS URI (ipfs://...)')
+    }
+  }, [urlInput, onChange])
 
-  const applyUrl = () => {
-    const u = urlInput.trim()
-    if (!u) return
-    if (!u.startsWith('http')) { toast.error('Enter a valid URL starting with http(s)://'); return }
-    onChange(u)
-    toast.success('Logo URL set.')
-  }
-
-  const clear = () => { onChange(''); setUrlInput('') }
+  const clear = useCallback(() => {
+    onChange('')
+    setUploadedHash('')
+    setUploadState('idle')
+    setError('')
+    if (fileRef.current) fileRef.current.value = ''
+  }, [onChange])
 
   return (
     <div className="space-y-2">
-      {/* Mode tabs */}
-      <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
-        {(['upload', 'url'] as const).map(m => (
-          <button key={m} onClick={() => setMode(m)}
-            className="px-3 py-1 rounded-lg text-xs font-medium transition-all"
-            style={{
-              background: mode === m ? 'rgba(139,92,246,0.18)' : 'transparent',
-              color: mode === m ? '#a78bfa' : 'rgba(255,255,255,0.4)',
-            }}>
-            {m === 'upload' ? <><Upload size={10} style={{ display: 'inline', marginRight: 4 }} />Upload</> : <><Link size={10} style={{ display: 'inline', marginRight: 4 }} />URL</>}
-          </button>
-        ))}
+      <label className="text-xs font-semibold text-white/60 uppercase tracking-wider">{label}</label>
+
+      {/* Mode toggle */}
+      <div className="flex gap-1 p-1 bg-white/5 rounded-lg w-fit">
+        <button
+          type="button"
+          onClick={() => setMode('upload')}
+          className={clsx(
+            'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all',
+            mode === 'upload' ? 'bg-purple-600 text-white' : 'text-white/50 hover:text-white/80'
+          )}
+        >
+          <Upload className="w-3 h-3" /> Upload
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode('url')}
+          className={clsx(
+            'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all',
+            mode === 'url' ? 'bg-purple-600 text-white' : 'text-white/50 hover:text-white/80'
+          )}
+        >
+          <Link className="w-3 h-3" /> URL / IPFS
+        </button>
       </div>
 
       <div className="flex gap-3 items-start">
-        {/* Preview square */}
-        <div className="w-20 h-20 rounded-2xl flex-shrink-0 overflow-hidden flex items-center justify-center"
-          style={{ background: 'rgba(255,255,255,0.05)', border: value ? '2px solid rgba(139,92,246,0.3)' : '1.5px dashed rgba(255,255,255,0.1)' }}>
-          {value ? (
-            <img src={value} alt="logo" className="w-full h-full object-cover" onError={() => onChange('')} />
-          ) : (
-            <Image size={22} style={{ color: 'rgba(255,255,255,0.15)' }} />
+        {/* Preview */}
+        <div className="relative flex-shrink-0">
+          <div className="w-20 h-20 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center">
+            {displayUrl ? (
+              <img src={displayUrl} alt="logo" className="w-full h-full object-cover" />
+            ) : (
+              <div className="text-white/20 text-3xl font-bold">?</div>
+            )}
+          </div>
+          {value && (
+            <button
+              type="button"
+              onClick={clear}
+              className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center"
+            >
+              <X className="w-3 h-3 text-white" />
+            </button>
           )}
         </div>
 
-        <div className="flex-1 min-w-0">
+        {/* Input area */}
+        <div className="flex-1 space-y-2">
           {mode === 'upload' ? (
             <div
-              onDragOver={e => { e.preventDefault(); setDragging(true) }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={onDrop}
+              onDrop={handleDrop}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+              onDragLeave={() => setDragOver(false)}
               onClick={() => fileRef.current?.click()}
-              className="flex flex-col items-center justify-center gap-1.5 py-4 rounded-xl cursor-pointer transition-all"
-              style={{
-                background: dragging ? 'rgba(139,92,246,0.1)' : 'rgba(255,255,255,0.03)',
-                border: dragging ? '1.5px dashed rgba(139,92,246,0.4)' : '1.5px dashed rgba(255,255,255,0.08)',
-              }}>
-              {uploading ? (
-                <Loader2 size={18} className="animate-spin" style={{ color: '#a78bfa' }} />
-              ) : (
-                <Upload size={16} style={{ color: 'rgba(255,255,255,0.3)' }} />
+              className={clsx(
+                'border-2 border-dashed rounded-xl p-4 cursor-pointer transition-all text-center',
+                dragOver ? 'border-purple-400 bg-purple-500/10' : 'border-white/10 hover:border-white/30 bg-white/[0.02]'
               )}
-              <span className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                {uploading ? 'Uploading…' : 'Drop logo or click'}
-              </span>
-              <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.2)' }}>PNG, JPG, GIF, WebP · max 5MB</span>
-              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFile} />
+            >
+              {uploadState === 'uploading' ? (
+                <div className="flex flex-col items-center gap-1.5">
+                  <Loader2 className="w-5 h-5 text-purple-400 animate-spin" />
+                  <p className="text-xs text-white/50">Uploading to IPFS...</p>
+                </div>
+              ) : uploadState === 'ipfs' ? (
+                <div className="flex flex-col items-center gap-1.5">
+                  <CheckCircle className="w-5 h-5 text-green-400" />
+                  <p className="text-xs text-green-400 font-medium">Pinned to IPFS</p>
+                  <p className="text-[10px] text-white/30 font-mono break-all">{uploadedHash.slice(0, 20)}...</p>
+                </div>
+              ) : uploadState === 'r2' ? (
+                <div className="flex flex-col items-center gap-1.5">
+                  <CheckCircle className="w-5 h-5 text-blue-400" />
+                  <p className="text-xs text-blue-400 font-medium">Uploaded to CDN</p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-1.5">
+                  <Upload className="w-5 h-5 text-white/30" />
+                  <p className="text-xs text-white/50">Drop image or click</p>
+                  <p className="text-[10px] text-white/30">PNG, JPG, GIF, WEBP · max 5MB</p>
+                  <p className="text-[10px] text-purple-400/70 flex items-center gap-1">
+                    <Globe className="w-3 h-3" /> Stored permanently on IPFS
+                  </p>
+                </div>
+              )}
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) handleFile(f)
+                }}
+              />
             </div>
           ) : (
             <div className="flex gap-2">
               <input
-                className="flex-1 px-3 py-2.5 rounded-xl text-sm text-white outline-none"
-                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
-                placeholder="https://..."
+                type="text"
                 value={urlInput}
-                onChange={e => setUrlInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && applyUrl()}
+                onChange={(e) => setUrlInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleUrlSubmit()}
+                placeholder="https://... or ipfs://Qm..."
+                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-purple-500/50"
               />
-              <button onClick={applyUrl} className="px-3 py-2.5 rounded-xl text-xs font-semibold text-white"
-                style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)' }}>
-                Set
+              <button
+                type="button"
+                onClick={handleUrlSubmit}
+                className="px-3 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-xs font-medium text-white transition-colors"
+              >
+                Use
               </button>
             </div>
           )}
 
-          {value && (
-            <button onClick={clear} className="flex items-center gap-1 mt-1.5 text-xs"
-              style={{ color: 'rgba(255,82,82,0.7)' }}>
-              <X size={10} /> Remove logo
-            </button>
+          {error && <p className="text-xs text-amber-400">{error}</p>}
+          {value && uploadState !== 'ipfs' && uploadState !== 'r2' && (
+            <p className="text-[10px] text-white/30 break-all">{value.slice(0, 60)}{value.length > 60 ? '...' : ''}</p>
           )}
         </div>
       </div>

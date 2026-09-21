@@ -54,9 +54,68 @@ contract GlowToken is ERC20 {
         _mint(factory_, totalSupply_);
     }
 
+    event MetadataUpdated(address indexed token, string imageUri, string description);
+    event URIUpdated(string contractURI);
+
     function setLocked(bool _locked) external {
         if (msg.sender != factory) revert NotFactory();
         locked = _locked;
+    }
+
+    /// @notice ERC-7572: returns full token metadata as inline JSON
+    /// Any wallet, DEX, or explorer that supports ERC-7572 will display
+    /// the logo, description, and social links automatically.
+    function contractURI() external view returns (string memory) {
+        return string(abi.encodePacked(
+            'data:application/json;utf8,{"name":"', name(),
+            '","symbol":"', symbol(),
+            '","description":"', description,
+            '","image":"', imageUri,
+            '","twitter":"', twitter,
+            '","telegram":"', telegram,
+            '","website":"', website,
+            '","creator":"', _toHexString(creator),
+            '"}'
+        ));
+    }
+
+    /// @notice Update token metadata — callable only by the creator
+    function updateMetadata(
+        string calldata _imageUri,
+        string calldata _description,
+        string calldata _twitter,
+        string calldata _telegram,
+        string calldata _website
+    ) external {
+        if (msg.sender != creator && msg.sender != factory) revert NotFactory();
+        if (bytes(_imageUri).length > 0)    imageUri    = _imageUri;
+        if (bytes(_description).length > 0) description = _description;
+        if (bytes(_twitter).length > 0)     twitter     = _twitter;
+        if (bytes(_telegram).length > 0)    telegram    = _telegram;
+        if (bytes(_website).length > 0)     website     = _website;
+        emit MetadataUpdated(address(this), imageUri, description);
+        // Emit ERC-7572 ContractURIUpdated so indexers pick up the change
+        emit URIUpdated(string(abi.encodePacked(
+            'data:application/json;utf8,{"name":"', name(),
+            '","image":"', imageUri, '"}'
+        )));
+    }
+
+    /// @dev Convert address to lowercase hex string for JSON embedding
+    function _toHexString(address addr) internal pure returns (string memory) {
+        bytes memory buffer = new bytes(42);
+        buffer[0] = '0';
+        buffer[1] = 'x';
+        for (uint256 i = 0; i < 20; i++) {
+            uint8 b = uint8(uint160(addr) >> (8 * (19 - i)));
+            buffer[2 + i * 2]     = _hexChar(b >> 4);
+            buffer[2 + i * 2 + 1] = _hexChar(b & 0x0f);
+        }
+        return string(buffer);
+    }
+
+    function _hexChar(uint8 v) internal pure returns (bytes1) {
+        return v < 10 ? bytes1(v + 48) : bytes1(v + 87);
     }
 
     function _update(address from, address to, uint256 value) internal override {
@@ -454,6 +513,21 @@ contract GlowFunFactory_V2 is Ownable, ReentrancyGuard, Pausable {
         if (amount == 0) revert NothingToClaim();
         referralEarnings[msg.sender] = 0;
         usdc.safeTransfer(msg.sender, amount);
+    }
+
+    /// @notice Creator or owner can update token metadata after launch
+    function updateTokenMetadata(
+        address token,
+        string calldata _imageUri,
+        string calldata _description,
+        string calldata _twitter,
+        string calldata _telegram,
+        string calldata _website
+    ) external {
+        if (!isLaunchedToken[token]) revert NotLaunched();
+        TokenState storage state = tokenStates[token];
+        if (msg.sender != state.creator && msg.sender != owner()) revert InvalidAddress();
+        GlowToken(token).updateMetadata(_imageUri, _description, _twitter, _telegram, _website);
     }
 
     function unlockCreatorTokens(address token) external {

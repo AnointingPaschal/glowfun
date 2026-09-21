@@ -27,6 +27,7 @@ const KV_KEYS = [
   { key: 'CIRCLE_API_KEY', label: 'Circle API Key', placeholder: 'TEST_API_KEY:...', category: 'keys', secret: true },
   { key: 'ADMIN_SECRET', label: 'Admin Panel Password', placeholder: 'Strong password', category: 'keys', secret: true },
   { key: 'R2_PUBLIC_URL', label: 'R2 Public URL (for images)', placeholder: 'https://images.glowfun.pages.dev', category: 'storage', secret: false },
+  { key: 'PINATA_JWT', label: 'Pinata JWT (for IPFS uploads)', placeholder: 'eyJhbGci... from app.pinata.cloud', category: 'storage', secret: true },
   { key: 'SITE_TITLE', label: 'Site Name', placeholder: 'GlowFun', category: 'site', secret: false },
   { key: 'SITE_LOGO', label: 'Site Logo URL', placeholder: 'https://... (square image, shown in navbar)', category: 'site', secret: false },
   { key: 'SITE_DESCRIPTION', label: 'Site Description', placeholder: 'Launch and trade meme tokens on Arc', category: 'site', secret: false },
@@ -509,7 +510,9 @@ export function AdminPage() {
 
         {/* TOKENS TAB */}
         {tab === 'tokens' && (
-          <GlassCard className="overflow-hidden">
+          <>
+          <TokenMetadataEditor factoryAddress={FACTORY_ADDRESS} chainId={CHAIN_ID} />
+          <GlassCard className="overflow-hidden mt-4">
             <div className="p-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold text-white">All Launched Tokens</span>
@@ -541,6 +544,7 @@ export function AdminPage() {
               )}
             </div>
           </GlassCard>
+          </>
         )}
 
         {/* COMMENTS TAB */}
@@ -592,5 +596,73 @@ function AdminComments() {
         </div>
       ))}
     </div>
+  )
+}
+
+function TokenMetadataEditor({ factoryAddress, chainId }: { factoryAddress: `0x${string}` | undefined, chainId: number }) {
+  const [tokenAddr, setTokenAddr] = useState('')
+  const [imageUri, setImageUri] = useState('')
+  const [description, setDescription] = useState('')
+  const [twitter, setTwitter] = useState('')
+  const [telegram, setTelegram] = useState('')
+  const [website, setWebsite] = useState('')
+  const { writeContract, data: hash, isPending } = useWriteContract()
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+
+  const isValid = tokenAddr.startsWith('0x') && tokenAddr.length === 42
+
+  function handleSave() {
+    if (!factoryAddress || !isValid) return
+    writeContract({
+      address: factoryAddress,
+      abi: FACTORY_ABI,
+      functionName: 'updateTokenMetadata',
+      args: [tokenAddr as `0x${string}`, imageUri, description, twitter, telegram, website],
+      chainId: chainId as any,
+    } as any)
+  }
+
+  return (
+    <GlassCard className="overflow-hidden">
+      <div className="p-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+        <div className="flex items-center gap-2">
+          <Image size={14} style={{ color: '#a78bfa' }} />
+          <span className="text-sm font-semibold text-white">Update Token Metadata On-Chain</span>
+        </div>
+        <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
+          Update logo, description and socials permanently on-chain. Changes reflect everywhere the CA is read — wallets, explorers, DEXes.
+        </p>
+      </div>
+      <div className="p-4 space-y-3">
+        <div>
+          <label className="text-xs mb-1 block" style={{ color: 'rgba(255,255,255,0.5)' }}>Token Contract Address</label>
+          <input value={tokenAddr} onChange={e => setTokenAddr(e.target.value)} placeholder="0x..." className="w-full rounded-lg px-3 py-2 text-sm text-white border outline-none font-mono" style={{ background: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.08)' }} />
+        </div>
+        <div>
+          <label className="text-xs mb-1 block" style={{ color: 'rgba(255,255,255,0.5)' }}>Logo URL (use IPFS for permanence: ipfs://Qm...)</label>
+          <input value={imageUri} onChange={e => setImageUri(e.target.value)} placeholder="ipfs://Qm... or https://..." className="w-full rounded-lg px-3 py-2 text-sm text-white border outline-none" style={{ background: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.08)' }} />
+        </div>
+        <div>
+          <label className="text-xs mb-1 block" style={{ color: 'rgba(255,255,255,0.5)' }}>Description</label>
+          <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Token description..." rows={2} className="w-full rounded-lg px-3 py-2 text-sm text-white border outline-none resize-none" style={{ background: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.08)' }} />
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {[['Twitter','@handle',twitter,setTwitter],['Telegram','@group',telegram,setTelegram],['Website','https://...',website,setWebsite]].map(([label,ph,val,setter]) => (
+            <div key={label as string}>
+              <label className="text-xs mb-1 block" style={{ color: 'rgba(255,255,255,0.5)' }}>{label as string}</label>
+              <input value={val as string} onChange={e => (setter as (v:string)=>void)(e.target.value)} placeholder={ph as string} className="w-full rounded-lg px-3 py-2 text-sm text-white border outline-none" style={{ background: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.08)' }} />
+            </div>
+          ))}
+        </div>
+        {isSuccess && (
+          <div className="flex items-center gap-2 text-xs py-2 px-3 rounded-lg" style={{ background: 'rgba(34,197,94,0.1)', color: '#4ade80' }}>
+            <Check size={12} /> Metadata updated on-chain
+          </div>
+        )}
+        <button onClick={handleSave} disabled={!isValid || isPending || isConfirming || !factoryAddress} className="w-full py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-opacity disabled:opacity-40" style={{ background: 'linear-gradient(135deg,#7c3aed,#4f46e5)', color: 'white' }}>
+          {isPending || isConfirming ? <><Loader2 size={14} className="animate-spin" />Confirming...</> : <><Save size={14} />Save Metadata On-Chain</>}
+        </button>
+      </div>
+    </GlassCard>
   )
 }

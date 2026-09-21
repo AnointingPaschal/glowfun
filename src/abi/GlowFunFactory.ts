@@ -141,7 +141,16 @@ export const FACTORY_ABI = [
 
   { name: 'claimGraduation',        type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'token', type: 'address' }], outputs: [] },
   { name: 'claimCreatorGraduation', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'token', type: 'address' }], outputs: [] },
-  { name: 'claimReferral',          type: 'function', stateMutability: 'nonpayable', inputs: [], outputs: [] },
+  { name: 'claimReferral', type: 'function', stateMutability: 'nonpayable', inputs: [], outputs: [] },
+  { name: 'updateTokenMetadata', type: 'function', stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'token', type: 'address' },
+      { name: '_imageUri', type: 'string' },
+      { name: '_description', type: 'string' },
+      { name: '_twitter', type: 'string' },
+      { name: '_telegram', type: 'string' },
+      { name: '_website', type: 'string' },
+    ], outputs: [] },
   { name: 'unlockCreatorTokens',    type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'token', type: 'address' }], outputs: [] },
 
   // ── Admin ─────────────────────────────────────────────────────────────────

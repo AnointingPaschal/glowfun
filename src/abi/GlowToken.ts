@@ -15,4 +15,14 @@ export const GLOW_TOKEN_ABI = [
   { name: 'creator', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'address' }] },
   { name: 'createdAt', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
   { name: 'factory', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'address' }] },
+  { name: 'locked', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'bool' }] },
+  { name: 'contractURI', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'string' }] },
+  { name: 'updateMetadata', type: 'function', stateMutability: 'nonpayable',
+    inputs: [
+      { name: '_imageUri', type: 'string' },
+      { name: '_description', type: 'string' },
+      { name: '_twitter', type: 'string' },
+      { name: '_telegram', type: 'string' },
+      { name: '_website', type: 'string' },
+    ], outputs: [] },
 ] as const
