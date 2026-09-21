@@ -41,16 +41,7 @@ const SUPPLIES = [
   { label: 'Custom',val: 0n,                         desc: 'Custom',   color: 'var(--text3)' },
 ]
 
-/* ─── graduation presets ──────────────────────────────────────────── */
-const GRADS = [
-  { label: '$10K',  val: 10_000n *1_000_000n, desc: 'Fast'     },
-  { label: '$25K',  val: 25_000n *1_000_000n, desc: 'Quick'    },
-  { label: '$50K',  val: 50_000n *1_000_000n, desc: 'Mid'      },
-  { label: '$69K',  val: 69_000n *1_000_000n, desc: 'Standard', star: true },
-  { label: '$100K', val: 100_000n*1_000_000n, desc: 'Premium'  },
-  { label: '$200K', val: 200_000n*1_000_000n, desc: 'Whale'    },
-  { label: 'Custom',val: 0n,                   desc: 'Custom'   },
-]
+/* graduation is protocol-controlled — read from contract, not user-settable */
 
 /* ─── allocation modes ────────────────────────────────────────────── */
 const ALLOC_MODES = [
@@ -63,10 +54,10 @@ const ALLOC_MODES = [
 
 /* ─── form types ──────────────────────────────────────────────────── */
 interface Form {
-  name: string; symbol: string; description: string; imageUri: string
+  name: string; symbol: string; description: string; imageUri: string; bannerUri: string
   twitter: string; telegram: string; website: string; discord: string
 }
-const INIT: Form = { name:'', symbol:'', description:'', imageUri:'', twitter:'', telegram:'', website:'', discord:'' }
+const INIT: Form = { name:'', symbol:'', description:'', imageUri:'', bannerUri:'', twitter:'', telegram:'', website:'', discord:'' }
 type Step = 'form'|'approving'|'launching'|'done'
 
 /* ─── Donut SVG ───────────────────────────────────────────────────── */
@@ -177,17 +168,15 @@ export function LaunchPage() {
   /* form */
   const [form, setForm]       = useState<Form>(INIT)
   const [txStep, setTxStep]   = useState<Step>('form')
-  const [showSocials, setSoc] = useState(false)
+  const [showSocials, setSoc]   = useState(false)
+  const [showBanner, setBanner] = useState(false)
 
   /* supply */
   const [supplyIdx, setSI]  = useState(2)
   const [customSup, setCS]  = useState('')
   const isCSup = supplyIdx === SUPPLIES.length-1
 
-  /* graduation */
-  const [gradIdx, setGI]   = useState(3)
-  const [customGrad, setCG] = useState('')
-  const isCGrad = gradIdx === GRADS.length-1
+  /* graduation is set by protocol — use factory's tokenGraduationThreshold */
 
   /* allocation */
   const [allocMode, setAllocMode] = useState('community')
@@ -204,11 +193,7 @@ export function LaunchPage() {
     return SUPPLIES[supplyIdx]?.val ?? 1_000_000_000n*10n**18n
   })()
 
-  /* computed grad */
-  const grad: bigint = (() => {
-    if (isCGrad) { const v=parseFloat(customGrad); if(!isNaN(v)&&v>0) return BigInt(Math.round(v*1e6)); return 69_000n*1_000_000n }
-    return GRADS[gradIdx]?.val ?? 69_000n*1_000_000n
-  })()
+  /* graduation threshold comes from factory contract */
 
   const curveTokens   = (supply * BigInt(curveBps))   / 10_000n
   const creatorTokens = (supply * BigInt(creatorBps))  / 10_000n
@@ -225,6 +210,12 @@ export function LaunchPage() {
     chainId:CHAIN_ID as any, query:{enabled:!!FACTORY_ADDRESS},
   })
   const fee = (feeRaw as bigint) ?? 0n
+
+  const { data: gradRaw } = useReadContract({
+    address:FACTORY_ADDRESS, abi:FACTORY_ABI, functionName:'graduationThreshold',
+    chainId:CHAIN_ID as any, query:{enabled:!!FACTORY_ADDRESS},
+  })
+  const grad: bigint = (gradRaw as bigint) ?? 69_000n*1_000_000n
 
   const { data: usdcBal } = useReadContract({
     address:USDC_ADDRESS, abi:erc20Abi, functionName:'balanceOf',
@@ -263,7 +254,7 @@ export function LaunchPage() {
   }
 
   const reset = useCallback(()=>{
-    setForm(INIT); setSI(2); setCS(''); setGI(3); setCG('')
+    setForm(INIT); setSI(2); setCS('')
     applyMode('community')
   },[])
 
@@ -305,9 +296,7 @@ export function LaunchPage() {
   /* preview */
   const hue     = form.name ? (form.name.charCodeAt(0)*37)%360 : 260
   const initials= form.symbol ? form.symbol.slice(0,2).toUpperCase() : '??'
-  const gradLabel = isCGrad
-    ? (customGrad ? `$${parseFloat(customGrad).toLocaleString()}` : '—')
-    : GRADS[gradIdx]?.label ?? '$69K'
+  const gradLabel = grad > 0n ? fmtUsdc(grad) : '$69K'
 
   /* checklist */
   const checks = [
@@ -352,22 +341,6 @@ export function LaunchPage() {
           </button>
         </div>
       </motion.div>
-    </div>
-  )
-
-  /* ══ NOT CONNECTED ════════════════════════════════════════════════ */
-  if (!isConnected) return (
-    <div className="min-h-[60vh] flex items-center justify-center">
-      <div className="max-w-sm w-full mx-auto rounded-2xl p-10 text-center"
-        style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
-        <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center"
-          style={{background:'rgba(99,102,241,0.1)'}}>
-          <Rocket size={26} style={{color:'#818cf8'}}/>
-        </div>
-        <h2 className="text-lg font-bold mb-2" style={{color:'var(--text1)'}}>Connect your wallet</h2>
-        <p className="text-sm mb-5" style={{color:'var(--text2)'}}>Connect to Arc Mainnet to launch your token on the bonding curve.</p>
-        <ConnectKitButton/>
-      </div>
     </div>
   )
 
@@ -477,6 +450,31 @@ export function LaunchPage() {
               </div>
             </div>
 
+            {/* Optional banner */}
+            <div className="mt-4">
+              <button type="button" onClick={()=>setBanner(v=>!v)}
+                className="flex items-center gap-2 text-xs font-semibold py-1"
+                style={{color: showBanner ? '#818cf8' : 'var(--text2)'}}>
+                <ChevronDown size={13} style={{transform:showBanner?'rotate(180deg)':'none',transition:'transform 0.2s'}}/>
+                Banner image
+                <span className="font-normal text-[10px]" style={{color:'var(--text3)'}}>(optional)</span>
+                {form.bannerUri && <span className="w-1.5 h-1.5 rounded-full bg-green-500 ml-1"/>}
+              </button>
+              <AnimatePresence>
+                {showBanner && (
+                  <motion.div initial={{height:0,opacity:0}} animate={{height:'auto',opacity:1}} exit={{height:0,opacity:0}}
+                    style={{overflow:'hidden'}}>
+                    <div className="pt-3 space-y-2">
+                      <p className="text-[10px]" style={{color:'var(--text3)'}}>
+                        Wide banner shown at the top of your token page (16:5 ratio recommended). Pinned to IPFS.
+                      </p>
+                      <ImageUpload value={form.bannerUri} onChange={url=>setForm(f=>({...f,bannerUri:url}))} label=""/>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
             {/* Socials collapsible */}
             <div className="mt-4">
               <button type="button" onClick={()=>setSoc(v=>!v)}
@@ -563,45 +561,17 @@ export function LaunchPage() {
               </AnimatePresence>
             </div>
 
-            {/* Graduation target */}
-            <div>
-              <Label text="Graduation target"
-                tip="The USDC milestone. When this amount is raised on the bonding curve, the token graduates to a DEX automatically."/>
-              <div className="grid grid-cols-3 sm:grid-cols-7 gap-2">
-                {GRADS.map((g,i)=>(
-                  <button key={g.label} type="button" onClick={()=>{setGI(i);setCG('')}}
-                    className="relative py-3 rounded-xl text-center transition-all"
-                    style={{
-                      background: gradIdx===i ? 'rgba(34,197,94,0.12)' : 'var(--surface2)',
-                      border:`1px solid ${gradIdx===i ? 'rgba(34,197,94,0.3)' : 'var(--border)'}`,
-                    }}>
-                    {(g as any).star && (
-                      <Star size={7} className="absolute top-1.5 right-1.5"
-                        style={{color:'var(--green)',fill:'var(--green)'}}/>
-                    )}
-                    <div className="text-[11px] font-bold"
-                      style={{color: gradIdx===i ? 'var(--green)' : 'var(--text1)'}}>{g.label}</div>
-                    <div className="text-[9px] mt-0.5"
-                      style={{color: gradIdx===i ? 'rgba(34,197,94,0.7)' : 'var(--text3)'}}>{g.desc}</div>
-                  </button>
-                ))}
+            {/* Graduation target — protocol-controlled, shown read-only */}
+            <div className="flex items-center justify-between px-4 py-3 rounded-xl mt-2"
+              style={{background:'rgba(34,197,94,0.05)',border:'1px solid rgba(34,197,94,0.14)'}}>
+              <div className="flex items-center gap-2">
+                <TrendingUp size={13} style={{color:'var(--green)'}}/>
+                <span className="text-[11px] font-semibold" style={{color:'var(--text2)'}}>Graduation target</span>
+                <Tip text="Set by the protocol admin. When this USDC milestone is reached on the bonding curve, the token auto-graduates to a DEX."/>
               </div>
-              <AnimatePresence>
-                {isCGrad && (
-                  <motion.div initial={{height:0,opacity:0}} animate={{height:'auto',opacity:1}} exit={{height:0,opacity:0}}
-                    style={{overflow:'hidden'}}>
-                    <div className="relative mt-2.5">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold"
-                        style={{color:'var(--text3)'}}>$</span>
-                      <input className={`${inCls} pl-7`} style={{...inSt,...inFocus}}
-                        type="number" min={1000} step={1000}
-                        placeholder="e.g. 30000" value={customGrad} onChange={e=>setCG(e.target.value)}/>
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold"
-                        style={{color:'var(--text3)'}}>USDC</span>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              <span className="text-[12px] font-bold tabular-nums" style={{color:'var(--green)'}}>
+                {gradLabel}
+              </span>
             </div>
           </Section>
 
@@ -745,7 +715,15 @@ export function LaunchPage() {
 
           {/* ─── Submit ─── */}
           <div className="space-y-3 pb-8">
-            {chainId !== CHAIN_ID ? (
+            {!isConnected ? (
+              <div className="flex flex-col items-center gap-3 p-5 rounded-2xl"
+                style={{background:'rgba(99,102,241,0.05)',border:'1px solid rgba(99,102,241,0.15)'}}>
+                <p className="text-sm font-semibold text-center" style={{color:'var(--text2)'}}>
+                  Connect your wallet to launch
+                </p>
+                <ConnectKitButton/>
+              </div>
+            ) : chainId !== CHAIN_ID ? (
               <button type="button" onClick={()=>switchChain({chainId:CHAIN_ID as any})}
                 className="w-full py-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2"
                 style={{background:'rgba(245,158,11,0.08)',border:'1px solid rgba(245,158,11,0.2)',color:'var(--gold)'}}>
@@ -767,7 +745,7 @@ export function LaunchPage() {
                 }
               </motion.button>
             )}
-            {needApprove && !busy && (
+            {needApprove && !busy && isConnected && (
               <p className="text-center text-[11px]" style={{color:'var(--text3)'}}>
                 Step 1 of 2 — approve USDC, then the launch fires automatically
               </p>
@@ -792,9 +770,9 @@ export function LaunchPage() {
 
             {/* Hero */}
             <div className="relative h-36 overflow-hidden"
-              style={{background: form.imageUri ? 'black' : `linear-gradient(135deg,hsl(${hue},55%,25%),hsl(${(hue+120)%360},50%,20%))`}}>
-              {form.imageUri
-                ? <img src={form.imageUri} className="w-full h-full object-cover opacity-50"/>
+              style={{background: (form.bannerUri||form.imageUri) ? 'black' : `linear-gradient(135deg,hsl(${hue},55%,25%),hsl(${(hue+120)%360},50%,20%))`}}>
+              {(form.bannerUri || form.imageUri)
+                ? <img src={form.bannerUri || form.imageUri} className="w-full h-full object-cover opacity-50"/>
                 : (
                   <div className="absolute inset-0 flex items-center justify-center">
                     <Image size={36} style={{color:'rgba(255,255,255,0.08)'}}/>
