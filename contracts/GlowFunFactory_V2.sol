@@ -148,6 +148,14 @@ contract GlowFunFactory_V2 is Ownable, ReentrancyGuard, Pausable {
         uint256 creatorTokens;
     }
 
+    struct BuyFees {
+        uint256 snipeTax;
+        uint256 protocolFee;
+        uint256 referralFee;
+        uint256 usdcForCurve;
+        uint256 feeToRecipient;
+    }
+
     IERC20 public immutable usdc;
 
     address public feeRecipient;
@@ -351,77 +359,55 @@ contract GlowFunFactory_V2 is Ownable, ReentrancyGuard, Pausable {
     {
         TokenState storage state = _activeTokenState(token);
         _checkBlacklist(token, msg.sender);
-
         if (buyCooldown > 0 && block.timestamp < lastBuyTime[token][msg.sender] + buyCooldown) revert CooldownActive();
 
         usdcIn = _spendableUsdc(msg.sender);
         if (usdcIn == 0) revert InvalidAmount();
 
-        uint256 snipeTax;
-        if (block.timestamp < state.createdAt + antiSnipeDuration) {
-            snipeTax = (usdcIn * antiSnipeTaxBps) / BPS_DENOMINATOR;
-        }
+        BuyFees memory f = _calcBuyFees(usdcIn, state.createdAt);
+        if (f.usdcForCurve == 0) revert InvalidAmount();
 
-        uint256 taxableAmount = usdcIn - snipeTax;
-        uint256 protocolFee = (taxableAmount * protocolFeeBps) / BPS_DENOMINATOR;
-        uint256 usdcForCurve = usdcIn - protocolFee - snipeTax;
-        if (usdcForCurve == 0) revert InvalidAmount();
-
-        tokensOut = _getBuyAmount(state.virtualUsdcReserves, state.virtualTokenReserves, usdcForCurve);
+        tokensOut = _getBuyAmount(state.virtualUsdcReserves, state.virtualTokenReserves, f.usdcForCurve);
         if (tokensOut < minTokensOut) revert InsufficientOutput();
-
-        uint256 maxBuyAmount = (state.curveTokens * maxBuyBps) / BPS_DENOMINATOR;
-        if (maxBuyBps > 0 && tokensOut > maxBuyAmount) revert MaxBuyExceeded();
-
-        uint256 remainingCurve = state.curveTokens - state.realTokensSold;
-        if (tokensOut > remainingCurve) revert InvalidAmount();
+        if (maxBuyBps > 0 && tokensOut > (state.curveTokens * maxBuyBps) / BPS_DENOMINATOR) revert MaxBuyExceeded();
+        if (tokensOut > state.curveTokens - state.realTokensSold) revert InvalidAmount();
         if (IERC20(token).balanceOf(address(this)) < tokensOut) revert InvalidAmount();
 
         lastBuyTime[token][msg.sender] = block.timestamp;
-
-        state.virtualUsdcReserves += usdcForCurve;
+        state.virtualUsdcReserves += f.usdcForCurve;
         state.virtualTokenReserves -= tokensOut;
-        state.realUsdcRaised += usdcForCurve;
+        state.realUsdcRaised += f.usdcForCurve;
         state.realTokensSold += tokensOut;
 
-        uint256 referralFee;
         if (referrer != address(0) && referrer != msg.sender) {
-            referralFee = (protocolFee * referralFeeBps) / BPS_DENOMINATOR;
-            referralEarnings[referrer] += referralFee;
-            emit ReferralEarned(referrer, token, referralFee);
+            f.referralFee = (f.protocolFee * referralFeeBps) / BPS_DENOMINATOR;
+            referralEarnings[referrer] += f.referralFee;
+            emit ReferralEarned(referrer, token, f.referralFee);
         }
+
+        f.feeToRecipient = f.snipeTax + (f.protocolFee - f.referralFee);
 
         usdc.safeTransferFrom(msg.sender, address(this), usdcIn);
-
-        uint256 feeToRecipient = snipeTax + (protocolFee - referralFee);
-        if (feeToRecipient > 0) {
-            usdc.safeTransfer(feeRecipient, feeToRecipient);
-        }
-
+        if (f.feeToRecipient > 0) usdc.safeTransfer(feeRecipient, f.feeToRecipient);
         IERC20(token).safeTransfer(msg.sender, tokensOut);
 
-        uint256 price = _priceFromReserves(state.virtualUsdcReserves, state.virtualTokenReserves);
-
         emit TokensBought(
-            token,
-            msg.sender,
-            referrer,
-            usdcIn,
-            tokensOut,
-            price,
-            protocolFee,
-            referralFee,
-            snipeTax,
-            state.realUsdcRaised,
-            block.timestamp
+            token, msg.sender, referrer, usdcIn, tokensOut,
+            _priceFromReserves(state.virtualUsdcReserves, state.virtualTokenReserves),
+            f.protocolFee, f.referralFee, f.snipeTax, state.realUsdcRaised, block.timestamp
         );
 
         _updateKingOfHill(token, state.realUsdcRaised);
         _emitMilestones(token, state.realUsdcRaised);
+        if (state.realUsdcRaised >= state.tokenGraduationThreshold) _graduateToken(token);
+    }
 
-        if (state.realUsdcRaised >= state.tokenGraduationThreshold) {
-            _graduateToken(token);
+    function _calcBuyFees(uint256 usdcIn, uint256 createdAt_) internal view returns (BuyFees memory f) {
+        if (block.timestamp < createdAt_ + antiSnipeDuration) {
+            f.snipeTax = (usdcIn * antiSnipeTaxBps) / BPS_DENOMINATOR;
         }
+        f.protocolFee = ((usdcIn - f.snipeTax) * protocolFeeBps) / BPS_DENOMINATOR;
+        f.usdcForCurve = usdcIn - f.protocolFee - f.snipeTax;
     }
 
     function sellTokens(address token, uint256 tokensIn, uint256 minUsdcOut)
