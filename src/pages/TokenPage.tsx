@@ -8,7 +8,7 @@ import {
   ArrowLeft, Twitter, Send, Globe, ExternalLink, Trophy,
   Loader2, AlertTriangle, Copy, Check, RefreshCw, Share2,
   Star, Zap, ChevronDown, ChevronUp, TrendingUp, TrendingDown,
-  Activity, BarChart3, MessageCircle, Info, Flame, Sprout,
+  Activity, BarChart3, MessageCircle, Info, Flame, Sprout, Pencil, Image,
 } from 'lucide-react'
 import { Comments } from '@/components/Comments'
 import { TVChart } from '@/components/TVChart'
@@ -499,6 +499,17 @@ export function TokenPage() {
                   : <span className="text-[10px] font-mono" style={{ color:'var(--text1)' }}>{value}</span>}
               </div>
             ))}
+
+            {/* Creator metadata editor — only visible to the token creator */}
+            {wallet && token.creator && wallet.toLowerCase() === (token.creator as string).toLowerCase() && (
+              <EditMetadataPanel
+                tokenAddr={tokenAddr!}
+                token={token}
+                factoryAddress={FACTORY_ADDRESS}
+                chainId={CHAIN_ID}
+                onSuccess={() => { void refetch() }}
+              />
+            )}
           </div>
         )}
 
@@ -645,6 +656,159 @@ export function TokenPage() {
           </p>
         </div>
       </div>
+    </div>
+  )
+}
+
+/* ── Creator metadata editor ──────────────────────────────────────────── */
+interface EditMetadataPanelProps {
+  tokenAddr: string
+  token: any
+  factoryAddress: `0x${string}` | undefined
+  chainId: number
+  onSuccess: () => void
+}
+
+function EditMetadataPanel({ tokenAddr, token, factoryAddress, chainId, onSuccess }: EditMetadataPanelProps) {
+  const [open, setOpen]   = useState(false)
+  const [fields, setFields] = useState({
+    imageUri:    token.imageUri    ?? '',
+    description: token.description ?? '',
+    twitter:     token.twitter     ?? '',
+    telegram:    token.telegram    ?? '',
+    website:     token.website     ?? '',
+  })
+
+  const { writeContract, data: hash, isPending } = useWriteContract()
+  const { isLoading: confirming, isSuccess }      = useWaitForTransactionReceipt({ hash })
+
+  useEffect(() => {
+    if (isSuccess) { toast.success('Metadata updated on-chain!'); onSuccess(); setOpen(false) }
+  }, [isSuccess])
+
+  const handleSave = () => {
+    if (!factoryAddress) return
+    writeContract({
+      address: factoryAddress,
+      abi: FACTORY_ABI,
+      functionName: 'updateTokenMetadata',
+      args: [
+        tokenAddr as `0x${string}`,
+        fields.imageUri,
+        fields.description,
+        fields.twitter,
+        fields.telegram,
+        fields.website,
+      ],
+      chainId: chainId as any,
+    } as any, {
+      onError: (e: any) => toast.error(parseOnchainError(e)),
+    })
+  }
+
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(99,102,241,0.2)', background: 'rgba(99,102,241,0.04)' }}>
+      {/* Toggle header */}
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 text-left"
+      >
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: 'rgba(99,102,241,0.15)' }}>
+            <Pencil size={11} style={{ color: '#818cf8' }} />
+          </div>
+          <span className="text-xs font-semibold" style={{ color: '#818cf8' }}>Edit Token Info</span>
+          <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: 'rgba(99,102,241,0.12)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.2)' }}>Creator only</span>
+        </div>
+        <ChevronDown size={13} style={{ color: '#818cf8', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="px-4 pb-4 space-y-3" style={{ borderTop: '1px solid rgba(99,102,241,0.1)' }}>
+              <p className="text-[10px] pt-3" style={{ color: 'var(--text2)' }}>
+                Changes are written permanently on-chain and show up everywhere your token contract address is read.
+              </p>
+
+              {/* Logo URL */}
+              <div>
+                <label className="text-[10px] font-medium block mb-1" style={{ color: 'var(--text2)' }}>
+                  Logo URL
+                </label>
+                <div className="flex gap-2 items-center">
+                  {fields.imageUri && (
+                    <img src={fields.imageUri} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0"
+                      onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                  )}
+                  {!fields.imageUri && (
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'var(--surface3)' }}>
+                      <Image size={12} style={{ color: 'var(--text3)' }} />
+                    </div>
+                  )}
+                  <input
+                    value={fields.imageUri}
+                    onChange={e => setFields(f => ({ ...f, imageUri: e.target.value }))}
+                    placeholder="ipfs://Qm... or https://..."
+                    className="flex-1 px-3 py-2 rounded-lg text-xs outline-none"
+                    style={{ background: 'var(--surface3)', border: '1px solid var(--border2)', color: 'var(--text1)' }}
+                  />
+                </div>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="text-[10px] font-medium block mb-1" style={{ color: 'var(--text2)' }}>Description</label>
+                <textarea
+                  value={fields.description}
+                  onChange={e => setFields(f => ({ ...f, description: e.target.value }))}
+                  placeholder="What is this token about?"
+                  rows={3}
+                  className="w-full px-3 py-2 rounded-lg text-xs outline-none resize-none"
+                  style={{ background: 'var(--surface3)', border: '1px solid var(--border2)', color: 'var(--text1)' }}
+                />
+              </div>
+
+              {/* Socials row */}
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  ['twitter',  'Twitter',  '@handle'  ],
+                  ['telegram', 'Telegram', '@group'   ],
+                  ['website',  'Website',  'https://…'],
+                ] as const).map(([k, label, ph]) => (
+                  <div key={k}>
+                    <label className="text-[10px] font-medium block mb-1" style={{ color: 'var(--text2)' }}>{label}</label>
+                    <input
+                      value={fields[k]}
+                      onChange={e => setFields(f => ({ ...f, [k]: e.target.value }))}
+                      placeholder={ph}
+                      className="w-full px-2 py-2 rounded-lg text-xs outline-none"
+                      style={{ background: 'var(--surface3)', border: '1px solid var(--border2)', color: 'var(--text1)' }}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <button
+                onClick={handleSave}
+                disabled={!factoryAddress || isPending || confirming}
+                className="w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-40 transition-opacity hover:opacity-90"
+                style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: 'white' }}
+              >
+                {isPending || confirming
+                  ? <><Loader2 size={12} className="animate-spin" />Confirming…</>
+                  : <><Check size={12} />Save Changes On-Chain</>}
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
