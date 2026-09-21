@@ -3,30 +3,18 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useAccount } from 'wagmi'
 import { ConnectKitButton } from 'connectkit'
 import { MessageSquare, Heart, Send, Loader2, RefreshCw } from 'lucide-react'
-import { GlassCard } from '@/components/GlassCard'
 import { formatAddress, timeAgo } from '@/utils/format'
 
-interface Comment {
-  id: number
-  token_address: string
-  author: string
-  content: string
-  likes: number
-  created_at: string
-}
+interface Comment { id:number; token_address:string; author:string; content:string; likes:number; created_at:string }
 
-interface Props {
-  tokenAddress: string
-}
-
-export function Comments({ tokenAddress }: Props) {
+export function Comments({ tokenAddress }: { tokenAddress: string }) {
   const { address } = useAccount()
   const [comments, setComments] = useState<Comment[]>([])
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [posting, setPosting] = useState(false)
-  const [text, setText] = useState('')
-  const [liking, setLiking] = useState<number | null>(null)
+  const [total, setTotal]       = useState(0)
+  const [loading, setLoading]   = useState(true)
+  const [posting, setPosting]   = useState(false)
+  const [text, setText]         = useState('')
+  const [liking, setLiking]     = useState<number|null>(null)
   const [likedIds, setLikedIds] = useState<Set<number>>(new Set())
 
   const load = useCallback(async () => {
@@ -46,123 +34,103 @@ export function Comments({ tokenAddress }: Props) {
     if (!address || !text.trim()) return
     setPosting(true)
     try {
-      const res = await fetch('/api/comments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token_address: tokenAddress, author: address, content: text.trim() }),
-      })
+      const res = await fetch('/api/comments', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ token_address:tokenAddress, author:address, content:text.trim() }) })
       const data = await res.json() as any
-      if (data.ok && data.comment) {
-        setComments(c => [data.comment, ...c])
-        setTotal(t => t + 1)
-        setText('')
-      }
+      if (data.ok && data.comment) { setComments(c=>[data.comment,...c]); setTotal(t=>t+1); setText('') }
     } catch {}
     setPosting(false)
   }
 
   const like = async (id: number) => {
-    if (likedIds.has(id) || liking === id) return
+    if (likedIds.has(id)) return
     setLiking(id)
     try {
-      await fetch('/api/comments/like', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      })
-      setComments(cs => cs.map(c => c.id === id ? { ...c, likes: c.likes + 1 } : c))
-      setLikedIds(s => new Set([...s, id]))
+      const res = await fetch(`/api/comments/${id}/like`, { method:'POST' })
+      const data = await res.json() as any
+      if (data.ok) { setComments(c=>c.map(cm=>cm.id===id?{...cm,likes:cm.likes+1}:cm)); setLikedIds(s=>new Set([...s,id])) }
     } catch {}
     setLiking(null)
   }
 
   return (
-    <GlassCard className="overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+    <div>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <MessageSquare size={14} style={{ color: '#a78bfa' }} />
-          <span className="text-sm font-semibold text-white">Comments</span>
-          <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(139,92,246,0.1)', color: '#a78bfa' }}>{total}</span>
+          <MessageSquare size={13} style={{ color:'var(--accent)' }}/>
+          <span className="text-xs font-bold" style={{ color:'var(--text1)' }}>Comments</span>
+          <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold" style={{ background:'rgba(99,102,241,0.12)', color:'var(--accent)' }}>{total}</span>
         </div>
-        <button onClick={load} disabled={loading} className="p-1.5 rounded-lg" style={{ color: 'rgba(255,255,255,0.3)' }}>
-          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+        <button onClick={load} className="p-1.5 rounded-lg" style={{ background:'var(--surface3)', border:'1px solid var(--border)' }}>
+          <RefreshCw size={10} style={{ color:'var(--text2)' }}/>
         </button>
       </div>
 
-      {/* Input */}
-      <div className="p-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        {!address ? (
-          <div className="flex items-center justify-between">
-            <span className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>Connect wallet to comment</span>
-            <ConnectKitButton />
+      {/* Post box */}
+      {address ? (
+        <div className="flex gap-2 mb-4">
+          <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-[9px] font-bold text-white"
+            style={{ background:'linear-gradient(135deg,var(--accent),var(--accent2))', marginTop:2 }}>
+            {address.slice(2,4).toUpperCase()}
           </div>
-        ) : (
-          <div className="flex gap-2">
-            <div className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold" style={{ background: `hsl(${parseInt(address.slice(2,6),16)%360},60%,35%)` }}>
-              {address.slice(2,4).toUpperCase()}
-            </div>
-            <div className="flex-1 flex gap-2">
-              <input
-                value={text}
-                onChange={e => setText(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && post()}
-                placeholder="Say something..."
-                maxLength={500}
-                className="flex-1 px-3 py-2 rounded-xl text-sm text-white outline-none"
-                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
-              />
-              <button
-                onClick={post}
-                disabled={posting || !text.trim()}
-                className="px-3 py-2 rounded-xl text-sm font-medium disabled:opacity-40 flex items-center gap-1.5"
-                style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)', color: 'white' }}
-              >
-                {posting ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-              </button>
-            </div>
+          <div className="flex-1 flex flex-col gap-2">
+            <textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Write something…" rows={2}
+              className="w-full px-3 py-2.5 rounded-xl text-xs outline-none resize-none"
+              style={{ background:'var(--surface3)', border:'1px solid var(--border)', color:'var(--text1)', lineHeight:1.5 }}/>
+            <button onClick={post} disabled={posting||!text.trim()}
+              className="self-end flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all"
+              style={{ background:text.trim()?'var(--accent)':'var(--surface3)', color:text.trim()?'#fff':'var(--text2)', opacity:posting?0.6:1 }}>
+              {posting ? <Loader2 size={10} className="animate-spin"/> : <Send size={10}/>}
+              Post
+            </button>
           </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center gap-3 py-5 mb-4 rounded-xl" style={{ background:'var(--surface3)', border:'1px solid var(--border)' }}>
+          <MessageSquare size={20} style={{ color:'var(--text3)' }}/>
+          <p className="text-[11px]" style={{ color:'var(--text2)' }}>Connect wallet to comment</p>
+          <ConnectKitButton/>
+        </div>
+      )}
 
-      {/* Comment list */}
-      <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-        {loading ? (
-          <div className="flex items-center justify-center py-10">
-            <Loader2 size={18} className="animate-spin" style={{ color: 'rgba(255,255,255,0.2)' }} />
-          </div>
-        ) : comments.length === 0 ? (
-          <div className="py-10 text-center">
-            <MessageSquare size={24} className="mx-auto mb-2" style={{ color: 'rgba(255,255,255,0.1)' }} />
-            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>No comments yet. Be the first!</p>
-          </div>
-        ) : (
-          <AnimatePresence initial={false}>
+      {/* Comments list */}
+      {loading ? (
+        <div className="flex items-center justify-center py-6 gap-2" style={{ color:'var(--text2)' }}>
+          <Loader2 size={14} className="animate-spin"/><span className="text-xs">Loading…</span>
+        </div>
+      ) : comments.length === 0 ? (
+        <div className="text-center py-8">
+          <MessageSquare size={24} style={{ color:'var(--text3)' }} className="mx-auto mb-2"/>
+          <p className="text-xs" style={{ color:'var(--text2)' }}>No comments yet. Be the first!</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <AnimatePresence>
             {comments.map(c => (
-              <motion.div key={c.id} initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="px-4 py-3 flex gap-3">
-                <div className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold" style={{ background: `hsl(${parseInt(c.author.slice(2,6),16)%360},55%,32%)` }}>
+              <motion.div key={c.id} initial={{ opacity:0, y:4 }} animate={{ opacity:1, y:0 }}
+                className="flex gap-2.5 p-3 rounded-xl" style={{ background:'var(--surface3)', border:'1px solid var(--border)' }}>
+                <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-[9px] font-bold text-white"
+                  style={{ background:`linear-gradient(135deg,hsl(${parseInt(c.author.slice(2,6),16)%360},60%,55%),hsl(${(parseInt(c.author.slice(2,6),16)+120)%360},55%,45%))` }}>
                   {c.author.slice(2,4).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-medium" style={{ color: '#a78bfa' }}>{formatAddress(c.author)}</span>
-                    <span className="text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>{timeAgo(new Date(c.created_at).getTime() / 1000)}</span>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] font-bold" style={{ color:'var(--accent)' }}>{formatAddress(c.author)}</span>
+                    <span className="text-[8px]" style={{ color:'var(--text2)' }}>{timeAgo(new Date(c.created_at).getTime()/1000)}</span>
                   </div>
-                  <p className="text-sm break-words" style={{ color: 'rgba(255,255,255,0.75)', lineHeight: '1.5' }}>{c.content}</p>
-                  <button
-                    onClick={() => like(c.id)}
-                    disabled={likedIds.has(c.id) || liking === c.id}
-                    className="flex items-center gap-1 mt-1.5 text-xs transition-all"
-                    style={{ color: likedIds.has(c.id) ? '#f472b6' : 'rgba(255,255,255,0.25)', background: 'none', border: 'none', cursor: likedIds.has(c.id) ? 'default' : 'pointer', padding: 0 }}
-                  >
-                    <Heart size={11} fill={likedIds.has(c.id) ? '#f472b6' : 'none'} />
-                    {c.likes > 0 && <span>{c.likes}</span>}
+                  <p className="text-[11px] leading-relaxed mb-1.5" style={{ color:'var(--text1)' }}>{c.content}</p>
+                  <button onClick={() => like(c.id)} disabled={likedIds.has(c.id)||liking===c.id}
+                    className="flex items-center gap-1 text-[9px] transition-all"
+                    style={{ color:likedIds.has(c.id)?'var(--red)':'var(--text2)', background:'none', border:'none', cursor:'pointer', padding:0 }}>
+                    {liking===c.id ? <Loader2 size={9} className="animate-spin"/> : <Heart size={9} fill={likedIds.has(c.id)?'currentColor':'none'}/>}
+                    {c.likes}
                   </button>
                 </div>
               </motion.div>
             ))}
           </AnimatePresence>
-        )}
-      </div>
-    </GlassCard>
+        </div>
+      )}
+    </div>
   )
 }

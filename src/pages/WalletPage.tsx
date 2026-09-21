@@ -27,7 +27,7 @@ function fmtUsd(n: number) { return n>=1e6?`$${(n/1e6).toFixed(2)}M`:n>=1e3?`$${
 function Tab({ id, label, icon: Icon, active, onClick }: any) {
   return (
     <button onClick={onClick} className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all"
-      style={{ background:active?'#6366f1':'transparent', color:active?'#fff':'#9ca3af' }}>
+      style={{ background:active?'#6366f1':'transparent', color:active?'var(--surface)':'#9ca3af' }}>
       <Icon size={12}/>{label}
     </button>
   )
@@ -140,7 +140,7 @@ export function WalletPage() {
       </div>
 
       {/* ── Tab bar ───────────────────────────────────────────── */}
-      <div className="flex gap-1 p-1 rounded-2xl mb-4" style={{ background:'#fff', border:'1px solid rgba(0,0,0,0.08)' }}>
+      <div className="flex gap-1 p-1 rounded-2xl mb-4" style={{ background:'var(--surface)', border:'1px solid rgba(0,0,0,0.08)' }}>
         {[['overview','Overview',BarChart3],['portfolio','Portfolio',Coins],['send','Send',Send],['receive','Receive',ArrowDownLeft],['activity','Activity',Activity]].map(([id,label,Icon]:any)=>(
           <Tab key={id} id={id} label={label} icon={Icon} active={tab===id} onClick={()=>setTab(id)}/>
         ))}
@@ -234,7 +234,7 @@ export function WalletPage() {
               <div className="text-center space-y-4">
                 <h3 className="text-sm font-bold" style={{ color:'#111827' }}>Your Wallet Address</h3>
                 <div className="flex justify-center">
-                  <div className="p-4 rounded-2xl" style={{ background:'#fff', border:'1px solid rgba(0,0,0,0.08)' }}>
+                  <div className="p-4 rounded-2xl" style={{ background:'var(--surface)', border:'1px solid rgba(0,0,0,0.08)' }}>
                     <QRCodeSVG value={evmAddr} size={160} level="H"/>
                   </div>
                 </div>
