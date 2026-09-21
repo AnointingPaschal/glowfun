@@ -119,8 +119,7 @@ export function TVChart({ data, height = 360, type = 'candle', loading = false }
         </div>
       )}
       <div ref={containerRef} style={{ width: '100%', height }}/>
-      {/* TradingView watermark */}
-      <div className="absolute bottom-1 right-2 text-[8px] font-semibold opacity-40" style={{ color: '#374151' }}>TradingView</div>
+
     </div>
   )
 }

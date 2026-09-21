@@ -48,26 +48,6 @@ function calcSignal(ch24 = 0, ch1h = 0) {
   return             { label: 'Very Bearish',       score: Math.max(2,  12 + c * 0.05), color: '#991b1b' }
 }
 
-/* ── Synthetic OHLCV ─────────────────────────────────────────────── */
-function makeSynthetic(price: number, ch24: number, ageSec: number, tf: string): CandleData[] {
-  if (!price || price <= 0) return []
-  const n = 80
-  const start = Math.abs(ch24) > 0.5 ? price / (1 + ch24 / 100) : price * 0.68
-  const now = Math.floor(Date.now() / 1000)
-  const iv = ({ '5m': 300, '15m': 900, '1h': 3600, '4h': 14400, '1d': 86400 } as any)[tf] ?? 3600
-  let seed = (Math.abs(Math.round(price * 1e9)) ^ 0x5f3759df) % 65535 || 12345
-  const rng = () => { seed = (seed * 1664525 + 1013904223) & 0xffffffff; return (seed >>> 0) / 0xffffffff }
-  return Array.from({ length: n }, (_, i) => {
-    const t = now - (n - i - 1) * iv
-    const prog = (i + 1) / n
-    const base = start + (price - start) * Math.pow(prog, 0.7) + Math.sin(prog * Math.PI * 3.5) * price * 0.02
-    const ns = 0.018 + rng() * 0.042; const dir = rng() > 0.44 ? 1 : -1
-    const o = Math.max(base * (1 + (rng() - 0.5) * ns * 0.55), 1e-30)
-    const c = Math.max(base * (1 + dir * ns * 0.38 * rng()), 1e-30)
-    return { time: t, open: o, high: Math.max(o, c) * (1 + ns * 0.09 * rng()), low: Math.min(o, c) * (1 - ns * 0.065 * rng()), close: c, volume: (rng() * 7000 + 400) }
-  })
-}
-
 async function fetchToken(addr: string): Promise<Token | null> {
   try {
     const r = await fetch(`/api/market?q=${addr}&limit=10`, { signal: AbortSignal.timeout(15_000) })
@@ -137,7 +117,7 @@ export function TokenDetailPage() {
   const [tf, setTf]               = useState<'5m'|'15m'|'1h'|'4h'|'1d'>('1h')
   const [range, setRange]         = useState<'1D'|'7D'|'1M'|'3M'|'1Y'|'MAX'>('7D')
   const [chartType, setCT]        = useState<ChartType>('candle')
-  const [isSynth, setIsSynth]     = useState(false)
+  const [isSynth, _setIS]         = useState(false)  // unused, kept for compat
   const [copiedAddr, setCopiedA]  = useState(false)
   const [copiedPair, setCopiedP]  = useState(false)
   const [refreshing, setRef]      = useState(false)
@@ -152,8 +132,7 @@ export function TokenDetailPage() {
     ;(async () => {
       const live = await fetchOHLCV(token.pairAddress ?? '', token.address, tf)
       if (!alive) return
-      if (live.length >= 5) { setOhlcv(live); setIsSynth(false) }
-      else { setOhlcv(makeSynthetic(token.priceUsd, token.change24h ?? 0, token.age ?? 86400, tf)); setIsSynth(true) }
+      setOhlcv(live)  // real data only — empty if no chart data yet
       setCL(false)
     })()
     return () => { alive = false }
@@ -351,7 +330,7 @@ export function TokenDetailPage() {
           <span className="text-sm font-semibold flex-1" style={{ color: '#111827' }}>
             {tokenName} ({token.symbol}) price chart
           </span>
-          {isSynth && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#fef3c7', color: '#92400e' }}>Simulated</span>}
+
         </div>
 
         {/* Range selector */}
@@ -383,12 +362,20 @@ export function TokenDetailPage() {
             </button>
           ))}
           <span className="ml-auto text-[9px]" style={{ color: '#9ca3af' }}>
-            {chartLoading ? 'Loading…' : `${ohlcv.length} candles · ${isSynth ? 'Simulated' : 'Live'}`}
+            {chartLoading ? 'Loading…' : `${ohlcv.length} candles · Live`}
           </span>
         </div>
 
         {/* Chart */}
-        <TVChart data={ohlcv} height={260} type={chartType} loading={chartLoading}/>
+        {!chartLoading && ohlcv.length < 5 ? (
+            <div className="flex flex-col items-center justify-center py-10 rounded-xl" style={{background:'#f9fafb',height:260}}>
+              <BarChart3 size={28} style={{color:'#d1d5db'}} className="mb-2"/>
+              <p className="text-sm font-medium" style={{color:'#9ca3af'}}>Chart data not available yet</p>
+              <p className="text-xs mt-1" style={{color:'#d1d5db'}}>Trade history will appear as activity grows</p>
+            </div>
+          ) : (
+            <TVChart data={ohlcv} height={260} type={chartType} loading={chartLoading}/>
+          )}
       </div>
 
       {/* ── External links ──────────────────────────────────────── */}

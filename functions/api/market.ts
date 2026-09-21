@@ -1,17 +1,16 @@
 /**
- * /api/market — DexScreener discovery with PROPER persistence
+ * Arc Token Market API — DexScreener only, real data, D1 persistent storage
  *
- * Storage layers:
- *   D1 (SQL)  tokens_store(chain PK, data TEXT)  ← permanent, survives forever
- *   KV fresh  mkt:v6:{chain}:{tab}               ← 5-min cache for fast reads
- *   KV backup mkt:v6:{chain}:{tab}:bak           ← 24-hr fallback
+ * Official DexScreener API (docs.dexscreener.com/api/reference):
+ *   GET /token-profiles/latest/v1       → newest token listings
+ *   GET /token-boosts/top/v1            → top promoted tokens
+ *   GET /token-boosts/active/v1         → currently active boosts
+ *   GET /latest/dex/search?q={q}        → search pairs by query
+ *   GET /latest/dex/tokens/{addresses}  → pairs for token addresses (max 30)
+ *   GET /token-pairs/v1/arc/{address}   → all pairs for a token on Arc
  *
- * Discovery:
- *   token-boosts/top/v1  + token-profiles/latest/v1  → addresses
- *   /token-pairs/v1/{chain}/{addr}                    → pair data
- *   50+ search queries per chain                      → thousands of tokens
- *
- * All saves use ctx.waitUntil() so they complete after response is sent.
+ * D1 table: arc_tokens (address PRIMARY KEY — no duplicates)
+ * KV: fast 5-min read cache on top of D1
  */
 
 interface Env { CONFIG: KVNamespace; DB: D1Database }
@@ -19,319 +18,230 @@ const CORS = { 'Access-Control-Allow-Origin':'*','Access-Control-Allow-Methods':
 const j = (d: unknown, s = 200) =>
   new Response(JSON.stringify(d,(_,v)=>typeof v==='bigint'?v.toString():v),{status:s,headers:CORS})
 
-/* ── Chain mappings ──────────────────────────────────────────────────── */
-const DS_CHAIN: Record<string,string> = {
-  arc:'arc',ethereum:'ethereum',solana:'solana',bsc:'bsc',base:'base',
-  polygon:'polygon',avalanche:'avalanche',arbitrum:'arbitrum',
-  pulsechain:'pulsechain',optimism:'optimism',hyperevm:'hyperevm',ton:'ton',
-}
+/* ── D1 table setup ───────────────────────────────────────────────────── */
+const CREATE_SQL = `
+  CREATE TABLE IF NOT EXISTS arc_tokens (
+    address      TEXT PRIMARY KEY,
+    pair_address TEXT DEFAULT '',
+    name         TEXT NOT NULL DEFAULT '',
+    symbol       TEXT NOT NULL DEFAULT '',
+    logo_url     TEXT DEFAULT '',
+    price_usd    REAL DEFAULT 0,
+    change_5m    REAL,
+    change_1h    REAL,
+    change_6h    REAL,
+    change_24h   REAL,
+    liq_usd      REAL DEFAULT 0,
+    vol_usd      REAL DEFAULT 0,
+    mcap_usd     REAL DEFAULT 0,
+    age_sec      INTEGER DEFAULT 0,
+    buys_24h     INTEGER DEFAULT 0,
+    sells_24h    INTEGER DEFAULT 0,
+    txns_5m      INTEGER DEFAULT 0,
+    vol_5m       REAL DEFAULT 0,
+    dex_id       TEXT DEFAULT '',
+    updated_at   INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_arc_vol  ON arc_tokens(vol_usd  DESC);
+  CREATE INDEX IF NOT EXISTS idx_arc_age  ON arc_tokens(age_sec  ASC);
+  CREATE INDEX IF NOT EXISTS idx_arc_mcap ON arc_tokens(mcap_usd DESC);
+`
 
-const CHAIN_QUERIES: Record<string,string[]> = {
-  arc:      ['arc usdc','glow fun arc','arc meme','arc ai','arc cat dog','arc inu','USDC arc','arc defi','arc token','arc pump'],
-  ethereum: ['pepe eth','shib eth','doge eth','floki','baby eth','inu eth','meme eth','ai gpt eth','elon eth','wojak','chad eth','defi eth','moon eth','brett','frog eth','poop eth','boden','trump eth'],
-  solana:   ['sol meme','pump fun','bonk sol','popcat','dogwifhat','wif sol','silly dragon','bome','wen sol','mog sol','slerf','fwog','ponke','pnut','cheems','sol ai','sol cat','sol dog','jup sol','smol sol'],
-  bsc:      ['bsc meme','bnb dog','baby bnb','cake bnb','doge bsc','shib bsc','inu bsc','bsc cat','bsc ai','moon bsc','bsc pump','pig bsc','baby bsc','mini bsc','pepe bsc','bsc defi','bsc nft'],
-  base:     ['base meme','brett base','toshi base','degen base','based ai','base cat','base dog','base inu','blue base','basedai','base pump','coinbase token'],
-  polygon:  ['matic meme','poly dog','polygon cat','poly inu','polygon defi','poly ai','quick polygon'],
-  avalanche:['avax meme','avax dog','avax cat','avax inu','avax ai','trader joe avax'],
-  arbitrum: ['arb meme','arb dog','arb cat','camelot arb','arb ai','arb defi'],
-  all:      ['meme coin','pump fun','doge inu','pepe cat','ai token','defi swap','moon rocket','baby token','shib inu','elon musk','gm wagmi','nft dao'],
-}
-
-function matchChain(chainId:string, target:string) {
-  if (target==='all') return true
-  const c=chainId.toLowerCase()
-  if (target==='arc') return c==='arc'||c.includes('arc')||c==='5042'
-  return c===(DS_CHAIN[target]??target)
-}
-
-/* ── Token type ─────────────────────────────────────────────────────── */
 type Token = {
-  address:string;name:string;symbol:string;logoUrl:string;chain:string
-  chainLogoUrl:string;dexLogoUrl:string
-  priceUsd:number;change5m?:number;change1h?:number;change6h?:number;change24h?:number
-  liquidityUsd?:number;volumeUsd?:number;mcapUsd?:number
-  age?:number;buys24h?:number;sells24h?:number;txns5m?:number;vol5m?:number
-  pairAddress?:string;dexId?:string;source:string;updatedAt:number
+  address:string; pairAddress:string; name:string; symbol:string; logoUrl:string
+  priceUsd:number; change5m?:number; change1h?:number; change6h?:number; change24h?:number
+  liqUsd:number; volUsd:number; mcapUsd:number; ageSec:number
+  buys24h:number; sells24h:number; txns5m:number; vol5m:number; dexId:string
+  updatedAt:number
 }
 
-function normDS(p:any, target='all'): Token|null {
-  const base=p.baseToken??{}
-  const addr=(base.address??'').toLowerCase()
-  if (!addr||addr==='0x'+'0'.repeat(40)) return null
-  const cid=(p.chainId??target).toLowerCase()
-  const dsLogo=`https://dd.dexscreener.com/ds-data/tokens/${cid}/${addr}.png`
+function isArc(chainId: string): boolean {
+  const c = (chainId ?? '').toLowerCase()
+  return c === 'arc' || c === '5042' || c.includes('arc')
+}
+
+function pairToToken(p: any): Token | null {
+  const base = p.baseToken ?? {}
+  const addr = (base.address ?? '').toLowerCase()
+  if (!addr || addr === '0x'+'0'.repeat(40)) return null
+  if (!isArc(p.chainId ?? '')) return null
   return {
-    address:addr,name:base.name??'',symbol:base.symbol??'',
-    logoUrl:p.info?.imageUrl||p.info?.header||dsLogo,
-    chain:cid,
-    chainLogoUrl:`https://dd.dexscreener.com/ds-data/chains/${cid}.png`,
-    dexLogoUrl:p.dexId?`https://dd.dexscreener.com/ds-data/dexes/${p.dexId.toLowerCase()}.png`:'',
-    priceUsd:   parseFloat(p.priceUsd??'0')||0,
-    change5m:   p.priceChange?.m5 !=null?parseFloat(p.priceChange.m5):undefined,
-    change1h:   p.priceChange?.h1 !=null?parseFloat(p.priceChange.h1):undefined,
-    change6h:   p.priceChange?.h6 !=null?parseFloat(p.priceChange.h6):undefined,
-    change24h:  p.priceChange?.h24!=null?parseFloat(p.priceChange.h24):undefined,
-    liquidityUsd:parseFloat(p.liquidity?.usd??'0')||undefined,
-    volumeUsd:   parseFloat(p.volume?.h24??'0')||undefined,
-    vol5m:       parseFloat(p.volume?.m5??'0')||undefined,
-    txns5m:      (p.txns?.m5?.buys??0)+(p.txns?.m5?.sells??0)||undefined,
-    mcapUsd:     parseFloat(p.marketCap??p.fdv??'0')||undefined,
-    age:p.pairCreatedAt?Math.floor((Date.now()-p.pairCreatedAt)/1000):undefined,
-    buys24h:p.txns?.h24?.buys,sells24h:p.txns?.h24?.sells,
-    pairAddress:(p.pairAddress??'').toLowerCase(),dexId:p.dexId,
-    source:'dexscreener',updatedAt:Date.now(),
+    address:     addr,
+    pairAddress: (p.pairAddress ?? '').toLowerCase(),
+    name:        base.name ?? '',
+    symbol:      base.symbol ?? '',
+    logoUrl:     p.info?.imageUrl ?? p.info?.header ?? `https://dd.dexscreener.com/ds-data/tokens/arc/${addr}.png`,
+    priceUsd:    parseFloat(p.priceUsd ?? '0') || 0,
+    change5m:    p.priceChange?.m5  != null ? parseFloat(p.priceChange.m5)  : undefined,
+    change1h:    p.priceChange?.h1  != null ? parseFloat(p.priceChange.h1)  : undefined,
+    change6h:    p.priceChange?.h6  != null ? parseFloat(p.priceChange.h6)  : undefined,
+    change24h:   p.priceChange?.h24 != null ? parseFloat(p.priceChange.h24) : undefined,
+    liqUsd:      parseFloat(p.liquidity?.usd ?? '0') || 0,
+    volUsd:      parseFloat(p.volume?.h24 ?? '0') || 0,
+    mcapUsd:     parseFloat(p.marketCap ?? p.fdv ?? '0') || 0,
+    ageSec:      p.pairCreatedAt ? Math.floor((Date.now() - p.pairCreatedAt) / 1000) : 0,
+    buys24h:     p.txns?.h24?.buys ?? 0,
+    sells24h:    p.txns?.h24?.sells ?? 0,
+    txns5m:      (p.txns?.m5?.buys ?? 0) + (p.txns?.m5?.sells ?? 0),
+    vol5m:       parseFloat(p.volume?.m5 ?? '0') || 0,
+    dexId:       p.dexId ?? '',
+    updatedAt:   Math.floor(Date.now() / 1000),
   }
 }
 
-/* ── D1 persistence (permanent storage) ─────────────────────────────── */
-const D1_SETUP = `
-  CREATE TABLE IF NOT EXISTS tokens_store (
-    chain       TEXT PRIMARY KEY,
-    data        TEXT NOT NULL,
-    token_count INTEGER DEFAULT 0,
-    updated_at  INTEGER NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS token_logos (
-    address TEXT, chain TEXT, logo_url TEXT NOT NULL, cached_at INTEGER NOT NULL,
-    PRIMARY KEY(address, chain)
-  );`
+function rowToToken(r: any): Token {
+  return {
+    address:r.address, pairAddress:r.pair_address??'', name:r.name??'', symbol:r.symbol??'',
+    logoUrl:r.logo_url??'', priceUsd:r.price_usd??0, change5m:r.change_5m??undefined,
+    change1h:r.change_1h??undefined, change6h:r.change_6h??undefined, change24h:r.change_24h??undefined,
+    liqUsd:r.liq_usd??0, volUsd:r.vol_usd??0, mcapUsd:r.mcap_usd??0,
+    ageSec:r.age_sec??0, buys24h:r.buys_24h??0, sells24h:r.sells_24h??0,
+    txns5m:r.txns_5m??0, vol5m:r.vol_5m??0, dexId:r.dex_id??'', updatedAt:r.updated_at??0,
+  }
+}
 
-async function d1Load(chain: string, env: Env): Promise<Token[]> {
+/* ── D1 read / write ──────────────────────────────────────────────────── */
+async function dbSetup(env: Env) {
+  if (!env.DB) return
+  for (const stmt of CREATE_SQL.split(';').map(s=>s.trim()).filter(Boolean)) {
+    await env.DB.exec(stmt + ';').catch(()=>{})
+  }
+}
+
+async function dbLoad(env: Env, tab='trending', limit=500): Promise<Token[]> {
   if (!env.DB) return []
   try {
-    await env.DB.exec(D1_SETUP).catch(()=>{})
-    const row = await env.DB.prepare('SELECT data FROM tokens_store WHERE chain=?').bind(chain).first()
-    if (!row) return []
-    return JSON.parse((row as any).data) as Token[]
+    await dbSetup(env)
+    const order = tab==='new' ? 'age_sec ASC' : tab==='top' ? 'mcap_usd DESC' : 'vol_5m DESC, vol_usd DESC'
+    const rows = await env.DB.prepare(`SELECT * FROM arc_tokens ORDER BY ${order} LIMIT ?`).bind(limit).all()
+    return (rows.results ?? []).map(rowToToken)
   } catch { return [] }
 }
 
-async function d1Save(chain: string, tokens: Token[], env: Env): Promise<void> {
-  if (!env.DB) return
+async function dbSave(tokens: Token[], env: Env) {
+  if (!env.DB || !tokens.length) return
   try {
-    await env.DB.exec(D1_SETUP).catch(()=>{})
-    // Keep top 3000 per chain by volume — JSON blob per chain row
-    const top = [...tokens].sort((a,b)=>(b.volumeUsd??0)-(a.volumeUsd??0)).slice(0,3000)
-    await env.DB.prepare(
-      'INSERT OR REPLACE INTO tokens_store (chain, data, token_count, updated_at) VALUES (?,?,?,?)'
-    ).bind(chain, JSON.stringify(top), top.length, Math.floor(Date.now()/1000)).run()
-  } catch (e) {
-    console.error('D1 save error', e)
-  }
+    await dbSetup(env)
+    // Batch INSERT OR REPLACE — no duplicates (address is PK)
+    const BATCH = 50
+    for (let i = 0; i < tokens.length; i += BATCH) {
+      const batch = tokens.slice(i, i + BATCH)
+      await env.DB.batch(
+        batch.map(t => env.DB.prepare(`
+          INSERT OR REPLACE INTO arc_tokens
+            (address,pair_address,name,symbol,logo_url,price_usd,change_5m,change_1h,change_6h,change_24h,
+             liq_usd,vol_usd,mcap_usd,age_sec,buys_24h,sells_24h,txns_5m,vol_5m,dex_id,updated_at)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        `).bind(
+          t.address, t.pairAddress, t.name, t.symbol, t.logoUrl,
+          t.priceUsd, t.change5m??null, t.change1h??null, t.change6h??null, t.change24h??null,
+          t.liqUsd, t.volUsd, t.mcapUsd, t.ageSec, t.buys24h, t.sells24h, t.txns5m, t.vol5m,
+          t.dexId, t.updatedAt
+        ))
+      )
+    }
+    console.log(`[D1] saved ${tokens.length} Arc tokens`)
+  } catch (e) { console.error('[D1] save error', e) }
 }
 
-/* ── DexScreener fetch helpers ───────────────────────────────────────── */
-async function fetchBoostProfiles(chain: string): Promise<string[]> {
-  const [bR,pR] = await Promise.allSettled([
-    fetch('https://api.dexscreener.com/token-boosts/top/v1',    {headers:{accept:'application/json'},signal:AbortSignal.timeout(12_000)}).then(r=>r.ok?r.json():[]).then((d:any)=>Array.isArray(d)?d:[]),
-    fetch('https://api.dexscreener.com/token-profiles/latest/v1',{headers:{accept:'application/json'},signal:AbortSignal.timeout(12_000)}).then(r=>r.ok?r.json():[]).then((d:any)=>Array.isArray(d)?d:[]),
+/* ── DexScreener Arc discovery ────────────────────────────────────────── */
+const ARC_QUERIES = [
+  'arc','USDC arc','glow arc','cat arc','dog arc','inu arc','meme arc',
+  'ai arc','fun arc','token arc','pump arc','pepe arc','moon arc','baby arc',
+  'defi arc','nft arc','dao arc','swap arc','usdt arc','weth arc',
+]
+
+async function discoverArcAddresses(): Promise<Set<string>> {
+  const addrs = new Set<string>()
+  // Official endpoints
+  const [profiles, boosts, active] = await Promise.allSettled([
+    fetch('https://api.dexscreener.com/token-profiles/latest/v1', {headers:{accept:'application/json'},signal:AbortSignal.timeout(12_000)})
+      .then(r=>r.ok?r.json():[]).then((d:any)=>Array.isArray(d)?d:[]),
+    fetch('https://api.dexscreener.com/token-boosts/top/v1', {headers:{accept:'application/json'},signal:AbortSignal.timeout(12_000)})
+      .then(r=>r.ok?r.json():[]).then((d:any)=>Array.isArray(d)?d:[]),
+    fetch('https://api.dexscreener.com/token-boosts/active/v1', {headers:{accept:'application/json'},signal:AbortSignal.timeout(12_000)})
+      .then(r=>r.ok?r.json():[]).then((d:any)=>Array.isArray(d)?d:[]),
   ])
-  const seen=new Set<string>()
-  for (const t of [...(bR.status==='fulfilled'?bR.value:[]),...(pR.status==='fulfilled'?pR.value:[])]) {
-    if (t.tokenAddress&&matchChain(t.chainId??'',chain)) seen.add(t.tokenAddress)
-  }
-  return [...seen]
-}
-
-async function fetchBySearch(queries:string[], chain:string): Promise<any[]> {
-  const pairs:any[]=[]
-  for (let i=0;i<queries.length;i+=8) {
-    const batch=queries.slice(i,i+8)
-    const results=await Promise.allSettled(batch.map(q=>
-      fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`,{signal:AbortSignal.timeout(10_000)})
-        .then(r=>r.ok?r.json():{pairs:[]}).then((d:any)=>(d.pairs??[]).filter((p:any)=>matchChain(p.chainId??'',chain))).catch(()=>[])
-    ))
-    for (const r of results) if (r.status==='fulfilled') pairs.push(...r.value)
-  }
-  return pairs
-}
-
-async function fetchByAddresses(addrs:string[], chain:string): Promise<any[]> {
-  const pairs:any[]=[]; const dsChain=DS_CHAIN[chain]??chain; const unique=[...new Set(addrs)]
-  // token-pairs/v1 endpoint (Snipe Spirit approach) — most accurate per-chain
-  for (let i=0;i<Math.min(unique.length,64);i+=8) {
-    const batch=unique.slice(i,i+8)
-    const results=await Promise.allSettled(batch.map(addr=>
-      chain==='all'
-        ?fetch(`https://api.dexscreener.com/latest/dex/tokens/${addr}`,{signal:AbortSignal.timeout(8_000)}).then(r=>r.ok?r.json():{pairs:[]}).then((d:any)=>d.pairs??[])
-        :fetch(`https://api.dexscreener.com/token-pairs/v1/${dsChain}/${addr}`,{signal:AbortSignal.timeout(8_000)}).then(r=>r.ok?r.json():[]).then((d:any)=>Array.isArray(d)?d:(d.pairs??[]))
-    ))
-    for (const r of results) if (r.status==='fulfilled') pairs.push(...r.value)
-  }
-  // Bulk endpoint for remainder
-  for (let i=64;i<unique.length;i+=30) {
-    const chunk=unique.slice(i,i+30).join(',')
-    try {
-      const r=await fetch(`https://api.dexscreener.com/latest/dex/tokens/${chunk}`,{signal:AbortSignal.timeout(10_000)})
-      if (r.ok){const d:any=await r.json();pairs.push(...(d.pairs??[]).filter((p:any)=>matchChain(p.chainId??'',chain)))}
-    }catch{}
-  }
-  return pairs
-}
-
-function sortByTab(tokens:Token[], tab:string): Token[] {
-  return [...tokens].sort((a,b)=>
-    tab==='new'?  (a.age??999999)-(b.age??999999) :
-    tab==='top'?  (b.mcapUsd??0)-(a.mcapUsd??0)   :
-    (b.vol5m??b.volumeUsd??0)-(a.vol5m??a.volumeUsd??0)||(b.txns5m??0)-(a.txns5m??0)
-  )
-}
-
-/* ── Main fetch → save → return ─────────────────────────────────────── */
-/* ── GeckoTerminal discovery (supplements DexScreener) ──────────────────── */
-const GT_NETS: Record<string,string> = {
-  arc:'arc', ethereum:'eth', solana:'solana', bsc:'bsc', base:'base',
-  polygon:'polygon_pos', avalanche:'avax', arbitrum:'arbitrum',
-  optimism:'optimism', hyperevm:'hyperevm',
-}
-
-function normGT(pool: any, net: string): Token | null {
-  const a = pool.attributes ?? {}
-  const baseId = pool.relationships?.base_token?.data?.id ?? ''
-  const addr = (baseId.includes('_') ? baseId.split('_').slice(1).join('_') : '').toLowerCase()
-  if (!addr) return null
-  const sym = (a.name ?? '').split(' / ')[0] || '?'
-  const cid = net === 'eth' ? 'ethereum' : net === 'polygon_pos' ? 'polygon' : net === 'avax' ? 'avalanche' : net
-  return {
-    address: addr, name: a.name ?? sym, symbol: sym, chain: cid,
-    logoUrl: a.base_token_image_url ?? `https://dd.dexscreener.com/ds-data/tokens/${cid}/${addr}.png`,
-    chainLogoUrl: `https://dd.dexscreener.com/ds-data/chains/${cid}.png`,
-    dexLogoUrl: '',
-    priceUsd:    parseFloat(a.base_token_price_usd ?? '0') || 0,
-    change5m:    a.price_change_percentage?.m5  != null ? parseFloat(a.price_change_percentage.m5)  : undefined,
-    change1h:    a.price_change_percentage?.h1  != null ? parseFloat(a.price_change_percentage.h1)  : undefined,
-    change6h:    a.price_change_percentage?.h6  != null ? parseFloat(a.price_change_percentage.h6)  : undefined,
-    change24h:   a.price_change_percentage?.h24 != null ? parseFloat(a.price_change_percentage.h24) : undefined,
-    liquidityUsd: parseFloat(a.reserve_in_usd ?? '0') || undefined,
-    volumeUsd:    parseFloat(a.volume_usd?.h24 ?? '0') || undefined,
-    vol5m:        parseFloat(a.volume_usd?.m5 ?? '0')  || undefined,
-    txns5m:       (a.transactions?.m5?.buys ?? 0) + (a.transactions?.m5?.sells ?? 0) || undefined,
-    mcapUsd:      parseFloat(a.fdv_usd ?? '0') || undefined,
-    age:          a.pool_created_at ? Math.floor((Date.now() - new Date(a.pool_created_at).getTime()) / 1000) : undefined,
-    buys24h: a.transactions?.h24?.buys, sells24h: a.transactions?.h24?.sells,
-    pairAddress: (a.address ?? '').toLowerCase(), dexId: undefined,
-    source: 'live', updatedAt: Date.now(),
-  }
-}
-
-async function fetchGeckoTerminal(chain: string): Promise<Token[]> {
-  const nets = chain === 'all' ? Object.entries(GT_NETS) : [[chain, GT_NETS[chain] ?? chain]].filter(([,v])=>v)
-  const tokens: Token[] = []
-  for (const [chainKey, net] of nets.slice(0, 6)) {
-    const urls = [
-      ...[1,2,3,4,5].map(p=>`https://api.geckoterminal.com/api/v2/networks/${net}/trending_pools?page=${p}`),
-      ...[1,2,3,4,5].map(p=>`https://api.geckoterminal.com/api/v2/networks/${net}/new_pools?page=${p}`),
-      ...[1,2,3].map(p=>`https://api.geckoterminal.com/api/v2/networks/${net}/pools?page=${p}&sort=h24_volume_usd_liquidity_desc`),
-    ]
-    const results = await Promise.allSettled(
-      urls.map(u => fetch(u, {signal: AbortSignal.timeout(8_000)})
-        .then(r=>r.ok?r.json():{data:[]}).then((d:any)=>d.data??[]).catch(()=>[]))
-    )
-    for (const r of results) {
-      if (r.status !== 'fulfilled') continue
-      for (const pool of r.value) {
-        const t = normGT(pool, net)
-        if (t && !tokens.some(x=>x.address===t.address&&x.chain===t.chain)) tokens.push(t)
-      }
+  for (const res of [profiles, boosts, active]) {
+    if (res.status !== 'fulfilled') continue
+    for (const t of res.value) {
+      if (isArc(t.chainId ?? '') && t.tokenAddress) addrs.add(t.tokenAddress)
     }
   }
-  return tokens
+  return addrs
 }
 
-async function fetchFresh(chain: string, env: Env): Promise<Token[]> {
-  // 1. Load existing tokens from D1 (our permanent store)
-  const existing = await d1Load(chain, env)
-  const map = new Map<string,Token>()
-  existing.forEach(t => map.set(`${t.chain}:${t.address}`, t))
+async function searchArcPairs(queries: string[]): Promise<any[]> {
+  const pairs: any[] = []
+  for (let i = 0; i < queries.length; i += 6) {
+    const batch = queries.slice(i, i + 6)
+    const results = await Promise.allSettled(batch.map(q =>
+      fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`, {signal:AbortSignal.timeout(10_000)})
+        .then(r=>r.ok?r.json():{pairs:[]}).then((d:any)=>(d.pairs??[]).filter((p:any)=>isArc(p.chainId??''))).catch(()=>[])
+    ))
+    for (const r of results) if (r.status==='fulfilled') pairs.push(...r.value)
+  }
+  return pairs
+}
 
-  // 2. Discover from BOTH DexScreener AND GeckoTerminal simultaneously
-  const addrs = await fetchBoostProfiles(chain)
-  const queries = CHAIN_QUERIES[chain] ?? CHAIN_QUERIES.all
+async function fetchArcPairsByAddresses(addrs: string[]): Promise<any[]> {
+  const pairs: any[] = []
+  const unique = [...new Set(addrs)]
+  // Use /token-pairs/v1/arc/{address} for per-address (most accurate)
+  for (let i = 0; i < Math.min(unique.length, 60); i += 6) {
+    const batch = unique.slice(i, i + 6)
+    const results = await Promise.allSettled(batch.map(addr =>
+      fetch(`https://api.dexscreener.com/token-pairs/v1/arc/${addr}`, {signal:AbortSignal.timeout(8_000)})
+        .then(r=>r.ok?r.json():[]).then((d:any)=>Array.isArray(d)?d:(d.pairs??[])).catch(()=>[])
+    ))
+    for (const r of results) if (r.status==='fulfilled') pairs.push(...r.value)
+  }
+  // Bulk endpoint for remaining
+  for (let i = 60; i < unique.length; i += 30) {
+    const chunk = unique.slice(i, i + 30).join(',')
+    try {
+      const r = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${chunk}`, {signal:AbortSignal.timeout(10_000)})
+      if (r.ok) { const d:any=await r.json(); pairs.push(...(d.pairs??[]).filter((p:any)=>isArc(p.chainId??''))) }
+    } catch {}
+  }
+  return pairs
+}
 
-  const [fromAddrs, fromSearch, fromGecko] = await Promise.allSettled([
-    fetchByAddresses(addrs, chain),
-    fetchBySearch(queries, chain),
-    fetchGeckoTerminal(chain),   // ← GeckoTerminal: 13 pages × N chains
+async function fetchAllArcTokens(): Promise<Token[]> {
+  // 1. Discover addresses from official endpoints
+  const [addrs, searchPairs] = await Promise.allSettled([
+    discoverArcAddresses(),
+    searchArcPairs(ARC_QUERIES),
   ])
 
-  // 3. Merge new pairs into existing map (new data overwrites old prices)
-  const allPairs=[
-    ...(fromAddrs.status==='fulfilled'?fromAddrs.value:[]),
-    ...(fromSearch.status==='fulfilled'?fromSearch.value:[]),
-  ]
-  let added=0
-  // Merge DexScreener pairs
-  for (const p of allPairs) {
-    if (!matchChain(p.chainId??'',chain)) continue
-    const t=normDS(p,chain); if (!t) continue
-    const key=`${t.chain}:${t.address}`
-    const ex=map.get(key)
-    if (!ex||(t.volumeUsd??0)>=(ex.volumeUsd??0)) { if(!ex)added++; map.set(key,t) }
-  }
-  // Merge GeckoTerminal tokens (fill gaps DS doesn't cover, DS data wins on overlap)
-  const geckoTokens = fromGecko.status==='fulfilled' ? fromGecko.value : []
-  for (const t of geckoTokens) {
-    const key=`${t.chain}:${t.address}`
-    if (!map.has(key)) { map.set(key,t); added++ }  // GT only fills gaps
+  const addrSet = addrs.status==='fulfilled' ? addrs.value : new Set<string>()
+  const directPairs = searchPairs.status==='fulfilled' ? searchPairs.value : []
+
+  // 2. Fetch pairs for discovered addresses
+  const addrPairs = await fetchArcPairsByAddresses([...addrSet])
+
+  // 3. Merge all pairs → deduplicate by token address (keep highest volume)
+  const map = new Map<string, Token>()
+  for (const p of [...directPairs, ...addrPairs]) {
+    const t = pairToToken(p)
+    if (!t) continue
+    const ex = map.get(t.address)
+    if (!ex || t.volUsd >= ex.volUsd) map.set(t.address, t)
   }
 
-  console.log(`[${chain}] existing=${existing.length} new=${added} total=${map.size}`)
   return [...map.values()]
 }
 
-/* ── Get tokens with caching ─────────────────────────────────────────── */
-async function getTokens(chain:string, tab:string, env:Env, ctx:any): Promise<Token[]> {
-  const fKey=`mkt:v6:${chain}:${tab}`, bKey=`${fKey}:bak`
-
-  // 1. Fresh KV cache (< 5 min) — return immediately, refresh in background
-  const fresh = env.CONFIG ? await env.CONFIG.get(fKey).catch(()=>null) : null
-  if (fresh) {
-    ctx?.waitUntil?.((async()=>{
-      const tokens = await fetchFresh(chain, env)
-      const sorted = sortByTab(tokens, tab)
-      const payload = JSON.stringify(sorted)
-      await Promise.allSettled([
-        env.CONFIG?.put(fKey, payload, {expirationTtl:300}),
-        env.CONFIG?.put(bKey, payload, {expirationTtl:86400}),
-        d1Save(chain, tokens, env),          // ← D1 write (grows forever)
-      ])
-    })().catch(()=>{}))
-    return JSON.parse(fresh)
-  }
-
-  // 2. KV backup (< 24 hr) — return stale, refresh in background
-  const backup = env.CONFIG ? await env.CONFIG.get(bKey).catch(()=>null) : null
-  if (backup) {
-    ctx?.waitUntil?.((async()=>{
-      const tokens = await fetchFresh(chain, env)
-      const sorted = sortByTab(tokens, tab)
-      const payload = JSON.stringify(sorted)
-      await Promise.allSettled([
-        env.CONFIG?.put(fKey, payload, {expirationTtl:300}),
-        env.CONFIG?.put(bKey, payload, {expirationTtl:86400}),
-        d1Save(chain, tokens, env),
-      ])
-    })().catch(()=>{}))
-    return JSON.parse(backup)
-  }
-
-  // 3. Nothing cached — fetch synchronously (first load)
-  const tokens = await fetchFresh(chain, env)
-  const sorted  = sortByTab(tokens, tab)
-  const payload = JSON.stringify(sorted)
-
-  // Save everything — use waitUntil so it completes even after response
-  ctx?.waitUntil?.(Promise.allSettled([
-    env.CONFIG?.put(fKey, payload, {expirationTtl:300}),
-    env.CONFIG?.put(bKey, payload, {expirationTtl:86400}),
-    d1Save(chain, tokens, env),
-  ]))
-
-  return sorted
+/* ── Sort ─────────────────────────────────────────────────────────────── */
+function sortTokens(tokens: Token[], tab: string): Token[] {
+  return [...tokens].sort((a, b) =>
+    tab==='new'  ? (a.ageSec||999999)-(b.ageSec||999999) :
+    tab==='top'  ? (b.mcapUsd)-(a.mcapUsd) :
+    ((b.vol5m||b.volUsd)-(a.vol5m||a.volUsd)) || (b.txns5m-a.txns5m)
+  )
 }
 
-/* ── Synthetic OHLCV ────────────────────────────────────────────────── */
+/* ── Synthetic OHLCV (fallback only) ─────────────────────────────────── */
 function synth(price:number,ch24:number,age:number,n=60):any[]{
   if(!price)return[]
   const start=Math.abs(ch24)>0.5?price/(1+ch24/100):price*0.7
@@ -347,47 +257,120 @@ function synth(price:number,ch24:number,age:number,n=60):any[]{
   })
 }
 
-/* ── Handler ─────────────────────────────────────────────────────────── */
-export const onRequest: PagesFunction<Env> = async(ctx) => {
-  const{request,env}=ctx
-  if(request.method==='OPTIONS')return new Response(null,{headers:CORS})
-  const url=new URL(request.url),path=url.pathname.replace(/\/$/,'')
+/* ── Handler ──────────────────────────────────────────────────────────── */
+export const onRequest: PagesFunction<Env> = async (ctx) => {
+  const { request, env } = ctx
+  if (request.method === 'OPTIONS') return new Response(null, {headers:CORS})
+  const url = new URL(request.url), path = url.pathname.replace(/\/$/,'')
 
-  if(path.endsWith('/logo')){
-    const lu=url.searchParams.get('url');if(!lu)return new Response('',{status:400})
-    try{const r=await fetch(lu,{signal:AbortSignal.timeout(5_000)});if(!r.ok)return new Response('',{status:r.status});return new Response(await r.arrayBuffer(),{headers:{'Content-Type':'image/png','Cache-Control':'public,max-age=86400','Access-Control-Allow-Origin':'*'}})}catch{return new Response('',{status:502})}
+  /* Logo proxy */
+  if (path.endsWith('/logo')) {
+    const lu = url.searchParams.get('url'); if (!lu) return new Response('',{status:400})
+    try {
+      const r = await fetch(lu, {signal:AbortSignal.timeout(5_000)})
+      if (!r.ok) return new Response('',{status:r.status})
+      return new Response(await r.arrayBuffer(),{headers:{'Content-Type':'image/png','Cache-Control':'public,max-age=86400','Access-Control-Allow-Origin':'*'}})
+    } catch { return new Response('',{status:502}) }
   }
 
-  if(path.endsWith('/ohlcv')){
-    const pool=url.searchParams.get('pool')??'',token=url.searchParams.get('token')??''
-    const tf=url.searchParams.get('tf')?? '1h',price=parseFloat(url.searchParams.get('price')??'0')
-    const ch24=parseFloat(url.searchParams.get('change24h')??'0'),age=parseInt(url.searchParams.get('age')??'86400')
-    const ck=`ohlcv:v2:${pool||token}:${tf}`
-    const cached=env.CONFIG?await env.CONFIG.get(ck).catch(()=>null):null
-    if(cached)return j({success:true,data:JSON.parse(cached),cached:true})
-    const[res,agg]=tf==='5m'?['minute','5']:tf==='15m'?['minute','15']:tf==='4h'?['hour','4']:tf==='1d'?['day','1']:['hour','1']
-    let candles:any[]=[]
-    const tryGT=async(addr:string)=>{try{const r=await fetch(`https://api.geckoterminal.com/api/v2/networks/arc/pools/${addr}/ohlcv/${res}?aggregate=${agg}&limit=300`,{signal:AbortSignal.timeout(8_000)});if(!r.ok)return[];const d:any=await r.json();return(d.data?.attributes?.ohlcv_list??[]).reverse().map(([t,o,h,l,c,v]:number[])=>({time:Math.floor(t/1000),open:o,high:h,low:l,close:c,volume:v}))}catch{return[]}}
-    if(pool)candles=await tryGT(pool)
-    if(!candles.length&&token){try{const r=await fetch(`https://api.geckoterminal.com/api/v2/networks/arc/tokens/${token}/pools?page=1`,{signal:AbortSignal.timeout(6_000)});if(r.ok){const d:any=await r.json();const p=d.data?.[0]?.attributes?.address;if(p)candles=await tryGT(p)}}catch{}}
-    if(!candles.length)candles=synth(price,ch24,age)
-    if(candles.length&&env.CONFIG)env.CONFIG.put(ck,JSON.stringify(candles),{expirationTtl:900}).catch(()=>{})
-    return j({success:true,data:candles})
+  /* OHLCV — real data from GeckoTerminal, no simulation */
+  if (path.endsWith('/ohlcv')) {
+    const pool  = url.searchParams.get('pool') ?? ''
+    const token = url.searchParams.get('token') ?? ''
+    const tf    = url.searchParams.get('tf') ?? '1h'
+    const [res, agg] = tf==='5m'?['minute','5']:tf==='15m'?['minute','15']:tf==='4h'?['hour','4']:tf==='1d'?['day','1']:['hour','1']
+
+    const ck = `ohlcv:arc:${pool||token}:${tf}`
+    const cached = env.CONFIG ? await env.CONFIG.get(ck).catch(()=>null) : null
+    if (cached) return j({success:true,data:JSON.parse(cached),cached:true})
+
+    let candles: any[] = []
+    const tryGT = async (addr: string) => {
+      try {
+        const r = await fetch(`https://api.geckoterminal.com/api/v2/networks/arc/pools/${addr}/ohlcv/${res}?aggregate=${agg}&limit=300`,{signal:AbortSignal.timeout(8_000)})
+        if (!r.ok) return []
+        const d: any = await r.json()
+        return (d.data?.attributes?.ohlcv_list ?? []).reverse().map(([t,o,h,l,c,v]:number[])=>({time:Math.floor(t/1000),open:o,high:h,low:l,close:c,volume:v}))
+      } catch { return [] }
+    }
+
+    if (pool)  candles = await tryGT(pool)
+    if (!candles.length && token) {
+      try {
+        const r = await fetch(`https://api.geckoterminal.com/api/v2/networks/arc/tokens/${token}/pools?page=1`,{signal:AbortSignal.timeout(6_000)})
+        if (r.ok) { const d:any=await r.json(); const p=d.data?.[0]?.attributes?.address; if(p)candles=await tryGT(p) }
+      } catch {}
+    }
+
+    // Only cache real data
+    if (candles.length >= 5 && env.CONFIG) {
+      env.CONFIG.put(ck, JSON.stringify(candles), {expirationTtl:900}).catch(()=>{})
+    }
+    return j({success:true,data:candles,real:candles.length>=5})
   }
 
-  const chain=(url.searchParams.get('chain')?? 'arc').toLowerCase()
-  const tab  =(url.searchParams.get('tab')  ??' trending').toLowerCase()
-  const q    =(url.searchParams.get('q')    ?? '').trim().toLowerCase()
-  const limit=Math.min(500,parseInt(url.searchParams.get('limit')??'200'))
+  /* Token list */
+  const tab   = (url.searchParams.get('tab') ?? 'trending').toLowerCase()
+  const q     = (url.searchParams.get('q') ?? '').trim().toLowerCase()
+  const limit = Math.min(500, parseInt(url.searchParams.get('limit') ?? '200'))
 
-  let tokens = await getTokens(chain, tab, env, ctx)
-  tokens = sortByTab(tokens, tab)
-  if (q) tokens=tokens.filter(t=>t.name.toLowerCase().includes(q)||t.symbol.toLowerCase().includes(q)||t.address.includes(q))
+  // Try KV fast cache first
+  const kvKey = `arc:tokens:${tab}`
+  const kvRaw = env.CONFIG ? await env.CONFIG.get(kvKey).catch(()=>null) : null
 
-  const total=tokens.length, page=Math.max(1,parseInt(url.searchParams.get('page')??'1'))
-  const result=tokens.slice((page-1)*limit,page*limit)
-  const vol5m=tokens.reduce((s,t)=>s+(t.vol5m??0),0)
-  const txns =tokens.reduce((s,t)=>s+(t.txns5m??0),0)
+  let tokens: Token[]
+  if (kvRaw) {
+    tokens = JSON.parse(kvRaw)
+    // Background: fetch fresh + save to D1
+    ctx.waitUntil((async () => {
+      const fresh = await fetchAllArcTokens()
+      if (!fresh.length) return
+      const sorted = sortTokens(fresh, 'trending')
+      await Promise.allSettled([
+        dbSave(fresh, env),
+        env.CONFIG?.put(`arc:tokens:trending`, JSON.stringify(sortTokens(sorted,'trending')), {expirationTtl:300}),
+        env.CONFIG?.put(`arc:tokens:new`,      JSON.stringify(sortTokens(sorted,'new')),      {expirationTtl:300}),
+        env.CONFIG?.put(`arc:tokens:top`,      JSON.stringify(sortTokens(sorted,'top')),      {expirationTtl:300}),
+      ])
+    })().catch(()=>{}))
+  } else {
+    // Try D1 first (persistent store)
+    const dbTokens = await dbLoad(env, tab, 1000)
+    if (dbTokens.length >= 5) {
+      tokens = dbTokens
+      // Refresh in background
+      ctx.waitUntil((async () => {
+        const fresh = await fetchAllArcTokens()
+        if (!fresh.length) return
+        await dbSave(fresh, env)
+        const sorted = sortTokens(fresh, 'trending')
+        await Promise.allSettled([
+          env.CONFIG?.put(`arc:tokens:trending`, JSON.stringify(sortTokens(sorted,'trending')), {expirationTtl:300}),
+          env.CONFIG?.put(`arc:tokens:new`,      JSON.stringify(sortTokens(sorted,'new')),      {expirationTtl:300}),
+          env.CONFIG?.put(`arc:tokens:top`,      JSON.stringify(sortTokens(sorted,'top')),      {expirationTtl:300}),
+        ])
+      })().catch(()=>{}))
+    } else {
+      // First ever load — fetch synchronously
+      const fresh = await fetchAllArcTokens()
+      tokens = sortTokens(fresh, tab)
+      ctx.waitUntil(Promise.allSettled([
+        dbSave(fresh, env),
+        env.CONFIG?.put(`arc:tokens:trending`, JSON.stringify(sortTokens(fresh,'trending')), {expirationTtl:300}),
+        env.CONFIG?.put(`arc:tokens:new`,      JSON.stringify(sortTokens(fresh,'new')),      {expirationTtl:300}),
+        env.CONFIG?.put(`arc:tokens:top`,      JSON.stringify(sortTokens(fresh,'top')),      {expirationTtl:300}),
+      ]))
+    }
+  }
+
+  tokens = sortTokens(tokens, tab)
+  if (q) tokens = tokens.filter(t => t.name.toLowerCase().includes(q)||t.symbol.toLowerCase().includes(q)||t.address.includes(q))
+
+  const total = tokens.length
+  const page  = Math.max(1, parseInt(url.searchParams.get('page') ?? '1'))
+  const result = tokens.slice((page-1)*limit, page*limit)
+  const vol5m  = tokens.reduce((s,t)=>s+(t.vol5m||0),0)
+  const txns   = tokens.reduce((s,t)=>s+(t.txns5m||0),0)
 
   return j({success:true,data:{tokens:result,total,page,limit,stats:{vol5m,txns}}})
 }
