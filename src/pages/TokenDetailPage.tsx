@@ -72,13 +72,13 @@ async function fetchOHLCV(pool: string, token: string, tf: string): Promise<Cand
 /* ── Stat card ────────────────────────────────────────────────────── */
 function StatCard({ label, value, sub, highlight }: { label: string; value: string; sub?: string; highlight?: string }) {
   return (
-    <div className="py-2.5 px-3 border-b last:border-0" style={{ borderColor: 'rgba(0,0,0,0.05)' }}>
+    <div className="py-2.5 px-3 border-b last:border-0" style={{ borderColor: 'var(--border)' }}>
       <div className="flex items-center gap-1 mb-1.5">
         <span className="text-xs" style={{ color: '#9ca3af' }}>{label}</span>
         <span className="w-3.5 h-3.5 rounded-full inline-flex items-center justify-center text-[8px] border flex-shrink-0" style={{ borderColor: '#d1d5db', color: '#9ca3af' }}>i</span>
       </div>
       <div className="flex items-baseline gap-2">
-        <span className="text-sm font-bold" style={{ color: '#111827', fontFamily: 'Space Grotesk,sans-serif' }}>{value}</span>
+        <span className="text-sm font-bold" style={{ color: 'var(--text1)', fontFamily: 'Space Grotesk,sans-serif' }}>{value}</span>
         {highlight && <span className="text-xs font-semibold flex items-center gap-0.5" style={{ color: parseFloat(highlight) >= 0 ? '#16a34a' : '#dc2626' }}>
           {parseFloat(highlight) >= 0 ? <ArrowUpRight size={11}/> : <ArrowDownRight size={11}/>}
           {highlight}
@@ -177,7 +177,7 @@ export function TokenDetailPage() {
       {/* ── Breadcrumb ─────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-1.5 text-sm" style={{ color: '#9ca3af' }}>
-          <button onClick={() => navigate(-1)} className="flex items-center gap-1 font-medium hover:text-gray-600 transition-colors" style={{ color: '#6b7280' }}>
+          <button onClick={() => navigate(-1)} className="flex items-center gap-1 font-medium hover:text-gray-600 transition-colors" style={{ color: 'var(--text2)' }}>
             <ArrowLeft size={14}/> Back
           </button>
           <span>/</span>
@@ -185,16 +185,16 @@ export function TokenDetailPage() {
         </div>
         <div className="flex items-center gap-1.5">
           <button onClick={refreshToken} className="p-1.5 rounded-lg transition-all" style={{ background: '#f3f4f6', border: '1px solid rgba(0,0,0,0.08)' }}>
-            <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} style={{ color: '#6b7280' }}/>
+            <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} style={{ color: 'var(--text2)' }}/>
           </button>
           <button onClick={() => navigator.share?.({ url: window.location.href, title: tokenName })} className="p-1.5 rounded-lg" style={{ background: '#f3f4f6', border: '1px solid rgba(0,0,0,0.08)' }}>
-            <Share2 size={12} style={{ color: '#6b7280' }}/>
+            <Share2 size={12} style={{ color: 'var(--text2)' }}/>
           </button>
         </div>
       </div>
 
       {/* ── Hero card ──────────────────────────────────────────── */}
-      <div className="rounded-2xl mb-3 overflow-hidden" style={{ background: '#fff', border: '1px solid rgba(0,0,0,0.08)', boxShadow: '0 1px 8px rgba(0,0,0,0.06)' }}>
+      <div className="rounded-2xl mb-3 overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid rgba(0,0,0,0.08)', boxShadow: '0 1px 8px rgba(0,0,0,0.06)' }}>
 
         {/* Token identity */}
         <div className="px-3 pt-3 pb-2.5">
@@ -205,7 +205,7 @@ export function TokenDetailPage() {
                 : <div className="w-12 h-12 rounded-xl flex items-center justify-center text-base font-bold text-white" style={{ background: `linear-gradient(135deg,hsl(${hue},60%,50%),hsl(${(hue+120)%360},55%,42%))` }}>{token.symbol.slice(0,2)}</div>}
             </div>
             <div className="flex-1 min-w-0 pt-0.5">
-              <h1 className="text-xl font-bold leading-tight mb-1" style={{ color: '#111827', fontFamily: 'Space Grotesk,sans-serif', letterSpacing:'-0.01em' }}>{tokenName}</h1>
+              <h1 className="text-xl font-bold leading-tight mb-1" style={{ color: 'var(--text1)', fontFamily: 'Space Grotesk,sans-serif', letterSpacing:'-0.01em' }}>{tokenName}</h1>
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: '#f3f4f6', color: '#374151' }}>{token.symbol}</span>
                 {token.dexId && <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: '#ede9fe', color: '#7c3aed' }}>{token.dexId}</span>}
@@ -236,8 +236,8 @@ export function TokenDetailPage() {
           </div>
 
           {/* Address row */}
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: '#f9fafb', border: '1px solid rgba(0,0,0,0.07)' }}>
-            <span className="text-[10px] font-mono flex-1 truncate" style={{ color: '#6b7280' }}>{token.address}</span>
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+            <span className="text-[10px] font-mono flex-1 truncate" style={{ color: 'var(--text2)' }}>{token.address}</span>
             <button onClick={() => copyA(token.address, 'addr')} className="flex-shrink-0 p-0.5">
               {copiedAddr ? <Check size={12} style={{ color: '#16a34a' }}/> : <Copy size={12} style={{ color: '#9ca3af' }}/>}
             </button>
@@ -264,7 +264,7 @@ export function TokenDetailPage() {
           <div className="flex justify-between text-[10px] font-medium mb-3" style={{ color: '#9ca3af' }}>
             <span>Bearish</span><span>Neutral</span><span>Bullish</span>
           </div>
-          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs" style={{ color: '#6b7280' }}>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs" style={{ color: 'var(--text2)' }}>
             {token.change24h != null && <span className="font-semibold" style={{ color: ch24Pos ? '#16a34a' : '#dc2626' }}>24H {ch24Pos?'+':''}{token.change24h.toFixed(2)}%</span>}
             {token.change1h != null && <span>· 1H {token.change1h>=0?'+':''}{token.change1h.toFixed(2)}%</span>}
           </div>
@@ -307,7 +307,7 @@ export function TokenDetailPage() {
 
         {/* ── Pair info strip ──────────────────────────────────── */}
         {token.pairAddress && (
-          <div className="px-4 py-2.5 flex items-center gap-3" style={{ borderTop: '1px solid rgba(0,0,0,0.05)', background: '#f9fafb' }}>
+          <div className="px-4 py-2.5 flex items-center gap-3" style={{ borderTop: '1px solid rgba(0,0,0,0.05)', background: 'var(--surface2)' }}>
             <div className="flex-1 min-w-0">
               <div className="text-[9px] uppercase tracking-widest font-semibold mb-0.5" style={{ color: '#9ca3af' }}>Pair Address</div>
               <div className="text-[10px] font-mono truncate" style={{ color: '#374151' }}>{token.pairAddress}</div>
@@ -323,11 +323,11 @@ export function TokenDetailPage() {
       </div>
 
       {/* ── Chart card ─────────────────────────────────────────── */}
-      <div className="rounded-2xl mb-3 overflow-hidden" style={{ background: '#fff', border: '1px solid rgba(0,0,0,0.08)', boxShadow: '0 1px 8px rgba(0,0,0,0.05)' }}>
+      <div className="rounded-2xl mb-3 overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid rgba(0,0,0,0.08)', boxShadow: '0 1px 8px rgba(0,0,0,0.05)' }}>
         {/* Chart header */}
         <div className="px-4 py-3 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
           <BarChart3 size={15} style={{ color: '#6366f1' }}/>
-          <span className="text-sm font-semibold flex-1" style={{ color: '#111827' }}>
+          <span className="text-sm font-semibold flex-1" style={{ color: 'var(--text1)' }}>
             {tokenName} ({token.symbol}) price chart
           </span>
 
@@ -383,19 +383,19 @@ export function TokenDetailPage() {
         {token.pairAddress && (
           <a href={`https://www.geckoterminal.com/arc/pools/${token.pairAddress}`} target="_blank" rel="noopener"
             className="flex items-center gap-1.5 text-xs px-3 py-2.5 rounded-xl no-underline font-semibold"
-            style={{ background: '#fff', border: '1px solid rgba(0,0,0,0.09)', color: '#374151' }}>
+            style={{ background: 'var(--surface)', border: '1px solid rgba(0,0,0,0.09)', color: '#374151' }}>
             <BarChart3 size={12} style={{ color: '#6366f1' }}/>GeckoTerminal
           </a>
         )}
         <a href={`https://dexscreener.com/arc/${token.pairAddress ?? token.address}`} target="_blank" rel="noopener"
           className="flex items-center gap-1.5 text-xs px-3 py-2.5 rounded-xl no-underline font-semibold"
-          style={{ background: '#fff', border: '1px solid rgba(0,0,0,0.09)', color: '#374151' }}>
+          style={{ background: 'var(--surface)', border: '1px solid rgba(0,0,0,0.09)', color: '#374151' }}>
           <Activity size={12} style={{ color: '#f59e0b' }}/>DexScreener
         </a>
         <a href={`${EXPLORER_BASE}/address/${token.address}`} target="_blank" rel="noopener"
           className="flex items-center gap-1.5 text-xs px-3 py-2.5 rounded-xl no-underline font-semibold"
-          style={{ background: '#fff', border: '1px solid rgba(0,0,0,0.09)', color: '#374151' }}>
-          <ExternalLink size={12} style={{ color: '#6b7280' }}/>Explorer
+          style={{ background: 'var(--surface)', border: '1px solid rgba(0,0,0,0.09)', color: '#374151' }}>
+          <ExternalLink size={12} style={{ color: 'var(--text2)' }}/>Explorer
         </a>
         {token.isGlowFun && (
           <Link to={`/token/${token.address}`} className="flex items-center gap-1.5 text-xs px-3 py-2.5 rounded-xl no-underline font-bold text-white"
@@ -406,8 +406,8 @@ export function TokenDetailPage() {
       </div>
 
       {/* ── Contract details ────────────────────────────────────── */}
-      <div className="rounded-2xl overflow-hidden mb-6" style={{ background: '#fff', border: '1px solid rgba(0,0,0,0.08)', boxShadow: '0 1px 6px rgba(0,0,0,0.05)' }}>
-        <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(0,0,0,0.06)', background: '#f9fafb' }}>
+      <div className="rounded-2xl overflow-hidden mb-6" style={{ background: 'var(--surface)', border: '1px solid rgba(0,0,0,0.08)', boxShadow: '0 1px 6px rgba(0,0,0,0.05)' }}>
+        <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(0,0,0,0.06)', background: 'var(--surface2)' }}>
           <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: '#9ca3af' }}>Contract Details</span>
         </div>
         {[
@@ -424,10 +424,10 @@ export function TokenDetailPage() {
           { k: 'Sells 24H',      v: token.sells24h != null ? `${token.sells24h}` : '—' },
           { k: 'Buy/Sell Ratio', v: buyRatio != null ? `${(buyRatio*100).toFixed(0)}% / ${((1-buyRatio)*100).toFixed(0)}%` : '—' },
         ].filter(r => r.v && r.v !== 'undefined').map(({ k, v, copy }) => (
-          <div key={k} className="flex items-center justify-between px-4 py-2.5 border-b last:border-0" style={{ borderColor: 'rgba(0,0,0,0.05)' }}>
-            <span className="text-xs" style={{ color: '#6b7280' }}>{k}</span>
+          <div key={k} className="flex items-center justify-between px-4 py-2.5 border-b last:border-0" style={{ borderColor: 'var(--border)' }}>
+            <span className="text-xs" style={{ color: 'var(--text2)' }}>{k}</span>
             <div className="flex items-center gap-1.5">
-              <span className="text-xs font-medium" style={{ color: '#111827', fontFamily: typeof v === 'string' && v.startsWith('0x') ? 'monospace' : 'inherit' }}>
+              <span className="text-xs font-medium" style={{ color: 'var(--text1)', fontFamily: typeof v === 'string' && v.startsWith('0x') ? 'monospace' : 'inherit' }}>
                 {typeof v === 'string' && v.length > 22 ? formatAddress(v) : v}
               </span>
               {copy && v && v !== '—' && (

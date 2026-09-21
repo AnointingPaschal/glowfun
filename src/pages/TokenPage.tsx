@@ -63,7 +63,7 @@ async function fetchGeckoOHLCV(poolAddress: string): Promise<OHLCV[] | null> {
 /* ── Stat badge ─────────────────────────────────────────────────── */
 function StatBox({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
-    <div className="flex flex-col gap-0.5 px-3 py-2.5 rounded-xl" style={{ background: '#f9fafb', border: '1px solid rgba(0,0,0,0.08)' }}>
+    <div className="flex flex-col gap-0.5 px-3 py-2.5 rounded-xl" style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
       <span className="text-[9px] uppercase tracking-widest font-semibold" style={{ color: 'rgba(0,0,0,0.35)' }}>{label}</span>
       <span className="text-sm font-bold tabular-nums" style={{ color: color ?? '#111827', fontFamily: 'Space Grotesk, sans-serif' }}>{value}</span>
       {sub && <span className="text-[9px] tabular-nums" style={{ color: 'rgba(0,0,0,0.35)' }}>{sub}</span>}
@@ -223,8 +223,8 @@ export function TokenPage() {
   if (isLoading) return (
     <div className="max-w-[1400px] mx-auto">
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-4">
-        <div className="space-y-3">{[56, 420, 80].map(h => <div key={h} className="animate-pulse rounded-2xl" style={{ height: h, background: '#f3f4f6' }} />)}</div>
-        <div className="space-y-3">{[280, 180].map(h => <div key={h} className="animate-pulse rounded-2xl" style={{ height: h, background: '#f3f4f6' }} />)}</div>
+        <div className="space-y-3">{[56, 420, 80].map(h => <div key={h} className="animate-pulse rounded-2xl" style={{ height: h, background: 'var(--surface3)' }} />)}</div>
+        <div className="space-y-3">{[280, 180].map(h => <div key={h} className="animate-pulse rounded-2xl" style={{ height: h, background: 'var(--surface3)' }} />)}</div>
       </div>
     </div>
   )
@@ -298,8 +298,8 @@ export function TokenPage() {
 
                 {/* Address + links */}
                 <div className="flex flex-col gap-1.5 items-end flex-shrink-0">
-                  <div className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ background: '#f9fafb', border: '1px solid rgba(0,0,0,0.08)' }}>
-                    <span className="text-[10px] font-mono" style={{ color: '#6b7280' }}>{formatAddress(tokenAddr)}</span>
+                  <div className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+                    <span className="text-[10px] font-mono" style={{ color: 'var(--text2)' }}>{formatAddress(tokenAddr)}</span>
                     <button onClick={() => copy(tokenAddr)}>{copied ? <Check size={9} style={{ color: GREEN }} /> : <Copy size={9} style={{ color: 'rgba(0,0,0,0.35)' }} />}</button>
                   </div>
                   <div className="flex items-center gap-1">
@@ -371,7 +371,7 @@ export function TokenPage() {
                       <div className="flex gap-2 mt-3 flex-wrap">
                         <a href={`https://dexscreener.com/arc/${dsData.pairAddress}`} target="_blank" rel="noopener"
                           className="flex items-center gap-1.5 text-[10px] px-3 py-2 rounded-lg"
-                          style={{ background: '#f9fafb', color: '#6b7280', border: '1px solid rgba(0,0,0,0.08)' }}>
+                          style={{ background: 'var(--surface2)', color: 'var(--text2)', border: '1px solid var(--border)' }}>
                           <BarChart3 size={10} />DexScreener
                         </a>
                       </div>
@@ -420,7 +420,7 @@ export function TokenPage() {
                         <div className="flex gap-2 flex-wrap">
                           {token.twitter && <a href={token.twitter} target="_blank" rel="noopener" className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs" style={{ background: 'rgba(29,161,242,0.08)', color: '#1da1f2', border: '1px solid rgba(29,161,242,0.12)' }}><Twitter size={12} />Twitter/X</a>}
                           {token.telegram && <a href={token.telegram} target="_blank" rel="noopener" className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs" style={{ background: 'rgba(0,136,204,0.08)', color: '#0088cc', border: '1px solid rgba(0,136,204,0.12)' }}><Send size={12} />Telegram</a>}
-                          {token.website && <a href={token.website} target="_blank" rel="noopener" className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs" style={{ background: '#f3f4f6', color: '#374151', border: '1px solid rgba(0,0,0,0.09)' }}><Globe size={12} />Website</a>}
+                          {token.website && <a href={token.website} target="_blank" rel="noopener" className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs" style={{ background: 'var(--surface3)', color: 'var(--text1)', border: '1px solid var(--border)' }}><Globe size={12} />Website</a>}
                         </div>
                       </div>
                     )}
@@ -452,7 +452,7 @@ export function TokenPage() {
                 {tab === 'trades' && (
                   <div>
                     <div className="flex items-center justify-between mb-3">
-                      <span className="text-xs font-semibold" style={{ color: '#6b7280' }}>Recent Transactions</span>
+                      <span className="text-xs font-semibold" style={{ color: 'var(--text2)' }}>Recent Transactions</span>
                       <a href={`${EXPLORER_BASE}/token/${tokenAddr}`} target="_blank" rel="noopener" className="flex items-center gap-1 text-[10px]" style={{ color: '#a78bfa' }}>
                         Arc Explorer <ExternalLink size={9} />
                       </a>
@@ -489,7 +489,7 @@ export function TokenPage() {
                     ${raisedNum.toFixed(2)} / ${gradThreshold >= 1000 ? `${(gradThreshold/1000).toFixed(0)}K` : gradThreshold}
                   </span>
                 </div>
-                <div className="h-3 rounded-full overflow-hidden mb-1.5" style={{ background: '#f3f4f6' }}>
+                <div className="h-3 rounded-full overflow-hidden mb-1.5" style={{ background: 'var(--surface3)' }}>
                   <motion.div className="h-full rounded-full" initial={{ width: 0 }} animate={{ width: `${Math.min(100, progress)}%` }} transition={{ duration: 1, ease: 'easeOut' }}
                     style={{ background: progress > 90 ? `linear-gradient(90deg, ${GREEN}, #059669)` : 'linear-gradient(90deg, #8b5cf6, #ec4899)' }} />
                 </div>
@@ -510,7 +510,7 @@ export function TokenPage() {
               <div className="h-[2px]" style={{ background: 'linear-gradient(90deg,#6366f1,#8b5cf6,#ec4899)' }} />
               <div className="p-4">
                 {/* Buy/Sell */}
-                <div className="flex gap-1 p-1 rounded-xl mb-4" style={{ background: '#f9fafb', border: '1px solid rgba(0,0,0,0.08)' }}>
+                <div className="flex gap-1 p-1 rounded-xl mb-4" style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
                   {(['buy', 'sell'] as TradeMode[]).map(m => (
                     <button key={m} onClick={() => { setMode(m); setAmount('') }} className="flex-1 py-2 rounded-lg text-sm font-bold capitalize transition-all" style={{
                       background: mode === m ? (m === 'buy' ? `linear-gradient(135deg, ${GREEN}, #2bbbad)` : 'linear-gradient(135deg, #c62828, #ef5350)') : 'transparent',
@@ -541,7 +541,7 @@ export function TokenPage() {
                 ) : (
                   <div className="space-y-3">
                     {/* Amount */}
-                    <div className="rounded-xl p-3" style={{ background: '#f9fafb', border: '1px solid rgba(0,0,0,0.08)' }}>
+                    <div className="rounded-xl p-3" style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
                       <div className="flex justify-between mb-1.5 text-[10px]" style={{ color: 'rgba(0,0,0,0.45)' }}>
                         <span>{mode === 'buy' ? 'You pay (USDC)' : `You sell (${token.symbol})`}</span>
                         <span>Bal: {mode === 'buy' ? formatUsdc(usdcBalance as bigint ?? 0n) : `${formatTokens(tokenBalance)} ${token.symbol}`}</span>
@@ -558,7 +558,7 @@ export function TokenPage() {
                       {mode === 'buy' && (
                         <div className="flex gap-1.5 mt-2">
                           {['1', '5', '10', '50', '100'].map(v => (
-                            <button key={v} onClick={() => setAmount(v)} className="px-2 py-1 rounded-lg text-[10px] transition-all hover:bg-white/10" style={{ background: '#f3f4f6', color: '#6b7280' }}>${v}</button>
+                            <button key={v} onClick={() => setAmount(v)} className="px-2 py-1 rounded-lg text-[10px] transition-all hover:bg-white/10" style={{ background: 'var(--surface3)', color: 'var(--text2)' }}>${v}</button>
                           ))}
                         </div>
                       )}
@@ -566,7 +566,7 @@ export function TokenPage() {
 
                     {/* Quote */}
                     {amount && (
-                      <div className="rounded-xl p-3 space-y-1.5" style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,0.06)' }}>
+                      <div className="rounded-xl p-3 space-y-1.5" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
                         <div className="flex justify-between text-xs">
                           <span style={{ color: 'rgba(0,0,0,0.45)' }}>You receive</span>
                           <span className="font-semibold text-white">
@@ -575,7 +575,7 @@ export function TokenPage() {
                         </div>
                         <div className="flex justify-between text-xs">
                           <span style={{ color: 'rgba(0,0,0,0.45)' }}>Price impact</span>
-                          <span style={{ color: '#6b7280' }}>~{parseFloat(amount) > 100 ? '>1' : '<0.5'}%</span>
+                          <span style={{ color: 'var(--text2)' }}>~{parseFloat(amount) > 100 ? '>1' : '<0.5'}%</span>
                         </div>
                         <div className="flex justify-between text-xs">
                           <span style={{ color: 'rgba(0,0,0,0.45)' }}>Protocol fee</span>
@@ -643,11 +643,11 @@ export function TokenPage() {
                 </div>
                 <div className="space-y-2">
                   <div className="flex justify-between">
-                    <span className="text-sm" style={{ color: '#6b7280' }}>{token.symbol} Balance</span>
+                    <span className="text-sm" style={{ color: 'var(--text2)' }}>{token.symbol} Balance</span>
                     <span className="text-sm font-bold tabular-nums" style={{ color: "#111827" }}>{formatTokens(tokenBalance)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm" style={{ color: '#6b7280' }}>Est. Value</span>
+                    <span className="text-sm" style={{ color: 'var(--text2)' }}>Est. Value</span>
                     <span className="text-sm font-bold tabular-nums" style={{ color: GREEN }}>${(Number(tokenBalance) / 1e18 * displayPrice).toFixed(4)}</span>
                   </div>
                 </div>

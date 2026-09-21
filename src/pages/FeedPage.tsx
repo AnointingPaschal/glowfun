@@ -1,146 +1,244 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Flame, Clock, TrendingUp, Search, Rocket, Zap, Star, BarChart3, DollarSign, Activity } from 'lucide-react'
+import { Flame, Sprout, Trophy, Search, X, Rocket, Zap, TrendingUp, Users, DollarSign } from 'lucide-react'
 import { useTokenList } from '@/hooks/useTokenList'
 import { TokenCard } from '@/components/TokenCard'
 import { prefetchAllMarketData } from '@/hooks/useMarketPrice'
-import { GlassCard } from '@/components/GlassCard'
 
-type SortMode = 'new' | 'hot'
+type Tab = 'new' | 'hot' | 'graduating'
 
-/* ── Stat strip ─────────────────────────────────────────────────── */
-function StatChip({ icon: Icon, label, value, color }: { icon: any; label: string; value: string; color: string }) {
+/* ── Animated counter ─────────────────────────────────────────────── */
+function Counter({ value, prefix='', suffix='' }: { value: number; prefix?: string; suffix?: string }) {
+  const [display, setDisplay] = useState(0)
+  const ref = useRef(0)
+  useEffect(() => {
+    const start = ref.current; const end = value; const dur = 1200
+    const t0 = performance.now()
+    const tick = (now: number) => {
+      const p = Math.min((now - t0) / dur, 1)
+      const ease = 1 - Math.pow(1 - p, 3)
+      setDisplay(Math.round(start + (end - start) * ease))
+      if (p < 1) requestAnimationFrame(tick)
+      else ref.current = end
+    }
+    requestAnimationFrame(tick)
+  }, [value])
+  return <span>{prefix}{display.toLocaleString()}{suffix}</span>
+}
+
+/* ── King of the Hill card ────────────────────────────────────────── */
+function KingCard({ address }: { address: `0x${string}` }) {
+  // Dynamically import to avoid circular dep
+  const { useTokenData } = require('@/hooks/useTokenData')
+  const { token } = useTokenData(address)
+  if (!token) return null
+  const hue = parseInt(address.slice(2, 6), 16) % 360
   return (
-    <div className="flex items-center gap-2.5 px-4 py-3 rounded-2xl flex-1 min-w-0" style={{ background: '#fff', border: '1px solid rgba(0,0,0,0.08)', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-      <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `${color}12` }}>
-        <Icon size={16} style={{ color }} />
+    <Link to={`/token/${address}`} className="block no-underline">
+      <div className="relative rounded-2xl p-4 overflow-hidden"
+        style={{ background:'linear-gradient(135deg,rgba(245,158,11,0.08),rgba(239,68,68,0.06),rgba(139,92,246,0.08))', border:'1px solid rgba(245,158,11,0.2)' }}>
+        <div className="absolute inset-0 opacity-20 pointer-events-none"
+          style={{ background:'radial-gradient(ellipse at 50% 0%, rgba(245,158,11,0.3), transparent 60%)' }}/>
+        <div className="flex items-center gap-1.5 mb-3">
+          <Trophy size={12} style={{ color:'#f59e0b' }}/>
+          <span className="text-[10px] font-black uppercase tracking-widest" style={{ color:'#f59e0b' }}>King of the Hill</span>
+          <div className="flex-1"/>
+          <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full" style={{ background:'rgba(245,158,11,0.15)', color:'#f59e0b' }}>👑 #1</span>
+        </div>
+        <div className="flex items-center gap-3">
+          {token.imageUri
+            ? <img src={token.imageUri} className="w-12 h-12 rounded-xl object-cover glow-gold" style={{ border:'1.5px solid rgba(245,158,11,0.3)' }}/>
+            : <div className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-white glow-gold"
+                style={{ background:`linear-gradient(135deg,hsl(${hue},70%,55%),hsl(${(hue+120)%360},65%,45%))` }}>
+                {token.symbol?.slice(0,2)}
+              </div>}
+          <div>
+            <div className="text-base font-black" style={{ color:'var(--text1)' }}>{token.symbol}</div>
+            <div className="text-[10px]" style={{ color:'var(--text2)' }}>{token.name}</div>
+            <div className="text-[9px] font-bold mt-0.5" style={{ color:'#f59e0b' }}>
+              🔥 Most raised on GlowFun
+            </div>
+          </div>
+        </div>
+      </div>
+    </Link>
+  )
+}
+
+/* ── Live stat chip ───────────────────────────────────────────────── */
+function Stat({ icon: Icon, label, value, color }: { icon: any; label: string; value: string; color: string }) {
+  return (
+    <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl flex-1 min-w-0"
+      style={{ background:'var(--surface)', border:'1px solid var(--border)' }}>
+      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background:`${color}15` }}>
+        <Icon size={13} style={{ color }}/>
       </div>
       <div className="min-w-0">
-        <div className="text-[10px] font-semibold uppercase tracking-widest truncate" style={{ color: '#9ca3af' }}>{label}</div>
-        <div className="text-sm font-bold truncate" style={{ color: '#111827', fontFamily: 'Space Grotesk,sans-serif' }}>{value}</div>
+        <div className="text-[8px] font-semibold uppercase tracking-widest truncate" style={{ color:'var(--text2)' }}>{label}</div>
+        <div className="text-[12px] font-bold truncate" style={{ color:'var(--text1)' }}>{value}</div>
       </div>
     </div>
   )
 }
 
+/* ── Main feed page ───────────────────────────────────────────────── */
 export function FeedPage() {
   const { addresses, isLoading } = useTokenList()
-  const [sort, setSort]    = useState<SortMode>('new')
-  const [search, setSearch]= useState('')
-  const [ready, setReady]  = useState(false)
+  const [tab, setTab]       = useState<Tab>('new')
+  const [search, setSearch] = useState('')
+  const [ready, setReady]   = useState(false)
 
   useEffect(() => { prefetchAllMarketData().finally(() => setReady(true)) }, [])
 
-  const sorted = useMemo(() => {
-    return [...addresses].reverse()
-  }, [addresses])
+  const reversed = useMemo(() => [...addresses].reverse(), [addresses])
 
   const filtered = useMemo(() => {
-    if (!search) return sorted
     const q = search.toLowerCase()
-    return sorted.filter(a => a.toLowerCase().includes(q))
-  }, [sorted, search])
+    return q ? reversed.filter(a => a.toLowerCase().includes(q)) : reversed
+  }, [reversed, search])
 
-  const totalTokens = addresses.length
+  // Tabs are just different sort/filter logic on the same list
+  // In reality you'd sort by progress for 'graduating', by age for 'new'
+  // For now all 3 tabs show the same list with different ordering
+  const displayed = useMemo(() => {
+    if (tab === 'hot')        return [...filtered].slice().reverse().slice(0, 50)  // most recent = hot
+    if (tab === 'graduating') return [...filtered].slice(0, 20)  // first launched = closest to graduating
+    return filtered  // new = reverse chronological
+  }, [filtered, tab])
+
+  const total = addresses.length
+
+  const TABS = [
+    { id:'new'        as Tab, label:'New',        icon:Sprout,   color:'#22c55e' },
+    { id:'hot'        as Tab, label:'Hot',        icon:Flame,    color:'#ef4444' },
+    { id:'graduating' as Tab, label:'Graduating', icon:Trophy,   color:'#f59e0b' },
+  ]
 
   return (
     <div>
-      {/* ── Hero ────────────────────────────────────────────── */}
-      <motion.div initial={{ opacity:0, y:16 }} animate={{ opacity:1, y:0 }} className="mb-6">
-        {/* Gradient strip */}
-        <div className="h-1 w-16 rounded-full mb-4" style={{ background: 'linear-gradient(90deg,#6366f1,#8b5cf6,#ec4899)' }}/>
-        <h1 className="text-3xl font-bold mb-2" style={{ fontFamily:'Space Grotesk,sans-serif', letterSpacing:'-0.03em', color:'#111827' }}>
-          Meme Token <span style={{ background:'linear-gradient(135deg,#6366f1,#8b5cf6)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>Launchpad</span>
-        </h1>
-        <p className="text-sm mb-5" style={{ color:'#6b7280' }}>Launch and trade meme tokens on the Arc bonding curve. No liquidity needed.</p>
+      {/* ── Hero ──────────────────────────────────────────────── */}
+      <motion.div initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }} className="mb-6 relative">
+        {/* Gradient headline */}
+        <div className="mb-4">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-1 h-5 rounded-full" style={{ background:'linear-gradient(180deg,#8b5cf6,#6366f1)' }}/>
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color:'#818cf8' }}>GlowFun · Arc Mainnet</span>
+          </div>
+          <h1 className="text-2xl font-black mb-1.5 leading-tight" style={{ letterSpacing:'-0.04em', fontFamily:'Space Grotesk,sans-serif' }}>
+            <span style={{ color:'var(--text1)' }}>Launch your </span>
+            <span className="gradient-text">meme token</span>
+            <br/>
+            <span style={{ color:'var(--text1)' }}>on Arc — instantly.</span>
+          </h1>
+          <p className="text-xs" style={{ color:'var(--text2)' }}>Fair launch bonding curve. No liquidity needed. No rug pulls.</p>
+        </div>
 
         {/* CTA buttons */}
-        <div className="flex items-center gap-3 mb-6">
-          <Link to="/launch">
-            <motion.button whileHover={{ scale:1.02 }} whileTap={{ scale:0.98 }}
-              className="flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-bold text-white"
-              style={{ background:'linear-gradient(135deg,#6366f1,#8b5cf6)', boxShadow:'0 4px 16px rgba(99,102,241,0.3)' }}>
-              <Rocket size={15}/>Launch a Token
+        <div className="flex gap-2.5 mb-5">
+          <Link to="/launch" className="no-underline">
+            <motion.button whileTap={{ scale:0.97 }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white glow-accent"
+              style={{ background:'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>
+              <Rocket size={13}/> Launch Token
             </motion.button>
           </Link>
-          <Link to="/">
-            <motion.button whileHover={{ scale:1.02 }} whileTap={{ scale:0.98 }}
-              className="flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-bold"
-              style={{ background:'#fff', border:'1px solid rgba(0,0,0,0.09)', color:'#374151' }}>
-              <BarChart3 size={15}/>Dex Explorer
+          <Link to="/ide" className="no-underline">
+            <motion.button whileTap={{ scale:0.97 }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold"
+              style={{ background:'var(--surface)', border:'1px solid var(--border)', color:'var(--text1)' }}>
+              <Zap size={13}/> Open IDE
             </motion.button>
           </Link>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-2.5 mb-2">
-          <StatChip icon={Zap}        label="Tokens Live"   value={isLoading ? '…' : String(totalTokens)} color="#6366f1"/>
-          <StatChip icon={TrendingUp} label="On Bonding"    value={isLoading ? '…' : String(totalTokens)} color="#16a34a"/>
-          <StatChip icon={Activity}   label="Network"       value="Arc Mainnet"                             color="#f59e0b"/>
+        {/* Stats row */}
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+          <Stat icon={TrendingUp} label="Tokens Live"     value={total ? String(total) : '—'}   color="#6366f1"/>
+          <Stat icon={DollarSign} label="On Bonding"      value={total ? `${total} active` : '—'} color="#22c55e"/>
+          <Stat icon={Users}      label="Network"         value="Arc Mainnet"                     color="#f59e0b"/>
         </div>
       </motion.div>
 
-      {/* ── Filter + search row ──────────────────────────────── */}
-      <div className="flex items-center gap-2.5 mb-5">
-        {/* Sort tabs */}
-        <div className="flex p-1 rounded-xl" style={{ background:'#fff', border:'1px solid rgba(0,0,0,0.08)' }}>
-          {([['new','New',Clock],['hot','Hot',Flame]] as [SortMode,string,any][]).map(([id,label,Icon])=>(
-            <button key={id} onClick={()=>setSort(id)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
-              style={{ background:sort===id?'#6366f1':'transparent', color:sort===id?'#fff':'#9ca3af' }}>
-              <Icon size={11}/>{label}
+      {/* ── Tabs + search ─────────────────────────────────────── */}
+      <div className="flex items-center gap-2 mb-3 overflow-x-auto scrollbar-hide">
+        {TABS.map(t => {
+          const active = tab === t.id; const Icon = t.icon
+          return (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold flex-shrink-0 transition-all"
+              style={{
+                background: active ? `${t.color}14` : 'var(--surface)',
+                color: active ? t.color : 'var(--text2)',
+                border: `1.5px solid ${active ? `${t.color}30` : 'var(--border)'}`,
+              }}>
+              <Icon size={11}/> {t.label}
             </button>
-          ))}
-        </div>
+          )
+        })}
         {/* Search */}
-        <div className="flex-1 flex items-center gap-2 px-3 py-2.5 rounded-xl" style={{ background:'#fff', border:'1px solid rgba(0,0,0,0.08)' }}>
-          <Search size={13} style={{ color:'#9ca3af', flexShrink:0 }}/>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search tokens…"
-            className="text-sm bg-transparent outline-none w-full" style={{ color:'#111827' }}/>
+        <div className="flex-1 flex items-center gap-2 px-2.5 py-2 rounded-xl min-w-0 ml-1"
+          style={{ background:'var(--surface)', border:'1px solid var(--border)' }}>
+          <Search size={11} style={{ color:'var(--text2)', flexShrink:0 }}/>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search tokens…"
+            className="text-[11px] bg-transparent outline-none w-full min-w-0"
+            style={{ color:'var(--text1)' }}/>
+          {search && <button onClick={() => setSearch('')}><X size={10} style={{ color:'var(--text2)' }}/></button>}
         </div>
-        <span className="text-xs font-medium flex-shrink-0" style={{ color:'#9ca3af' }}>{filtered.length}</span>
+        <span className="text-[9px] font-medium flex-shrink-0" style={{ color:'var(--text2)' }}>{displayed.length}</span>
       </div>
 
-      {/* Market loading notice */}
-      {!ready && (
-        <div className="flex items-center gap-2 mb-4 px-3 py-2.5 rounded-xl text-xs font-medium" style={{ background:'#eff6ff', border:'1px solid #bfdbfe', color:'#3b82f6' }}>
-          <div className="w-3 h-3 rounded-full border-2 animate-spin flex-shrink-0" style={{ borderColor:'rgba(59,130,246,0.2)', borderTopColor:'#3b82f6' }}/>
-          Fetching live market prices from DexScreener…
-        </div>
-      )}
-
-      {/* ── Token grid ──────────────────────────────────────── */}
-      {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {Array.from({length:6}).map((_,i)=>(
-            <div key={i} className="rounded-2xl p-4 animate-pulse" style={{ background:'#fff', border:'1px solid rgba(0,0,0,0.07)' }}>
-              <div className="flex gap-3">
-                <div className="w-12 h-12 rounded-xl" style={{ background:'#f3f4f6' }}/>
-                <div className="flex-1 space-y-2">
-                  <div className="h-4 w-28 rounded-lg" style={{ background:'#e5e7eb' }}/>
-                  <div className="h-3 w-20 rounded-lg" style={{ background:'#f3f4f6' }}/>
-                  <div className="h-2 w-full rounded-full" style={{ background:'#f3f4f6' }}/>
-                </div>
-              </div>
-            </div>
+      {/* ── Token grid ────────────────────────────────────────── */}
+      {isLoading && !addresses.length ? (
+        <div className="grid grid-cols-2 gap-2.5">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="rounded-2xl shimmer" style={{ height:160, border:'1px solid var(--border)' }}/>
           ))}
         </div>
-      ) : filtered.length === 0 ? (
-        <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} className="text-center py-20">
-          <div className="w-20 h-20 rounded-3xl mx-auto mb-5 flex items-center justify-center" style={{ background:'rgba(99,102,241,0.06)', border:'1px solid rgba(99,102,241,0.1)' }}>
-            <Flame size={30} style={{ color:'rgba(99,102,241,0.35)' }}/>
+      ) : displayed.length === 0 ? (
+        <div className="text-center py-16">
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-3"
+            style={{ background:'var(--surface)' }}>
+            <Search size={24} style={{ color:'var(--text3)' }}/>
           </div>
-          <h3 className="text-lg font-bold mb-1.5" style={{ color:'#111827' }}>{search?'No matching tokens':'No tokens launched yet'}</h3>
-          <p className="text-sm mb-5" style={{ color:'#9ca3af' }}>{search?'Try a different search term':'Be the first to launch a token on GlowFun'}</p>
-          {!search&&<Link to="/launch"><button className="px-6 py-3 rounded-2xl text-sm font-bold text-white" style={{ background:'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>Launch First Token →</button></Link>}
-        </motion.div>
+          <p className="text-sm font-medium" style={{ color:'var(--text2)' }}>No tokens found</p>
+          <p className="text-xs mt-1" style={{ color:'var(--text3)' }}>
+            {search ? 'Try a different search' : 'Be the first to launch on GlowFun!'}
+          </p>
+          {!search && (
+            <Link to="/launch" className="no-underline mt-4 inline-block">
+              <button className="px-4 py-2 rounded-xl text-xs font-bold text-white"
+                style={{ background:'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>
+                Launch now →
+              </button>
+            </Link>
+          )}
+        </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {filtered.map((addr, i) => (
+        <div className="grid grid-cols-2 gap-2.5">
+          {displayed.map((addr, i) => (
             <TokenCard key={addr} address={addr as `0x${string}`} index={i}/>
           ))}
         </div>
+      )}
+
+      {/* ── Bottom launch CTA ─────────────────────────────────── */}
+      {displayed.length > 0 && (
+        <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} transition={{ delay:0.5 }}
+          className="mt-6 rounded-2xl p-4 text-center relative overflow-hidden"
+          style={{ background:'linear-gradient(135deg,rgba(99,102,241,0.08),rgba(139,92,246,0.06))', border:'1px solid rgba(99,102,241,0.15)' }}>
+          <div className="absolute inset-0 pointer-events-none"
+            style={{ background:'radial-gradient(ellipse at 50% -20%,rgba(99,102,241,0.12),transparent 60%)' }}/>
+          <p className="text-xs font-medium mb-2.5 relative" style={{ color:'var(--text2)' }}>
+            Ready to launch your own token?
+          </p>
+          <Link to="/launch" className="no-underline relative">
+            <button className="px-5 py-2 rounded-xl text-sm font-bold text-white inline-flex items-center gap-2 glow-accent"
+              style={{ background:'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>
+              <Rocket size={13}/> Create Token
+            </button>
+          </Link>
+        </motion.div>
       )}
     </div>
   )

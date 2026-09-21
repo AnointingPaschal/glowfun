@@ -18,8 +18,8 @@ import { FACTORY_ABI } from '@/abi/GlowFunFactory'
 import { FACTORY_ADDRESS, USDC_ADDRESS, CHAIN_ID, EXPLORER_BASE } from '@/constants'
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
-const card: React.CSSProperties = { background: '#fff', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 20, boxShadow: '0 1px 6px rgba(0,0,0,0.05)' }
-const inp: React.CSSProperties  = { background: '#f9fafb', border: '1px solid rgba(0,0,0,0.09)', borderRadius: 12, color: '#111827', outline: 'none', width: '100%', padding: '11px 14px', fontSize: 14 }
+const card: React.CSSProperties = { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 20, boxShadow: 'none' }
+const inp: React.CSSProperties  = { background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text1)', outline: 'none', width: '100%', padding: '11px 14px', fontSize: 14 }
 
 function fmtUsd(n: number) { return n>=1e6?`$${(n/1e6).toFixed(2)}M`:n>=1e3?`$${(n/1e3).toFixed(1)}K`:`$${n.toFixed(2)}` }
 
