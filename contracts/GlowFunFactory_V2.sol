@@ -215,22 +215,22 @@ contract GlowFunFactory_V2 is Ownable, ReentrancyGuard, Pausable {
     // Fixes "Stack too deep" in getConfig() which previously returned 16
     // named values — EVM stack limit is 16 slots, modifiers use some too.
     struct FactoryConfig {
-        address usdc;
-        address feeRecipient;
-        address graduationRecipient;
-        uint256 graduationThreshold;
-        uint256 protocolFeeBps;
-        uint256 creationFee;
-        uint256 creatorGraduationFeeBps;
-        uint256 referralFeeBps;
-        uint256 antiSnipeDuration;
-        uint256 antiSnipeTaxBps;
-        uint256 maxBuyBps;
-        uint256 buyCooldown;
-        uint256 creatorLockDuration;
-        uint256 perTokenGraduationFeeBps;
-        address kingOfHill;
-        uint256 kingOfHillRaised;
+        address usdc_;
+        address feeRecipient_;
+        address graduationRecipient_;
+        uint256 graduationThreshold_;
+        uint256 protocolFeeBps_;
+        uint256 creationFee_;
+        uint256 creatorGraduationFeeBps_;
+        uint256 referralFeeBps_;
+        uint256 antiSnipeDuration_;
+        uint256 antiSnipeTaxBps_;
+        uint256 maxBuyBps_;
+        uint256 buyCooldown_;
+        uint256 creatorLockDuration_;
+        uint256 perTokenGraduationFeeBps_;
+        address kingOfHill_;
+        uint256 kingOfHillRaised_;
     }
 
     IERC20 public immutable usdc;
@@ -679,22 +679,22 @@ contract GlowFunFactory_V2 is Ownable, ReentrancyGuard, Pausable {
 
     /// @notice Returns all factory config in one struct (avoids 16-return-value stack overflow)
     function getConfig() external view returns (FactoryConfig memory cfg) {
-        cfg.usdc                    = address(usdc);
-        cfg.feeRecipient            = feeRecipient;
-        cfg.graduationRecipient     = graduationRecipient;
-        cfg.graduationThreshold     = graduationThreshold;
-        cfg.protocolFeeBps          = protocolFeeBps;
-        cfg.creationFee             = creationFee;
-        cfg.creatorGraduationFeeBps = creatorGraduationFeeBps;
-        cfg.referralFeeBps          = referralFeeBps;
-        cfg.antiSnipeDuration       = antiSnipeDuration;
-        cfg.antiSnipeTaxBps         = antiSnipeTaxBps;
-        cfg.maxBuyBps               = maxBuyBps;
-        cfg.buyCooldown             = buyCooldown;
-        cfg.creatorLockDuration     = creatorLockDuration;
-        cfg.perTokenGraduationFeeBps = perTokenGraduationFeeBps;
-        cfg.kingOfHill              = kingOfHill;
-        cfg.kingOfHillRaised        = kingOfHillRaised;
+        cfg.usdc_                    = address(usdc);
+        cfg.feeRecipient_            = feeRecipient;
+        cfg.graduationRecipient_     = graduationRecipient;
+        cfg.graduationThreshold_     = graduationThreshold;
+        cfg.protocolFeeBps_          = protocolFeeBps;
+        cfg.creationFee_             = creationFee;
+        cfg.creatorGraduationFeeBps_ = creatorGraduationFeeBps;
+        cfg.referralFeeBps_          = referralFeeBps;
+        cfg.antiSnipeDuration_       = antiSnipeDuration;
+        cfg.antiSnipeTaxBps_         = antiSnipeTaxBps;
+        cfg.maxBuyBps_               = maxBuyBps;
+        cfg.buyCooldown_             = buyCooldown;
+        cfg.creatorLockDuration_     = creatorLockDuration;
+        cfg.perTokenGraduationFeeBps_ = perTokenGraduationFeeBps;
+        cfg.kingOfHill_              = kingOfHill;
+        cfg.kingOfHillRaised_        = kingOfHillRaised;
     }
 
     function isCreatorLocked(address token) external view returns (bool) {
