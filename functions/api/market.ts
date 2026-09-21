@@ -314,9 +314,15 @@ export const onRequest: PagesFunction<Env> = async (ctx) => {
   const q     = (url.searchParams.get('q') ?? '').trim().toLowerCase()
   const limit = Math.min(500, parseInt(url.searchParams.get('limit') ?? '200'))
 
-  // Try KV fast cache first
+  // Try KV fast cache first (5-min TTL)
   const kvKey = `arc:tokens:${tab}`
   const kvRaw = env.CONFIG ? await env.CONFIG.get(kvKey).catch(()=>null) : null
+  
+  // Track last successful refresh time so we know how stale data is
+  const lastRefreshKey = 'arc:last_refresh'
+  const lastRefresh = env.CONFIG ? parseInt(await env.CONFIG.get(lastRefreshKey).catch(()=>'0') || '0') : 0
+  const dataAgeMs = Date.now() - lastRefresh * 1000
+  const needsRefresh = dataAgeMs > 5 * 60 * 1000  // refresh every 5 min
 
   let tokens: Token[]
   if (kvRaw) {
