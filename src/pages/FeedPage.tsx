@@ -180,6 +180,7 @@ export function FeedPage() {
         ))}
       </div>
 
+<<<<<<< HEAD
       {/* ── King + Hot horizontal scroll ─────────────────────────── */}
       {addresses.length > 0 && (
         <div>
@@ -191,6 +192,39 @@ export function FeedPage() {
             {total > 0 && <KingCard address={addresses[addresses.length-1] as `0x${string}`}/>}
             {[...addresses].reverse().slice(0,5).map((a,i)=><HotCard key={a} address={a as `0x${string}`} rank={i+1}/>)}
           </div>
+=======
+      {/* ── Token grid ────────────────────────────────────────── */}
+      {isLoading && !addresses.length ? (
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2.5">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="rounded-2xl shimmer" style={{ height:160, border:'1px solid var(--border)' }}/>
+          ))}
+        </div>
+      ) : displayed.length === 0 ? (
+        <div className="text-center py-16">
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-3"
+            style={{ background:'var(--surface)' }}>
+            <Search size={24} style={{ color:'var(--text3)' }}/>
+          </div>
+          <p className="text-sm font-medium" style={{ color:'var(--text2)' }}>No tokens found</p>
+          <p className="text-xs mt-1" style={{ color:'var(--text3)' }}>
+            {search ? 'Try a different search' : 'Be the first to launch on GlowFun!'}
+          </p>
+          {!search && (
+            <Link to="/launch" className="no-underline mt-4 inline-block">
+              <button className="px-4 py-2 rounded-xl text-xs font-bold text-white"
+                style={{ background:'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>
+                Launch now →
+              </button>
+            </Link>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2.5">
+          {displayed.map((addr, i) => (
+            <TokenCard key={addr} address={addr as `0x${string}`} index={i}/>
+          ))}
+>>>>>>> 801c1d5 (fix: admin KV unknown key (add PINATA_JWT/RPC_URL/SITE_LOGO/REFERRAL_FEE_BPS); dark mode for LaunchPage+WalletPage; desktop multi-column layout (1400px max, 4-col feed, 2-col wallet+launch))
         </div>
       )}
 

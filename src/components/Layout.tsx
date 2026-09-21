@@ -111,9 +111,11 @@ export function Layout({ children }: { children: ReactNode }) {
       <main className="relative z-10" style={
         isIDE
           ? { position:'fixed', top:0, left:0, right:0, bottom:0, paddingTop:56, display:'flex', flexDirection:'column', overflow:'hidden' }
-          : { paddingTop:80, paddingBottom:88, paddingLeft:16, paddingRight:16 }
+          : { paddingTop:80, paddingBottom:88, paddingLeft:20, paddingRight:20 }
       }>
-        {isIDE ? children : <div className="max-w-6xl mx-auto">{children}</div>}
+        {isIDE ? children : (
+          <div style={{ maxWidth:1400, margin:'0 auto' }}>{children}</div>
+        )}
       </main>
 
       <MobileNav/>
