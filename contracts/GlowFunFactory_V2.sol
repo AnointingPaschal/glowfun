@@ -55,31 +55,22 @@ contract GlowToken is ERC20 {
     }
 
     event MetadataUpdated(address indexed token, string imageUri, string description);
-    event URIUpdated(string contractURI);
 
     function setLocked(bool _locked) external {
         if (msg.sender != factory) revert NotFactory();
         locked = _locked;
     }
 
-    /// @notice ERC-7572: returns full token metadata as inline JSON
-    /// Any wallet, DEX, or explorer that supports ERC-7572 will display
-    /// the logo, description, and social links automatically.
+    /// @notice ERC-7572: points to the off-chain metadata API
+    /// Wallets and explorers that support ERC-7572 will auto-display
+    /// the logo, description, and socials from the returned URI.
     function contractURI() external view returns (string memory) {
         return string(abi.encodePacked(
-            'data:application/json;utf8,{"name":"', name(),
-            '","symbol":"', symbol(),
-            '","description":"', description,
-            '","image":"', imageUri,
-            '","twitter":"', twitter,
-            '","telegram":"', telegram,
-            '","website":"', website,
-            '","creator":"', _toHexString(creator),
-            '"}'
+            "https://glowfun.pages.dev/api/v1/tokens/", imageUri
         ));
     }
 
-    /// @notice Update token metadata — callable only by the creator
+    /// @notice Update token metadata — callable only by the creator or factory
     function updateMetadata(
         string calldata _imageUri,
         string calldata _description,
@@ -94,28 +85,6 @@ contract GlowToken is ERC20 {
         if (bytes(_telegram).length > 0)    telegram    = _telegram;
         if (bytes(_website).length > 0)     website     = _website;
         emit MetadataUpdated(address(this), imageUri, description);
-        // Emit ERC-7572 ContractURIUpdated so indexers pick up the change
-        emit URIUpdated(string(abi.encodePacked(
-            'data:application/json;utf8,{"name":"', name(),
-            '","image":"', imageUri, '"}'
-        )));
-    }
-
-    /// @dev Convert address to lowercase hex string for JSON embedding
-    function _toHexString(address addr) internal pure returns (string memory) {
-        bytes memory buffer = new bytes(42);
-        buffer[0] = '0';
-        buffer[1] = 'x';
-        for (uint256 i = 0; i < 20; i++) {
-            uint8 b = uint8(uint160(addr) >> (8 * (19 - i)));
-            buffer[2 + i * 2]     = _hexChar(b >> 4);
-            buffer[2 + i * 2 + 1] = _hexChar(b & 0x0f);
-        }
-        return string(buffer);
-    }
-
-    function _hexChar(uint8 v) internal pure returns (bytes1) {
-        return v < 10 ? bytes1(v + 48) : bytes1(v + 87);
     }
 
     function _update(address from, address to, uint256 value) internal override {
