@@ -339,8 +339,25 @@ export function AdminPage() {
         </div>
       </div>
 
+      {/* Mobile section pills — above the layout row, only on small screens */}
+      <div className="md:hidden mb-4 overflow-x-auto" style={{WebkitOverflowScrolling:'touch'}}>
+        <div className="flex gap-2 pb-1 min-w-max">
+          {SECTIONS.map(({ id, label, icon: Icon }) => (
+            <button key={id} onClick={() => setSection(id)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium flex-shrink-0 transition-all"
+              style={{
+                background: section === id ? 'rgba(99,102,241,0.12)' : 'var(--surface2)',
+                color: section === id ? '#818cf8' : 'var(--text2)',
+                border: section === id ? '1px solid rgba(99,102,241,0.2)' : '1px solid var(--border)',
+              }}>
+              <Icon size={12} />{label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="flex gap-5">
-        {/* Sidebar */}
+        {/* Sidebar — desktop only */}
         <aside className="w-44 flex-shrink-0 hidden md:block">
           <nav className="sticky top-20 space-y-1">
             {SECTIONS.map(({ id, label, icon: Icon }) => (
@@ -359,24 +376,7 @@ export function AdminPage() {
           </nav>
         </aside>
 
-        {/* Mobile section pills */}
-        <div className="md:hidden w-full -mx-0 mb-4 overflow-x-auto scrollbar-hide">
-          <div className="flex gap-2 pb-1">
-            {SECTIONS.map(({ id, label, icon: Icon }) => (
-              <button key={id} onClick={() => setSection(id)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium flex-shrink-0 transition-all"
-                style={{
-                  background: section === id ? 'rgba(99,102,241,0.12)' : 'var(--surface2)',
-                  color: section === id ? '#818cf8' : 'var(--text2)',
-                  border: section === id ? '1px solid rgba(99,102,241,0.2)' : '1px solid var(--border)',
-                }}>
-                <Icon size={12} />{label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Main content */}
+        {/* Main content — full width on mobile */}
         <div className="flex-1 min-w-0 space-y-4">
 
           {/* ── OVERVIEW ── */}

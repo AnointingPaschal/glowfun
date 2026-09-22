@@ -14,9 +14,9 @@ import { parseOnchainError } from '@/utils/errors'
 import { ConnectKitButton } from 'connectkit'
 import {
   Rocket, Twitter, Send, Globe, ChevronDown, Zap,
-  DollarSign, Loader2, ShieldCheck, ArrowRight,
+  Loader2, ShieldCheck, ArrowRight,
   AlertTriangle, Info, RotateCcw, Check,
-  Users, Lock, TrendingUp, Flame, Star,
+  Lock, TrendingUp, Star,
   MessageCircle, Hash, Image, Settings2,
 } from 'lucide-react'
 
@@ -211,11 +211,7 @@ export function LaunchPage() {
   })
   const fee = (feeRaw as bigint) ?? 0n
 
-  const { data: gradRaw } = useReadContract({
-    address:FACTORY_ADDRESS, abi:FACTORY_ABI, functionName:'graduationThreshold',
-    chainId:CHAIN_ID as any, query:{enabled:!!FACTORY_ADDRESS},
-  })
-  const grad: bigint = (gradRaw as bigint) ?? 69_000n*1_000_000n
+  const grad = 69_000n * 1_000_000n // protocol-controlled, silent background graduation
 
   const { data: usdcBal } = useReadContract({
     address:USDC_ADDRESS, abi:erc20Abi, functionName:'balanceOf',
@@ -296,8 +292,6 @@ export function LaunchPage() {
   /* preview */
   const hue     = form.name ? (form.name.charCodeAt(0)*37)%360 : 260
   const initials= form.symbol ? form.symbol.slice(0,2).toUpperCase() : '??'
-  const gradLabel = grad > 0n ? fmtUsdc(grad) : '$69K'
-
   /* checklist */
   const checks = [
     { label:'Token name',    done:!!form.name.trim()      },
@@ -326,7 +320,7 @@ export function LaunchPage() {
           <strong style={{color:'var(--text1)'}}>${form.symbol.toUpperCase()}</strong> is live on Arc Mainnet
         </p>
         <p className="text-xs mb-8 tabular-nums" style={{color:'var(--text3)'}}>
-          {fmt(supply)} supply · {curvePct.toFixed(0)}% curve · graduates at {gradLabel}
+          {fmt(supply)} total supply · {curvePct.toFixed(0)}% bonding curve · {creatorPct.toFixed(0)}% creator
         </p>
         <div className="flex flex-col gap-3">
           <button onClick={()=>navigate('/')}
@@ -372,34 +366,14 @@ export function LaunchPage() {
         </div>
       </div>
 
-      {/* ── Fee banner ── */}
-      {fee > 0n && (
+      {/* ── Insufficient balance warning only ── */}
+      {isConnected && fee > 0n && !canAfford && (
         <div className="flex items-center gap-3 px-4 py-3 rounded-2xl mb-5"
-          style={{
-            background: canAfford ? 'rgba(34,197,94,0.05)' : 'rgba(239,68,68,0.05)',
-            border:`1px solid ${canAfford ? 'rgba(34,197,94,0.18)' : 'rgba(239,68,68,0.18)'}`,
-          }}>
-          <div className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{background: canAfford ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)'}}>
-            <DollarSign size={13} style={{color: canAfford ? 'var(--green)' : 'var(--red)'}}/>
+          style={{background:'rgba(239,68,68,0.05)',border:'1px solid rgba(239,68,68,0.18)'}}>
+          <AlertTriangle size={13} style={{color:'var(--red)',flexShrink:0}}/>
+          <div className="text-xs" style={{color:'var(--red)'}}>
+            You need {fmtUsdc(fee - usdcBalance)} more USDC to launch. Your balance: {fmtUsdc(usdcBalance)}
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-xs font-bold" style={{color: canAfford ? 'var(--green)' : 'var(--red)'}}>
-              Launch fee: {fmtUsdc(fee)}
-            </div>
-            <div className="text-[11px]" style={{color:'var(--text2)'}}>
-              {canAfford
-                ? `Your balance: ${fmtUsdc(usdcBalance)} — Ready to launch`
-                : `You have ${fmtUsdc(usdcBalance)} · Need ${fmtUsdc(fee - usdcBalance)} more USDC`}
-            </div>
-          </div>
-          {txStep !== 'form' && (
-            <div className="flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full flex-shrink-0"
-              style={{background:'rgba(99,102,241,0.1)',color:'#818cf8'}}>
-              <Loader2 size={10} className="animate-spin"/>
-              {txStep === 'approving' ? 'Approving…' : 'Launching…'}
-            </div>
-          )}
         </div>
       )}
 
@@ -561,18 +535,7 @@ export function LaunchPage() {
               </AnimatePresence>
             </div>
 
-            {/* Graduation target — protocol-controlled, shown read-only */}
-            <div className="flex items-center justify-between px-4 py-3 rounded-xl mt-2"
-              style={{background:'rgba(34,197,94,0.05)',border:'1px solid rgba(34,197,94,0.14)'}}>
-              <div className="flex items-center gap-2">
-                <TrendingUp size={13} style={{color:'var(--green)'}}/>
-                <span className="text-[11px] font-semibold" style={{color:'var(--text2)'}}>Graduation target</span>
-                <Tip text="Set by the protocol admin. When this USDC milestone is reached on the bonding curve, the token auto-graduates to a DEX."/>
-              </div>
-              <span className="text-[12px] font-bold tabular-nums" style={{color:'var(--green)'}}>
-                {gradLabel}
-              </span>
-            </div>
+
           </Section>
 
           {/* ─── 3. Advanced ─── */}
@@ -815,12 +778,11 @@ export function LaunchPage() {
                 </p>
               )}
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {[
-                  {label:'Supply',    value: fmt(supply)  },
-                  {label:'Graduates', value: gradLabel    },
-                  {label:'Curve',     value: `${curvePct.toFixed(0)}%`},
-                  {label:'Creator',   value: `${creatorPct.toFixed(0)}%`},
+                  {label:'Supply',  value: fmt(supply)                  },
+                  {label:'Curve',   value: `${curvePct.toFixed(0)}%`   },
+                  {label:'Creator', value: `${creatorPct.toFixed(0)}%` },
                 ].map(({label,value})=>(
                   <div key={label} className="px-3 py-2 rounded-xl" style={{background:'var(--surface2)'}}>
                     <div className="text-[8px] font-semibold uppercase tracking-widest" style={{color:'var(--text3)'}}>{label}</div>
@@ -858,7 +820,6 @@ export function LaunchPage() {
                 {k:'Curve alloc.', v:`${curvePct.toFixed(0)}%`,  hi: false },
                 {k:'Creator alloc.',v:`${creatorPct.toFixed(0)}%`,hi: creatorBps>0 },
                 {k:'DEX liquidity',v:`${dexPct.toFixed(1)}%`,    hi: false },
-                {k:'Graduates at', v:gradLabel,                   hi: true  },
                 ...(fee>0n ? [{k:'Launch fee',v:fmtUsdc(fee),hi:false}] : []),
               ].map(({k,v,hi})=>(
                 <div key={k} className="flex justify-between items-center py-1.5 text-xs"
