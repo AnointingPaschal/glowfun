@@ -1,50 +1,27 @@
-Based on running a real launchpad on Arc mainnet, here are the most valuable additions grouped by priority:
+The revert reason is `InvalidAllocation()`. Looking at the decoded input — the method ID is `c03261b8` but the ABI expects `0baf7432`. Those are different function selectors, meaning **the frontend is calling a different function signature than what's deployed on-chain**.
 
----
+The decoded call shows the struct fields being passed, but something in the struct layout or field order doesn't match the V2 contract. Let me check both: The ABI `launchToken` struct has 11 fields. Now let me check the deployed V2 contract's actual `launchToken` function signature: Found it. Now let me read the actual `launchToken` function to see the `InvalidAllocation` check: Now I see the `_validateAndCompute` call. Let me find that function: Found the exact problem. Line 544:
 
-**Tier 1 — Revenue & Economics (add these)**
+```solidity
+if (curveBps < 5000 || curveBps > 9500 || creatorBps > MAX_CREATOR_ALLOC_BPS || curveBps + creatorBps > 9500) revert InvalidAllocation();
+```
 
-| Feature | What it does | Why |
-|---|---|---|
-| **Creator graduation bonus** | 5% of graduation USDC goes to token creator | Incentivizes creators to market their token to reach $69K |
-| **Referral fee** | 0.25% of each trade goes to whoever referred the buyer (passed as param) | Viral growth — influencers share links with their ref code |
-| **Creation fee in USDC** | Already exists at $5 — raise to $10–$25 | Filters spam tokens, more revenue per launch |
-| **Anti-snipe tax** | Extra 5% fee on buys in first 60 seconds after launch | Prevents bots from sniping new tokens at launch price |
+The contract requires `curveBps` between **5000 and 9500** (50%–95%). But the LaunchPage's "Deflationary" preset sets `curveBps = 9200` which is fine, and "Community" sets `curveBps = 8000` — but the **slider minimum is set to 4000** (40%), which is below the contract's 5000 minimum.
 
----
+Also `curveBps + creatorBps > 9500` — so with curveBps=8000 + creatorBps=500 = 8500, that's fine. But with curveBps=9200 + any creatorBps > 300 it would fail.
 
-**Tier 2 — Safety & Trust**
+The fix is simple: **change the slider min from 4000 to 5000** and clamp the presets within valid range. This is a straightforward targeted fix. Here's the exact plan: Here's the problem and the fix:
 
-| Feature | What it does | Why |
-|---|---|---|
-| **Max buy limit per wallet** | Cap any single wallet to X% of curve tokens per tx | Prevents one whale dumping on everyone |
-| **Cooldown between buys** | Same wallet must wait N seconds between buys | Slows bots |
-| **Creator lock** | If creator takes allocation, it's locked for 7 days | Prevents instant rug by creator |
-| **Token blacklist** | Owner can blacklist a token address from trading | Emergency rug/scam response |
-| **Wallet blacklist** | Owner can blacklist a wallet from trading | Block known bots/exploiters |
+**Root cause — line 544 of the deployed contract:**
+```solidity
+if (curveBps < 5000 || curveBps > 9500 || curveBps + creatorBps > 9500) revert InvalidAllocation()
+```
 
----
+The contract enforces a **50% minimum** for curve allocation. But the LaunchPage slider was set to `min={4000}` (40%), so you could drag it below 50% and the contract would reject it.
 
-**Tier 3 — Graduation & DEX**
+**Three specific things to fix in `LaunchPage.tsx`:**
+1. Slider min: `4000` → `5000` 
+2. Slider label: `"40%"` → `"50%"`
+3. Add a pre-submit guard that catches `curveBps + creatorBps > 9500` before the wallet even opens, showing a clear error rather than a confusing on-chain revert
 
-| Feature | What it does | Why |
-|---|---|---|
-| **Auto-LP on graduation** | On graduation, contract automatically creates Uniswap V4 pool with the USDC + tokens | Currently graduation just sends funds to you — automating the DEX listing is the real pump.fun magic |
-| **LP burn on graduation** | After creating the pool, burn the LP tokens | Makes liquidity permanent, builds trust |
-| **Per-token graduation fee** | Platform takes 1% of graduation USDC | Additional revenue at graduation milestone |
-
----
-
-**Tier 4 — Community & Gamification**
-
-| Feature | What it does | Why |
-|---|---|---|
-| **King of the Hill** | Track which token raised the most in last 24h | Drives competition, shown on the feed |
-| **Milestone events** | Emit events at 25%, 50%, 75% graduation progress | Frontend can show live alerts |
-| **Token comments on-chain** | Store last N comments on-chain per token | Decentralized chat, no backend needed |
-
----
-
-**My recommendation: deploy with Tier 1 + Tier 2 safety features.** That gives you real revenue share, referral growth, and basic bot/rug protection — which are the features that make a launchpad worth using over others.
-
-Which of these do you want me to add to the contract?
+Switch to Build mode and I'll apply the fix — it's a 3-line change.

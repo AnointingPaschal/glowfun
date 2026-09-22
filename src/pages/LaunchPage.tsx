@@ -201,8 +201,8 @@ export function LaunchPage() {
   const curvePct      = curveBps/100
   const creatorPct    = creatorBps/100
   const dexPct        = Number(dexTokens)*100/Number(supply)
-  const totalPct      = curvePct+creatorPct+dexPct
-  const overLimit     = totalPct > 100.01
+  // Contract enforces curveBps >= 5000, curveBps <= 9500, curveBps + creatorBps <= 9500
+  const overLimit     = curveBps < 5000 || curveBps + creatorBps > 9500
 
   /* contract reads */
   const { data: feeRaw } = useReadContract({
@@ -287,6 +287,11 @@ export function LaunchPage() {
     if (chainId !== CHAIN_ID) { switchChain({chainId:CHAIN_ID as any}); return }
     if (!form.name.trim()||!form.symbol.trim()) { toast.error('Name and symbol required'); return }
     if (!canAfford) { toast.error(`Need ${fmtUsdc(fee)} USDC to launch`); return }
+    // Mirror contract's InvalidAllocation() checks exactly
+    if (curveBps < 5000) { toast.error('Curve allocation must be at least 50%'); return }
+    if (curveBps > 9500) { toast.error('Curve allocation cannot exceed 95%'); return }
+    if (creatorBps > 1000) { toast.error('Creator allocation cannot exceed 10%'); return }
+    if (curveBps + creatorBps > 9500) { toast.error(`Curve + creator cannot exceed 95% (currently ${((curveBps+creatorBps)/100).toFixed(0)}%)`); return }
     needApprove ? doApprove() : doLaunch()
   }
 
@@ -584,11 +589,11 @@ export function LaunchPage() {
                       {curvePct.toFixed(0)}%
                     </span>
                   </div>
-                  <input type="range" min={4000} max={9900} step={100} value={curveBps}
+                  <input type="range" min={5000} max={9500} step={100} value={curveBps}
                     onChange={e=>{setCurve(Number(e.target.value));setAllocMode('custom')}}
                     className="w-full h-1.5 rounded-full accent-indigo-500 cursor-pointer"/>
                   <div className="flex justify-between text-[9px] mt-1" style={{color:'var(--text3)'}}>
-                    <span>40%</span><span style={{color:'#6366f1'}}>now: {curvePct.toFixed(0)}%</span><span>99%</span>
+                    <span>50%</span><span style={{color:'#6366f1'}}>now: {curvePct.toFixed(0)}%</span><span>95%</span>
                   </div>
                 </div>
 
