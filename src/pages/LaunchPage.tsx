@@ -211,7 +211,8 @@ export function LaunchPage() {
   })
   const fee = (feeRaw as bigint) ?? 0n
 
-  const grad = 69_000n * 1_000_000n // protocol-controlled, silent background graduation
+  // graduation is protocol-controlled and instant — silent background mechanic, never shown to users
+  const grad = 69_000n * 1_000_000n
 
   const { data: usdcBal } = useReadContract({
     address:USDC_ADDRESS, abi:erc20Abi, functionName:'balanceOf',
@@ -703,7 +704,7 @@ export function LaunchPage() {
                 {busy
                   ? <><Loader2 size={16} className="animate-spin"/>{txStep==='approving' ? 'Approving USDC…' : 'Launching token…'}</>
                   : needApprove
-                    ? <><ShieldCheck size={16}/>Approve {fmtUsdc(fee)} USDC</>
+                    ? <><ShieldCheck size={16}/>Approve USDC &amp; Launch</>
                     : <><Rocket size={16}/>Launch Token<ArrowRight size={14}/></>
                 }
               </motion.button>
@@ -733,23 +734,27 @@ export function LaunchPage() {
 
             {/* Hero */}
             <div className="relative h-36 overflow-hidden"
-              style={{background: (form.bannerUri||form.imageUri) ? 'black' : `linear-gradient(135deg,hsl(${hue},55%,25%),hsl(${(hue+120)%360},50%,20%))`}}>
-              {(form.bannerUri || form.imageUri)
-                ? <img src={form.bannerUri || form.imageUri} className="w-full h-full object-cover opacity-50"/>
-                : (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Image size={36} style={{color:'rgba(255,255,255,0.08)'}}/>
-                  </div>
-                )
-              }
+              style={{background: form.bannerUri ? 'black' : `linear-gradient(135deg,hsl(${hue},55%,25%),hsl(${(hue+120)%360},50%,20%))`}}>
+              {/* Banner fills background; logo is NOT used as background */}
+              {form.bannerUri && (
+                <img src={form.bannerUri} className="w-full h-full object-cover opacity-80"
+                  onError={e=>(e.currentTarget.style.display='none')}/>
+              )}
+              {!form.bannerUri && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Image size={36} style={{color:'rgba(255,255,255,0.06)'}}/>
+                </div>
+              )}
               {/* gradient overlay */}
-              <div className="absolute inset-0" style={{background:'linear-gradient(to top,rgba(0,0,0,0.7) 0%,transparent 50%)'}}/>
+              <div className="absolute inset-0" style={{background:'linear-gradient(to top,rgba(0,0,0,0.75) 0%,transparent 55%)'}}/>
 
               {/* Name overlay */}
               <div className="absolute bottom-3 left-4 flex items-end gap-2.5">
                 {form.imageUri
-                  ? <img src={form.imageUri} className="w-10 h-10 rounded-xl object-cover border-2" style={{borderColor:'rgba(255,255,255,0.15)'}}/>
-                  : <div className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black text-white"
+                  ? <img src={form.imageUri} className="w-10 h-10 rounded-xl object-cover border-2 flex-shrink-0"
+                      style={{borderColor:'rgba(255,255,255,0.2)'}}
+                      onError={e=>(e.currentTarget.style.display='none')}/>
+                  : <div className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black text-white flex-shrink-0"
                       style={{background:`linear-gradient(135deg,hsl(${hue},60%,50%),hsl(${(hue+120)%360},55%,40%))`}}>{initials}</div>
                 }
                 <div>
@@ -820,7 +825,6 @@ export function LaunchPage() {
                 {k:'Curve alloc.', v:`${curvePct.toFixed(0)}%`,  hi: false },
                 {k:'Creator alloc.',v:`${creatorPct.toFixed(0)}%`,hi: creatorBps>0 },
                 {k:'DEX liquidity',v:`${dexPct.toFixed(1)}%`,    hi: false },
-                ...(fee>0n ? [{k:'Launch fee',v:fmtUsdc(fee),hi:false}] : []),
               ].map(({k,v,hi})=>(
                 <div key={k} className="flex justify-between items-center py-1.5 text-xs"
                   style={{borderBottom:'1px solid var(--border)'}}>
