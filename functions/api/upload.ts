@@ -25,9 +25,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       return Response.json({ error: 'File too large. Max 5MB.' }, { status: 400 })
     }
 
-    // Generate unique key
+    // Generate unique key — prefix can be 'logo' for site assets, defaults to 'tokens'
+    const prefix = (formData.get('prefix') as string | null) === 'logo' ? 'logo' : 'tokens'
     const ext = file.type.split('/')[1].replace('jpeg', 'jpg')
-    const key = `tokens/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+    const key = `${prefix}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
 
     const arrayBuffer = await file.arrayBuffer()
 

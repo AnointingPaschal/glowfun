@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchChain, useReadContract } from 'wagmi'
 import { ConnectKitButton } from 'connectkit'
@@ -10,7 +10,7 @@ import {
   Shield, Settings, Key, Database, Globe, Loader2, Check, Eye, EyeOff,
   RefreshCw, Save, ExternalLink, AlertTriangle, BarChart2, Image,
   MessageSquare, DollarSign, Zap, Lock, Unlock, Users, Crown,
-  Ban, Activity, ChevronRight, Server, Sliders
+  Ban, Activity, ChevronRight, Server, Sliders, Upload, X as XIcon
 } from 'lucide-react'
 import { parseOnchainError } from '@/utils/errors'
 
@@ -29,7 +29,6 @@ const KV_KEYS = [
   { key: 'PINATA_JWT',               label: 'Pinata JWT (IPFS)',        placeholder: 'eyJhbGci... from app.pinata.cloud',                        category: 'storage', secret: true  },
   { key: 'R2_PUBLIC_URL',            label: 'R2 Public URL',            placeholder: 'https://pub-xxx.r2.dev',                                   category: 'storage', secret: false },
   { key: 'SITE_TITLE',               label: 'Site Name',                placeholder: 'GlowFun',                                                  category: 'site',    secret: false },
-  { key: 'SITE_LOGO',                label: 'Site Logo URL',            placeholder: 'https://... (square image)',                               category: 'site',    secret: false },
   { key: 'SITE_DESCRIPTION',         label: 'Site Description',         placeholder: 'Launch and trade meme tokens on Arc',                      category: 'site',    secret: false },
   { key: 'TWITTER_HANDLE',           label: 'Twitter Handle',           placeholder: '@glowfun',                                                 category: 'site',    secret: false },
   { key: 'CREATION_FEE_USDC',        label: 'Creation Fee display',     placeholder: '10',                                                       category: 'fees',    secret: false },
@@ -138,6 +137,128 @@ function FieldRow({ label, placeholder, value, onChange, onSave, saving, saved, 
             : <><Save size={11} />Save</>}
         </button>
       </div>
+    </div>
+  )
+}
+
+/* ── Site Logo Upload Row ───────────────────────────────────────────────── */
+function LogoUploadRow({ adminToken, currentUrl, onSaved }: {
+  adminToken: string
+  currentUrl: string
+  onSaved: (url: string) => void
+}) {
+  const [uploading, setUploading] = useState(false)
+  const [preview, setPreview]     = useState(currentUrl)
+  const [saved, setSaved]         = useState(false)
+  const [dragOver, setDragOver]   = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Sync preview when parent currentUrl changes (e.g. after KV load)
+  useEffect(() => { if (currentUrl && !preview) setPreview(currentUrl) }, [currentUrl])
+
+  const upload = async (file: File) => {
+    if (!file) return
+    if (!['image/jpeg','image/jpg','image/png','image/gif','image/webp'].includes(file.type)) {
+      toast.error('Use JPEG, PNG, GIF or WebP'); return
+    }
+    if (file.size > 5 * 1024 * 1024) { toast.error('Max 5 MB'); return }
+
+    // Local preview immediately
+    const reader = new FileReader()
+    reader.onload = e => setPreview(e.target?.result as string)
+    reader.readAsDataURL(file)
+
+    setUploading(true)
+    try {
+      // Try R2 first
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('prefix', 'logo') // hint for the worker to use logo/ key
+      const r = await fetch('/api/upload', { method: 'POST', body: fd })
+      const d = await r.json() as any
+      if (!d.ok) throw new Error(d.error ?? 'R2 upload failed')
+
+      // Save URL to KV
+      const res = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminToken },
+        body: JSON.stringify({ key: 'SITE_LOGO', value: d.url }),
+      })
+      const rd = await res.json() as any
+      if (!rd.ok) throw new Error(rd.error ?? 'KV save failed')
+
+      setPreview(d.url)
+      setSaved(true)
+      onSaved(d.url)
+      toast.success('Site logo updated — takes effect immediately')
+      setTimeout(() => setSaved(false), 3000)
+    } catch (e: any) {
+      toast.error(e.message)
+      setPreview(currentUrl) // revert preview on failure
+    }
+    setUploading(false)
+  }
+
+  return (
+    <div className="py-4" style={{ borderBottom: '1px solid var(--border)' }}>
+      <div className="text-xs font-medium mb-1" style={{ color: 'var(--text1)' }}>Site Logo</div>
+      <div className="text-xs mb-3" style={{ color: 'var(--text2)' }}>Square image, min 64×64px. PNG, JPG, GIF or WebP, max 5 MB. Takes effect site-wide immediately.</div>
+      <div className="flex items-center gap-4">
+        {/* Current logo preview */}
+        <div
+          className="relative flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden flex items-center justify-center cursor-pointer transition-opacity hover:opacity-80"
+          style={{ background: 'var(--surface3)', border: `2px dashed ${dragOver ? '#818cf8' : 'var(--border2)'}` }}
+          onClick={() => inputRef.current?.click()}
+          onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={e => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) upload(f) }}
+        >
+          {preview
+            ? <img src={preview} alt="logo" className="w-full h-full object-cover" onError={() => setPreview('')} />
+            : <Image size={20} style={{ color: 'var(--text3)' }} />
+          }
+          {uploading && (
+            <div className="absolute inset-0 flex items-center justify-center rounded-xl" style={{ background: 'rgba(0,0,0,0.5)' }}>
+              <Loader2 size={16} className="animate-spin text-white" />
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex-1 space-y-2">
+          <button
+            onClick={() => inputRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
+            style={saved
+              ? { background: 'rgba(34,197,94,0.1)', color: '#34d399', border: '1px solid rgba(34,197,94,0.2)' }
+              : { background: 'var(--accent)', color: 'white', border: 'none' }
+            }
+          >
+            {uploading ? <Loader2 size={11} className="animate-spin" /> : saved ? <Check size={11} /> : <Upload size={11} />}
+            {uploading ? 'Uploading...' : saved ? 'Logo saved!' : 'Upload logo'}
+          </button>
+          {preview && (
+            <button
+              onClick={() => {
+                setPreview('')
+                fetch('/api/config', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminToken },
+                  body: JSON.stringify({ key: 'SITE_LOGO', value: '' }),
+                }).then(() => { onSaved(''); toast.success('Logo removed') })
+              }}
+              className="flex items-center gap-1 px-2 py-1 rounded text-xs"
+              style={{ color: 'var(--text3)', background: 'transparent' }}
+            >
+              <XIcon size={9} />Remove
+            </button>
+          )}
+          <p className="text-[10px]" style={{ color: 'var(--text3)' }}>Or drag and drop onto the preview</p>
+        </div>
+      </div>
+      <input ref={inputRef} type="file" accept="image/jpeg,image/jpg,image/png,image/gif,image/webp" className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = '' }} />
     </div>
   )
 }
@@ -454,6 +575,19 @@ export function AdminPage() {
                 </div>
 
                 <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                  {/* Site logo upload row — only shown in All / Site categories */}
+                  {(cat === 'all' || cat === 'site') && (
+                    <div className="px-5">
+                      <LogoUploadRow
+                        adminToken={pw}
+                        currentUrl={kvValues['SITE_LOGO'] ?? ''}
+                        onSaved={url => {
+                          setKvValues(v => ({ ...v, SITE_LOGO: url }))
+                          setEditVals(v => ({ ...v, SITE_LOGO: url }))
+                        }}
+                      />
+                    </div>
+                  )}
                   {filteredKeys.map(({ key, label, placeholder, secret }) => (
                     <FieldRow
                       key={key}
@@ -467,7 +601,7 @@ export function AdminPage() {
                       secret={secret}
                     />
                   ))}
-                  {filteredKeys.length === 0 && (
+                  {filteredKeys.length === 0 && cat !== 'all' && cat !== 'site' && (
                     <div className="p-8 text-center text-sm" style={{ color: 'var(--text2)' }}>No settings in this category.</div>
                   )}
                 </div>
