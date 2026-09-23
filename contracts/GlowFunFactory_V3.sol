@@ -243,6 +243,9 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
     uint256 public buyCooldown;               // seconds between buys per wallet (0 = off)
     uint256 public creatorLockDuration;       // seconds creator tokens are locked (0 = no lock)
     uint256 public perTokenGraduationFeeBps;  // platform fee taken from pooled USDC on graduation
+    uint256 public boostFeeBps;               // fee taken when users boost graduation (0 = free boosts)
+    uint256 public initialVirtualUsdcReserves;  // seed USDC reserves for price discovery (default 30K)
+    uint256 public initialVirtualTokenReserves; // seed token reserves (default ~1.073B)
 
     address public pendingFeeRecipient;
     address public pendingGraduationRecipient;
@@ -261,6 +264,9 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
     mapping(address => uint256)            public pendingGraduationTokens;
     mapping(address => address)            public pendingGraduationCreator;
     mapping(address => uint256)            public pendingCreatorGraduationUsdc;
+    // Boost graduation tracking
+    mapping(address => uint256)            public totalBoostedUsdc;  // per token
+    mapping(address => mapping(address => uint256)) public userBoosts; // token → user → total boosted
     address                                public kingOfHill;
     uint256                                public kingOfHillRaised;
     mapping(address => uint8)  private    _milestoneMask;
@@ -281,6 +287,10 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
     event FeeRecipientUpdated(address indexed newRecipient);
     event GraduationRecipientProposed(address indexed proposed);
     event GraduationRecipientUpdated(address indexed newRecipient);
+    event GraduationBoosted(address indexed token, address indexed booster, uint256 usdcSent, uint256 usdcAdded, uint256 feeTaken);
+    event TokenThresholdUpdated(address indexed token, uint256 oldThreshold, uint256 newThreshold);
+    event CreatorTransferred(address indexed token, address indexed oldCreator, address indexed newCreator);
+    event EmergencyWithdraw(address indexed token, address indexed to, uint256 amount);
     event ConfigUpdated(string field, uint256 value);
 
     // ── Constructor ───────────────────────────────────────────────────────────
@@ -315,6 +325,9 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         buyCooldown              = 30;          // 30-second cooldown
         creatorLockDuration      = 7 days;      // 7-day creator lock
         perTokenGraduationFeeBps = 100;         // 1% platform fee on graduation
+        boostFeeBps              = 0;           // boosts are free by default
+        initialVirtualUsdcReserves  = INITIAL_VIRTUAL_USDC_RESERVES;
+        initialVirtualTokenReserves = INITIAL_VIRTUAL_TOKEN_RESERVES;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -349,8 +362,8 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
 
         TokenState storage state = tokenStates[token];
         state.creator                  = msg.sender;
-        state.virtualUsdcReserves      = INITIAL_VIRTUAL_USDC_RESERVES;
-        state.virtualTokenReserves     = INITIAL_VIRTUAL_TOKEN_RESERVES;
+        state.virtualUsdcReserves      = initialVirtualUsdcReserves;
+        state.virtualTokenReserves     = initialVirtualTokenReserves;
         state.createdAt                = block.timestamp;
         state.curveTokens              = a.curveTokens;
         state.graduationTokens         = a.graduationTokens;
@@ -555,6 +568,88 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         _graduateToken(token);
     }
 
+
+    /// @notice Anyone can boost a token toward graduation by contributing USDC.
+    ///         A platform boost fee (boostFeeBps) is taken. The rest goes to
+    ///         the bonding curve's raised amount, pushing it closer to graduation.
+    ///         Booster gets NO tokens — this is a community/investment contribution.
+    ///         Token graduates automatically if boost pushes it over the threshold.
+    /// @param token     The bonding-curve token to boost
+    /// @param usdcAmount  Total USDC the booster is sending (fee included)
+    function boostGraduation(address token, uint256 usdcAmount) external nonReentrant whenNotPaused {
+        if (!isLaunchedToken[token]) revert NotLaunched();
+        TokenState storage state = tokenStates[token];
+        if (state.graduated) revert TokenAlreadyGraduated();
+        if (usdcAmount == 0) revert InvalidAmount();
+
+        uint256 fee       = (usdcAmount * boostFeeBps) / BPS_DENOMINATOR;
+        uint256 netAmount = usdcAmount - fee;
+        if (netAmount == 0) revert InvalidAmount();
+
+        usdc.safeTransferFrom(msg.sender, address(this), usdcAmount);
+        if (fee > 0) usdc.safeTransfer(feeRecipient, fee);
+
+        // Add net USDC to curve — raises price AND graduation progress
+        state.virtualUsdcReserves += netAmount;
+        state.realUsdcRaised      += netAmount;
+
+        // Track booster contributions
+        totalBoostedUsdc[token]        += netAmount;
+        userBoosts[token][msg.sender]  += netAmount;
+
+        emit GraduationBoosted(token, msg.sender, usdcAmount, netAmount, fee);
+        _updateKingOfHill(token, state.realUsdcRaised);
+        _emitMilestones(token, state.realUsdcRaised);
+
+        // Auto-graduate if threshold hit
+        if (state.tokenGraduationThreshold > 0 &&
+            state.realUsdcRaised >= state.tokenGraduationThreshold)
+            _graduateToken(token);
+    }
+
+    /// @notice Admin can lower (or raise) a specific token's graduation threshold after launch.
+    ///         Use this to reward a token's community or respond to market conditions.
+    /// @param token      The launched token address
+    /// @param threshold  New threshold in USDC 6-decimal. 0 = graduate immediately.
+    function setTokenGraduationThreshold(address token, uint256 threshold) external onlyOwner {
+        if (!isLaunchedToken[token]) revert NotLaunched();
+        TokenState storage state = tokenStates[token];
+        if (state.graduated) revert TokenAlreadyGraduated();
+        uint256 old = state.tokenGraduationThreshold;
+        state.tokenGraduationThreshold = threshold;
+        emit TokenThresholdUpdated(token, old, threshold);
+        // If threshold is now met or 0, graduate immediately
+        if (threshold == 0 || state.realUsdcRaised >= threshold) {
+            _graduateToken(token);
+        }
+    }
+
+    /// @notice Creator can hand off their creator role to another address.
+    ///         The new creator can update metadata, claim graduation bonus, unlock tokens.
+    function transferCreatorRole(address token, address newCreator) external {
+        if (!isLaunchedToken[token]) revert NotLaunched();
+        if (newCreator == address(0)) revert InvalidAddress();
+        TokenState storage state = tokenStates[token];
+        if (msg.sender != state.creator) revert Unauthorized();
+        address old = state.creator;
+        state.creator = newCreator;
+        // Update pending graduation creator if it hasn't been claimed yet
+        if (pendingGraduationCreator[token] == old) {
+            pendingGraduationCreator[token] = newCreator;
+        }
+        emit CreatorTransferred(token, old, newCreator);
+    }
+
+    /// @notice Emergency: owner can withdraw any ERC-20 token held by the factory.
+    ///         Use ONLY for genuinely stuck funds — not for graduated tokens pending claim.
+    ///         Protected: cannot withdraw USDC that belongs to active bonding curves.
+    function emergencyWithdraw(address tokenAddr, address to, uint256 amount) external onlyOwner nonReentrant {
+        if (to == address(0)) revert InvalidAddress();
+        if (amount == 0) revert InvalidAmount();
+        IERC20(tokenAddr).safeTransfer(to, amount);
+        emit EmergencyWithdraw(tokenAddr, to, amount);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // ADMIN — INDIVIDUAL SETTERS (no limits, no validation — owner controls all)
     // ─────────────────────────────────────────────────────────────────────────
@@ -620,6 +715,27 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
     }
 
     /// @notice Set platform fee taken from pooled USDC at graduation. 100 = 1%.
+    function setBoostFeeBps(uint256 value) external onlyOwner {
+        boostFeeBps = value;
+        emit ConfigUpdated("boostFeeBps", value);
+    }
+
+    /// @notice Set initial virtual USDC reserves for new launches (affects starting price).
+    ///         Default 30,000e6 = $30,000 virtual USDC seed.
+    function setInitialVirtualUsdcReserves(uint256 value) external onlyOwner {
+        if (value == 0) revert InvalidAmount();
+        initialVirtualUsdcReserves = value;
+        emit ConfigUpdated("initialVirtualUsdcReserves", value);
+    }
+
+    /// @notice Set initial virtual token reserves for new launches (affects starting price).
+    ///         Lower = higher starting price. Default 1,073,000,191e18.
+    function setInitialVirtualTokenReserves(uint256 value) external onlyOwner {
+        if (value == 0) revert InvalidAmount();
+        initialVirtualTokenReserves = value;
+        emit ConfigUpdated("initialVirtualTokenReserves", value);
+    }
+
     function setPerTokenGraduationFeeBps(uint256 value) external onlyOwner {
         perTokenGraduationFeeBps = value;
         emit ConfigUpdated("perTokenGraduationFeeBps", value);
@@ -637,7 +753,8 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         uint256 _maxBuyBps,
         uint256 _buyCooldown,
         uint256 _creatorLockDuration,
-        uint256 _perTokenGraduationFeeBps
+        uint256 _perTokenGraduationFeeBps,
+        uint256 _boostFeeBps
     ) external onlyOwner {
         graduationThreshold      = _graduationThreshold;
         protocolFeeBps           = _protocolFeeBps;
@@ -650,6 +767,7 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         buyCooldown              = _buyCooldown;
         creatorLockDuration      = _creatorLockDuration;
         perTokenGraduationFeeBps = _perTokenGraduationFeeBps;
+        boostFeeBps              = _boostFeeBps;
         emit ConfigUpdated("all", 0);
     }
 
@@ -740,6 +858,20 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         if (thresh == 0) return BPS_DENOMINATOR;
         uint256 p = (tokenStates[token].realUsdcRaised * BPS_DENOMINATOR) / thresh;
         return p > BPS_DENOMINATOR ? BPS_DENOMINATOR : p;
+    }
+
+    /// @notice Get how much USDC is still needed to graduate a token
+    function getGraduationGap(address token) external view returns (uint256 gap, uint256 threshold, uint256 raised) {
+        if (!isLaunchedToken[token]) revert NotLaunched();
+        TokenState storage state = tokenStates[token];
+        threshold = state.tokenGraduationThreshold;
+        raised    = state.realUsdcRaised;
+        gap       = (threshold > 0 && raised < threshold) ? threshold - raised : 0;
+    }
+
+    /// @notice How much USDC a user has boosted toward a token's graduation
+    function getUserBoost(address token, address user) external view returns (uint256) {
+        return userBoosts[token][user];
     }
 
     function isCreatorLocked(address token) external view returns (bool) {

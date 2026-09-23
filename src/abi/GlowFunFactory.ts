@@ -259,4 +259,31 @@ export const FACTORY_ABI = [
       { name: '_perTokenGraduationFeeBps', type: 'uint256' },
     ],
     outputs: [] },
+
+  // ── V3 new functions ──────────────────────────────────────────────────
+  { name: 'boostGraduation',           type: 'function', stateMutability: 'nonpayable',
+    inputs: [{ name: 'token', type: 'address' }, { name: 'usdcAmount', type: 'uint256' }],
+    outputs: [] },
+  { name: 'setTokenGraduationThreshold', type: 'function', stateMutability: 'nonpayable',
+    inputs: [{ name: 'token', type: 'address' }, { name: 'threshold', type: 'uint256' }], outputs: [] },
+  { name: 'transferCreatorRole',        type: 'function', stateMutability: 'nonpayable',
+    inputs: [{ name: 'token', type: 'address' }, { name: 'newCreator', type: 'address' }], outputs: [] },
+  { name: 'emergencyWithdraw',          type: 'function', stateMutability: 'nonpayable',
+    inputs: [{ name: 'tokenAddr', type: 'address' }, { name: 'to', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [] },
+  { name: 'setBoostFeeBps',             type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'value', type: 'uint256' }], outputs: [] },
+  { name: 'setInitialVirtualUsdcReserves', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'value', type: 'uint256' }], outputs: [] },
+  { name: 'setInitialVirtualTokenReserves', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'value', type: 'uint256' }], outputs: [] },
+  // V3 views
+  { name: 'boostFeeBps',               type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { name: 'totalBoostedUsdc',          type: 'function', stateMutability: 'view', inputs: [{ name: 'token', type: 'address' }], outputs: [{ type: 'uint256' }] },
+  { name: 'getUserBoost',              type: 'function', stateMutability: 'view', inputs: [{ name: 'token', type: 'address' }, { name: 'user', type: 'address' }], outputs: [{ type: 'uint256' }] },
+  { name: 'getGraduationGap',          type: 'function', stateMutability: 'view',
+    inputs: [{ name: 'token', type: 'address' }],
+    outputs: [{ name: 'gap', type: 'uint256' }, { name: 'threshold', type: 'uint256' }, { name: 'raised', type: 'uint256' }] },
+  { name: 'initialVirtualUsdcReserves',  type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { name: 'initialVirtualTokenReserves', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  // V3 events
+  { name: 'GraduationBoosted',   type: 'event', inputs: [{ name: 'token', type: 'address', indexed: true }, { name: 'booster', type: 'address', indexed: true }, { name: 'usdcSent', type: 'uint256', indexed: false }, { name: 'usdcAdded', type: 'uint256', indexed: false }, { name: 'feeTaken', type: 'uint256', indexed: false }] },
+  { name: 'TokenThresholdUpdated', type: 'event', inputs: [{ name: 'token', type: 'address', indexed: true }, { name: 'oldThreshold', type: 'uint256', indexed: false }, { name: 'newThreshold', type: 'uint256', indexed: false }] },
+  { name: 'CreatorTransferred',   type: 'event', inputs: [{ name: 'token', type: 'address', indexed: true }, { name: 'oldCreator', type: 'address', indexed: true }, { name: 'newCreator', type: 'address', indexed: true }] },
 ] as const

@@ -10,7 +10,8 @@ import {
   Shield, Settings, Key, Database, Globe, Loader2, Check, Eye, EyeOff,
   RefreshCw, Save, ExternalLink, AlertTriangle, BarChart2, Image,
   MessageSquare, DollarSign, Zap, Lock, Unlock, Users, Crown,
-  Ban, Activity, ChevronRight, Server, Sliders, Upload, X as XIcon
+  Ban, Activity, ChevronRight, Server, Sliders, Upload, X as XIcon,
+  Trophy, Settings2
 } from 'lucide-react'
 import { parseOnchainError } from '@/utils/errors'
 import { useTokenList } from '@/hooks/useTokenList'
@@ -762,8 +763,78 @@ export function AdminPage() {
                       </div>
                     </SectionCard>
 
+                    {/* ── V3: Boost Fee ── */}
+                    <SectionCard title="Boost Graduation Fee" icon={Zap} accent="#f59e0b">
+                      <p className="text-xs mb-3" style={{ color: 'var(--text2)' }}>
+                        Users can boost any token toward graduation by contributing USDC. Set the platform cut from boosts. 0 = free boosts.
+                      </p>
+                      <OnchainInput
+                        label="Boost Fee (bps — e.g. 200 = 2% taken from each boost)"
+                        note="0 = free boosts. 200 = 2% fee. 500 = 5% fee."
+                        value={i('boostFee')} onChange={si('boostFee')} disabled={adminBusy}
+                        placeholder="200"
+                        onSet={() => adminCall('setBoostFeeBps', [BigInt(i('boostFee') || '0')])}
+                      />
+                    </SectionCard>
+
+                    {/* ── V3: Force Graduate ── */}
+                    <SectionCard title="Force Graduate Token" icon={Trophy} accent="#f59e0b">
+                      <p className="text-xs mb-3" style={{ color: 'var(--text2)' }}>
+                        Pay the USDC gap yourself to graduate any token immediately. USDC goes to the Uniswap pool at graduation.
+                      </p>
+                      <div className="space-y-2">
+                        <div>
+                          <label className="text-[10px] font-bold uppercase tracking-widest block mb-1" style={{ color: 'var(--text2)' }}>Token Address</label>
+                          <input value={i('forceGradToken')} onChange={e => setInp(s => ({ ...s, forceGradToken: e.target.value }))}
+                            placeholder="0x..." className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                            style={{ background: 'var(--surface3)', border: '1px solid var(--border2)', color: 'var(--text1)' }} />
+                        </div>
+                        <button
+                          onClick={() => adminCall('forceGraduate', [i('forceGradToken') as `0x${string}`])}
+                          disabled={!i('forceGradToken') || adminBusy}
+                          className="w-full py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40"
+                          style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', color: 'var(--gold)' }}>
+                          <Trophy size={14} />Force Graduate (you pay USDC gap)
+                        </button>
+                      </div>
+                    </SectionCard>
+
+                    {/* ── V3: Per-Token Override ── */}
+                    <SectionCard title="Per-Token Tools" icon={Settings2} accent="#818cf8">
+                      <p className="text-xs mb-3" style={{ color: 'var(--text2)' }}>
+                        Override a specific token's graduation threshold or set it to 0 to graduate it immediately.
+                      </p>
+                      <div className="space-y-2">
+                        <div>
+                          <label className="text-[10px] font-bold uppercase tracking-widest block mb-1" style={{ color: 'var(--text2)' }}>Token Address</label>
+                          <input value={i('ptToken')} onChange={e => setInp(s => ({ ...s, ptToken: e.target.value }))}
+                            placeholder="0x..." className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                            style={{ background: 'var(--surface3)', border: '1px solid var(--border2)', color: 'var(--text1)' }} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] font-bold uppercase tracking-widest block mb-1" style={{ color: 'var(--text2)' }}>New threshold (USDC)</label>
+                            <input value={i('ptThresh')} onChange={e => setInp(s => ({ ...s, ptThresh: e.target.value }))}
+                              placeholder="0 = graduate now" type="number" className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                              style={{ background: 'var(--surface3)', border: '1px solid var(--border2)', color: 'var(--text1)' }} />
+                          </div>
+                          <button
+                            onClick={() => adminCall('setTokenGraduationThreshold', [i('ptToken') as `0x${string}`, BigInt(Math.round(parseFloat(i('ptThresh') || '0') * 1_000_000))])}
+                            disabled={!i('ptToken') || adminBusy}
+                            className="self-end py-2.5 rounded-xl text-sm font-bold disabled:opacity-40"
+                            style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.25)', color: '#818cf8' }}>
+                            Set Threshold
+                          </button>
+                        </div>
+                        <p className="text-[9px]" style={{ color: 'var(--text3)' }}>
+                          Enter 0 to graduate the token immediately (no USDC required). Any value ≥ 0 is accepted.
+                        </p>
+                      </div>
+                    </SectionCard>
+
+                    {/* ── Emergency Controls ── */}
                     <SectionCard title="Emergency Controls" icon={Shield} accent="#a78bfa">
-                      <div className="flex gap-3">
+                      <div className="flex gap-3 mb-4">
                         <button onClick={() => adminCall('pause', [])} disabled={!!paused || adminBusy} className="flex-1 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-40 transition-opacity hover:opacity-80" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.18)', color: '#f87171' }}>
                           <Lock size={14} />Pause
                         </button>
@@ -771,8 +842,23 @@ export function AdminPage() {
                           <Unlock size={14} />Unpause
                         </button>
                       </div>
-                      <div className="mt-3 text-center text-xs" style={{ color: 'var(--text2)' }}>
+                      <div className="mb-4 text-center text-xs" style={{ color: 'var(--text2)' }}>
                         Status: <span style={{ color: paused ? '#f87171' : '#34d399', fontWeight: 600 }}>{paused === undefined ? '...' : paused ? 'PAUSED' : 'Active'}</span>
+                      </div>
+                      {/* Emergency withdraw */}
+                      <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--red)' }}>Emergency Withdraw</p>
+                      <div className="space-y-2 p-3 rounded-xl" style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.15)' }}>
+                        <p className="text-[10px]" style={{ color: 'var(--text2)' }}>⚠️ Only for genuinely stuck funds. USDC in active bonding curves belongs to users.</p>
+                        <input value={i('ewToken')} onChange={e => setInp(s => ({ ...s, ewToken: e.target.value }))} placeholder="Token/asset address" className="w-full px-3 py-2 rounded-lg text-xs outline-none" style={{ background: 'var(--surface3)', border: '1px solid rgba(239,68,68,0.2)', color: 'var(--text1)' }} />
+                        <input value={i('ewTo')}    onChange={e => setInp(s => ({ ...s, ewTo: e.target.value }))}    placeholder="Recipient address" className="w-full px-3 py-2 rounded-lg text-xs outline-none" style={{ background: 'var(--surface3)', border: '1px solid rgba(239,68,68,0.2)', color: 'var(--text1)' }} />
+                        <input value={i('ewAmt')}   onChange={e => setInp(s => ({ ...s, ewAmt: e.target.value }))}   placeholder="Amount (raw — 18 dec for tokens, 6 dec for USDC)" className="w-full px-3 py-2 rounded-lg text-xs outline-none" style={{ background: 'var(--surface3)', border: '1px solid rgba(239,68,68,0.2)', color: 'var(--text1)' }} />
+                        <button
+                          onClick={() => { if (!confirm('⚠️ Emergency withdraw — are you sure?')) return; adminCall('emergencyWithdraw', [i('ewToken') as `0x${string}`, i('ewTo') as `0x${string}`, BigInt(i('ewAmt') || '0')]) }}
+                          disabled={!i('ewToken') || !i('ewTo') || !i('ewAmt') || adminBusy}
+                          className="w-full py-2.5 rounded-xl text-xs font-bold disabled:opacity-40"
+                          style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: 'var(--red)' }}>
+                          Emergency Withdraw
+                        </button>
                       </div>
                     </SectionCard>
                   </>
