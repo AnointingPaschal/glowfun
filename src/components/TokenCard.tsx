@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useTokenData } from '@/hooks/useTokenData'
 import { useMarketPrice } from '@/hooks/useMarketPrice'
-import { formatProgress, timeAgo, ipfsToHttp } from '@/utils/format'
+import { formatProgress, timeAgo, ipfsToHttp, nextIpfsGateway } from '@/utils/format'
 import { Flame, Sprout, Trophy } from 'lucide-react'
 
 interface Props { address: `0x${string}`; index?: number; rank?: number }
@@ -84,9 +84,13 @@ export function TokenCard({ address, index = 0, rank }: Props) {
             {/* Logo */}
             <div className="relative flex-shrink-0">
               {token.imageUri
-                ? <img src={token.imageUri} className="w-11 h-11 rounded-xl object-cover flex-shrink-0"
+                ? <img src={ipfsToHttp(token.imageUri)} className="w-11 h-11 rounded-xl object-cover flex-shrink-0"
                     style={{ border: '1.5px solid var(--border2)' }}
-                    onError={e => { (e.target as any).src = '' }}/>
+                    onError={e => {
+                      const t = e.target as HTMLImageElement
+                      const next = nextIpfsGateway(t.src)
+                      if (next) { t.src = next } else { t.style.display = 'none' }
+                    }}/>
                 : <div className="w-11 h-11 rounded-xl flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
                     style={{ background: `linear-gradient(135deg,${color1},${color2})` }}>
                     {token.symbol?.slice(0, 2) || '??'}
@@ -125,30 +129,7 @@ export function TokenCard({ address, index = 0, rank }: Props) {
             </div>
           </div>
 
-          {/* Bonding progress bar */}
-          <div className="mb-2.5">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[8px] font-medium" style={{ color:'var(--text2)' }}>Bonding progress</span>
-              <span className="text-[8px] font-bold" style={{ color: pct >= 75 ? 'var(--gold)' : pct >= 50 ? '#818cf8' : 'var(--text2)' }}>
-                {pct.toFixed(1)}%
-              </span>
-            </div>
-            <div className="h-1.5 rounded-full overflow-hidden" style={{ background:'var(--surface3)' }}>
-              <motion.div
-                initial={{ width:0 }}
-                animate={{ width: `${pct}%` }}
-                transition={{ duration:0.8, delay: index*0.03+0.1, ease:'easeOut' }}
-                className="h-full rounded-full"
-                style={{
-                  background: isGrad
-                    ? 'linear-gradient(90deg,#f59e0b,#ef4444)'
-                    : pct > 70
-                    ? 'linear-gradient(90deg,#6366f1,#8b5cf6,#f59e0b)'
-                    : 'linear-gradient(90deg,#6366f1,#8b5cf6)',
-                  boxShadow: pct > 50 ? '0 0 6px rgba(99,102,241,0.5)' : 'none',
-                }}/>
-            </div>
-          </div>
+
 
           {/* Footer stats */}
           <div className="flex items-center gap-2">

@@ -5,10 +5,32 @@ export const formatAddress = (addr: string): string =>
  * Convert ipfs:// URIs to an https:// Cloudflare gateway URL so browsers can load them.
  * Passes through http/https URLs unchanged. Safe to call with undefined/empty.
  */
-export const ipfsToHttp = (uri: string | undefined | null): string => {
+const IPFS_GATEWAYS = [
+  'https://w3s.link/ipfs/',
+  'https://ipfs.io/ipfs/',
+  'https://dweb.link/ipfs/',
+  'https://gateway.pinata.cloud/ipfs/',
+]
+
+export const ipfsToHttp = (uri: string | undefined | null, gatewayIndex = 0): string => {
   if (!uri) return ''
-  if (uri.startsWith('ipfs://')) return `https://cloudflare-ipfs.com/ipfs/${uri.slice(7)}`
+  if (uri.startsWith('ipfs://')) {
+    const cid = uri.slice(7)
+    const gw = IPFS_GATEWAYS[gatewayIndex % IPFS_GATEWAYS.length]
+    return `${gw}${cid}`
+  }
   return uri
+}
+
+/** Try the next IPFS gateway when the current one fails */
+export const nextIpfsGateway = (currentSrc: string): string | null => {
+  for (let i = 0; i < IPFS_GATEWAYS.length - 1; i++) {
+    if (currentSrc.startsWith(IPFS_GATEWAYS[i])) {
+      const cid = currentSrc.slice(IPFS_GATEWAYS[i].length)
+      return `${IPFS_GATEWAYS[i + 1]}${cid}`
+    }
+  }
+  return null
 }
 
 export const formatUsdc = (raw: bigint | number | undefined): string => {

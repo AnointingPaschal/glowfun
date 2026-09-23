@@ -17,7 +17,7 @@ import { FACTORY_ABI } from '@/abi/GlowFunFactory'
 import { GLOW_TOKEN_ABI } from '@/abi/GlowToken'
 import { useConfig } from '@/context/ConfigContext'
 import { useTokenData, useTokenBalance } from '@/hooks/useTokenData'
-import { formatProgress, formatAddress, timeAgo, parseUsdc, parseTokens, ipfsToHttp } from '@/utils/format'
+import { formatProgress, formatAddress, timeAgo, parseUsdc, parseTokens, ipfsToHttp, nextIpfsGateway } from '@/utils/format'
 import { parseOnchainError } from '@/utils/errors'
 
 type TradeMode = 'buy' | 'sell'
@@ -413,7 +413,8 @@ export function TokenPage() {
         <div className="flex items-start gap-3 mb-4">
           <div className="flex-shrink-0">
             {token.imageUri
-              ?<img src={ipfsToHttp(token.imageUri)} className="w-14 h-14 rounded-2xl object-cover" style={{border:'1.5px solid var(--border2)'}}/>
+              ?<img src={ipfsToHttp(token.imageUri)} className="w-14 h-14 rounded-2xl object-cover" style={{border:'1.5px solid var(--border2)'}}
+                onError={e=>{const t=e.target as HTMLImageElement;const n=nextIpfsGateway(t.src);if(n){t.src=n}else{t.style.display='none'}}}/>
               :<div className="w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-black text-white" style={{background:tokenGrad}}>{token.symbol?.slice(0,2)}</div>}
           </div>
           <div className="flex-1 min-w-0">
@@ -478,25 +479,6 @@ export function TokenPage() {
         <Stat label="USDC Raised" value={fmtC(raisedUsd)} accent="var(--accent)"/>
         <Stat label="Liquidity"   value={fmtC(liqUsd)}/>
         <Stat label="Pair Age"    value={token.createdAt>0?timeAgo(token.createdAt):'—'}/>
-      </div>
-
-      {/* ── Bonding progress ──────────────────────────────────────── */}
-      <div className="rounded-2xl p-4" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-[9px] font-bold uppercase tracking-widest" style={{color:'var(--text2)'}}>Bonding Curve Progress</span>
-          <span className="text-sm font-black" style={{color:progress>=80?'var(--gold)':progress>=50?'var(--accent)':'var(--text1)'}}>{progress.toFixed(1)}%</span>
-        </div>
-        <div className="relative h-3 rounded-full overflow-hidden mb-2" style={{background:'var(--surface3)'}}>
-          <motion.div initial={{width:0}} animate={{width:`${Math.min(100,progress)}%`}} transition={{duration:1,ease:'easeOut'}} className="h-full rounded-full"
-            style={{background:progress>=80?'linear-gradient(90deg,#6366f1,#8b5cf6,#f59e0b)':'linear-gradient(90deg,#6366f1,#8b5cf6)',boxShadow:'0 0 8px rgba(99,102,241,0.5)'}}/>
-          {[25,50,75].map(p=><div key={p} className="absolute top-0 bottom-0" style={{left:`${p}%`,width:1,background:'rgba(255,255,255,0.1)'}}/>)}
-        </div>
-        <div className="flex justify-between text-[7.5px] mb-3" style={{color:'var(--text2)'}}><span>Start</span><span>25%</span><span>50%</span><span>75%</span><span style={{color:'var(--gold)'}}>🎓 Grad</span></div>
-        <div className="flex gap-2 text-[9px]">
-          {[{l:'Raised',v:fmtC(raisedUsd)},{l:'Target',v:'$69K',c:'var(--gold)'},{l:'Status',v:graduated?'Graduated':'Live',c:graduated?'var(--gold)':'var(--green)'}].map(({l,v,c})=>(
-            <div key={l} className="flex-1 px-2 py-2 rounded-lg text-center" style={{background:'var(--surface3)',border:'1px solid var(--border)'}}><div style={{color:'var(--text2)'}}>{l}</div><div className="font-bold mt-0.5" style={{color:c??'var(--text1)'}}>{v}</div></div>
-          ))}
-        </div>
       </div>
 
       {/* ── Buy/Sell volume bar ───────────────────────────────────── */}
