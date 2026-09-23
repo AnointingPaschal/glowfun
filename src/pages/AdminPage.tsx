@@ -13,6 +13,7 @@ import {
   Ban, Activity, ChevronRight, Server, Sliders, Upload, X as XIcon
 } from 'lucide-react'
 import { parseOnchainError } from '@/utils/errors'
+import { useTokenList } from '@/hooks/useTokenList'
 
 const SPECTRAL = 'linear-gradient(90deg,#5fbeff,#af8ff4,#f05c6b,#ffcd83,#7ef1b3)'
 
@@ -336,11 +337,8 @@ export function AdminPage() {
   const { data: kingRaised }       = useReadContract(args('kingOfHillRaised'))
   const { data: tokenCountRaw }    = useReadContract(args('launchedTokensCount'))
   const tokenCountNum = tokenCountRaw ? Number(tokenCountRaw) : 0
-  const { data: allTokens }        = useReadContract({
-    address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'getTokensPaginated',
-    args: [BigInt(0), BigInt(Math.max(tokenCountNum, 1))],
-    chainId: CHAIN_ID as any, query: { enabled: !!FACTORY_ADDRESS && tokenCountNum > 0 }
-  })
+  // getTokensPaginated not in deployed bytecode — use individual launchedTokens(i) calls
+  const { addresses: allTokens }   = useTokenList()
 
   // Input state
   const [inp, setInp] = useState<Record<string, string>>({})

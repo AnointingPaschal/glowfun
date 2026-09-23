@@ -4,9 +4,7 @@ export const FACTORY_ABI = [
   { name: 'VERSION',            type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
   { name: 'launchedTokensCount', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
   { name: 'launchedTokens',     type: 'function', stateMutability: 'view', inputs: [{ name: 'index', type: 'uint256' }], outputs: [{ type: 'address' }] },
-  { name: 'getTokensPaginated', type: 'function', stateMutability: 'view',
-    inputs: [{ name: 'offset', type: 'uint256' }, { name: 'limit', type: 'uint256' }],
-    outputs: [{ name: 'result', type: 'address[]' }] },
+  // getTokensPaginated does NOT exist in the deployed bytecode — use launchedTokens(index) loop instead
   { name: 'isLaunchedToken',    type: 'function', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'bool' }] },
   { name: 'getTokenState',      type: 'function', stateMutability: 'view',
     inputs: [{ name: 'token', type: 'address' }],
