@@ -230,4 +230,33 @@ export const FACTORY_ABI = [
     { name: 'token',    type: 'address', indexed: true  },
     { name: 'amount',   type: 'uint256', indexed: false },
   ]},
+
+  // ── V3: individual setters (no restrictions, owner-only) ──────────────
+  { name: 'setGraduationThreshold',      type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'value', type: 'uint256' }], outputs: [] },
+  { name: 'setProtocolFeeBps',           type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'value', type: 'uint256' }], outputs: [] },
+  { name: 'setCreationFee',              type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'value', type: 'uint256' }], outputs: [] },
+  { name: 'setCreatorGraduationFeeBps', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'value', type: 'uint256' }], outputs: [] },
+  { name: 'setReferralFeeBps',           type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'value', type: 'uint256' }], outputs: [] },
+  { name: 'setAntiSnipeDuration',        type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'value', type: 'uint256' }], outputs: [] },
+  { name: 'setAntiSnipeTaxBps',          type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'value', type: 'uint256' }], outputs: [] },
+  { name: 'setMaxBuyBps',                type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'value', type: 'uint256' }], outputs: [] },
+  { name: 'setBuyCooldown',              type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'value', type: 'uint256' }], outputs: [] },
+  { name: 'setCreatorLockDuration',      type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'value', type: 'uint256' }], outputs: [] },
+  { name: 'setPerTokenGraduationFeeBps', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'value', type: 'uint256' }], outputs: [] },
+  // V3 updateConfig takes plain args (not struct) — no restrictions
+  { name: 'updateConfig', type: 'function', stateMutability: 'nonpayable',
+    inputs: [
+      { name: '_graduationThreshold',      type: 'uint256' },
+      { name: '_protocolFeeBps',           type: 'uint256' },
+      { name: '_creationFee',              type: 'uint256' },
+      { name: '_creatorGraduationFeeBps',  type: 'uint256' },
+      { name: '_referralFeeBps',           type: 'uint256' },
+      { name: '_antiSnipeDuration',        type: 'uint256' },
+      { name: '_antiSnipeTaxBps',          type: 'uint256' },
+      { name: '_maxBuyBps',                type: 'uint256' },
+      { name: '_buyCooldown',              type: 'uint256' },
+      { name: '_creatorLockDuration',      type: 'uint256' },
+      { name: '_perTokenGraduationFeeBps', type: 'uint256' },
+    ],
+    outputs: [] },
 ] as const
