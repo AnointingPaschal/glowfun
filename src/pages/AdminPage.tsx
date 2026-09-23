@@ -345,10 +345,44 @@ export function AdminPage() {
   const i = (key: string) => inp[key] ?? ''
   const si = (key: string) => (val: string) => setInp(s => ({ ...s, [key]: val }))
 
+  const n = (v: unknown) => Number(v ?? 0)
+
+  /** Build the full UpdateSettingsParams struct from current on-chain values,
+   *  then merge in whichever field(s) you're changing.
+   *  This is the ONLY way to update settings — updateConfig() requires all 11 fields. */
+  const updateConfigWith = (overrides: Partial<{
+    graduationThreshold: bigint; protocolFeeBps: bigint; creationFee: bigint;
+    creatorGraduationFeeBps: bigint; referralFeeBps: bigint; antiSnipeDuration: bigint;
+    antiSnipeTaxBps: bigint; maxBuyBps: bigint; buyCooldown: bigint;
+    creatorLockDuration: bigint; perTokenGraduationFeeBps: bigint;
+  }>) => {
+    if (wrong) { switchChain({ chainId: CHAIN_ID as any }); return }
+    const params = {
+      graduationThreshold:      overrides.graduationThreshold      ?? BigInt(n(gradThresh)),
+      protocolFeeBps:           overrides.protocolFeeBps           ?? BigInt(n(feeBps)),
+      creationFee:              overrides.creationFee              ?? BigInt(n(creationFee)),
+      creatorGraduationFeeBps:  overrides.creatorGraduationFeeBps  ?? BigInt(n(creatorGradBps)),
+      referralFeeBps:           overrides.referralFeeBps           ?? BigInt(n(referralBps)),
+      antiSnipeDuration:        overrides.antiSnipeDuration        ?? BigInt(n(antiSnipeDur)),
+      antiSnipeTaxBps:          overrides.antiSnipeTaxBps          ?? BigInt(n(antiSnipeTax)),
+      maxBuyBps:                overrides.maxBuyBps                ?? BigInt(n(maxBuyBps)),
+      buyCooldown:              overrides.buyCooldown              ?? BigInt(n(buyCooldown)),
+      creatorLockDuration:      overrides.creatorLockDuration      ?? BigInt(n(creatorLock)),
+      perTokenGraduationFeeBps: overrides.perTokenGraduationFeeBps ?? BigInt(n(perGradBps)),
+    }
+    adminWrite(
+      { address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'updateConfig',
+        args: [params], chainId: CHAIN_ID as any } as any,
+      { onSuccess: () => toast.success('Config updated on-chain ✓'),
+        onError:   (e) => toast.error(parseOnchainError(e)) }
+    )
+  }
+
+  /** For non-settings calls (blacklist, pause, fee recipient, etc.) */
   const adminCall = (fn: string, fnArgs: any[]) => {
     if (wrong) { switchChain({ chainId: CHAIN_ID as any }); return }
     adminWrite({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: fn, args: fnArgs, chainId: CHAIN_ID as any } as any, {
-      onSuccess: () => toast.success('Transaction submitted'),
+      onSuccess: () => toast.success('Transaction submitted ✓'),
       onError: (e) => toast.error(parseOnchainError(e)),
     })
   }
@@ -383,7 +417,7 @@ export function AdminPage() {
     setSaving(s => ({ ...s, [key]: false }))
   }
 
-  const n = (v: any) => Number(v as bigint)
+  // n() helper defined above in updateConfigWith block
 
   /* ── Login screen ──────────────────────────────────────────────────── */
   if (!authed) {
@@ -636,20 +670,20 @@ export function AdminPage() {
                     )}
 
                     <SectionCard title="Fee Settings" icon={DollarSign} accent="#fb923c">
-                      <OnchainInput label="Creation Fee (USDC)" note={creationFee !== undefined ? `Current: $${n(creationFee) / 1e6} USDC` : ''} value={i('creationFee')} onChange={si('creationFee')} disabled={adminBusy} placeholder="10" onSet={() => adminCall('setCreationFee', [BigInt(Math.round(parseFloat(i('creationFee') || '0') * 1e6))])} />
-                      <OnchainInput label="Protocol Fee (bps, max 500)" note={feeBps !== undefined ? `Current: ${n(feeBps)} bps = ${n(feeBps) / 100}%` : ''} value={i('feeBps')} onChange={si('feeBps')} disabled={adminBusy} placeholder="100" onSet={() => adminCall('setProtocolFeeBps', [BigInt(i('feeBps') || '0')])} />
-                      <OnchainInput label="Creator Graduation Bonus (bps, max 2000)" note={creatorGradBps !== undefined ? `Current: ${n(creatorGradBps)} bps = ${n(creatorGradBps) / 100}%` : ''} value={i('creatorGradBps')} onChange={si('creatorGradBps')} disabled={adminBusy} placeholder="500" onSet={() => adminCall('setCreatorGraduationFeeBps', [BigInt(i('creatorGradBps') || '0')])} />
-                      <OnchainInput label="Graduation Threshold (USDC, min $1,000)" note={gradThresh !== undefined ? `Current: $${(n(gradThresh) / 1e6).toLocaleString()}` : ''} value={i('gradThresh')} onChange={si('gradThresh')} disabled={adminBusy} placeholder="69000" onSet={() => adminCall('setGraduationThreshold', [BigInt(Math.round(parseFloat(i('gradThresh') || '0') * 1e6))])} />
+                      <OnchainInput label="Creation Fee (USDC)" note={creationFee !== undefined ? `Current: $${n(creationFee) / 1e6} USDC` : ''} value={i('creationFee')} onChange={si('creationFee')} disabled={adminBusy} placeholder="10" onSet={() => updateConfigWith({ creationFee: BigInt(Math.round(parseFloat(i('creationFee') || '0') * 1e6)) })} />
+                      <OnchainInput label="Protocol Fee (bps, max 500)" note={feeBps !== undefined ? `Current: ${n(feeBps)} bps = ${n(feeBps) / 100}%` : ''} value={i('feeBps')} onChange={si('feeBps')} disabled={adminBusy} placeholder="100" onSet={() => updateConfigWith({ protocolFeeBps: BigInt(i('feeBps') || '0') })} />
+                      <OnchainInput label="Creator Graduation Bonus (bps, max 2000)" note={creatorGradBps !== undefined ? `Current: ${n(creatorGradBps)} bps = ${n(creatorGradBps) / 100}%` : ''} value={i('creatorGradBps')} onChange={si('creatorGradBps')} disabled={adminBusy} placeholder="500" onSet={() => updateConfigWith({ creatorGraduationFeeBps: BigInt(i('creatorGradBps') || '0') })} />
+                      <OnchainInput label="Graduation Threshold (USDC, min $1,000)" note={gradThresh !== undefined ? `Current: $${(n(gradThresh) / 1e6).toLocaleString()}` : ''} value={i('gradThresh')} onChange={si('gradThresh')} disabled={adminBusy} placeholder="69000" onSet={() => updateConfigWith({ graduationThreshold: BigInt(Math.round(parseFloat(i('gradThresh') || '0') * 1e6)) })} />
                     </SectionCard>
 
                     <SectionCard title="Anti-Bot Controls" icon={Sliders} accent="#6366f1">
-                      <OnchainInput label="Referral Fee (bps of protocol fee, max 5000)" note={referralBps !== undefined ? `Current: ${n(referralBps)} bps = ${n(referralBps) / 100}%` : ''} value={i('referralBps')} onChange={si('referralBps')} disabled={adminBusy} placeholder="2500" onSet={() => adminCall('setReferralFeeBps', [BigInt(i('referralBps') || '0')])} />
-                      <OnchainInput label="Anti-Snipe Duration (seconds)" note={antiSnipeDur !== undefined ? `Current: ${n(antiSnipeDur)}s` : ''} value={i('antiSnipeDur')} onChange={si('antiSnipeDur')} disabled={adminBusy} placeholder="60" onSet={() => adminCall('setAntiSnipeConfig', [BigInt(i('antiSnipeDur') || '0'), BigInt(i('antiSnipeTax') || n(antiSnipeTax ?? 500).toString())])} />
-                      <OnchainInput label="Anti-Snipe Tax (bps, max 2000)" note={antiSnipeTax !== undefined ? `Current: ${n(antiSnipeTax)} bps = ${n(antiSnipeTax) / 100}%` : ''} value={i('antiSnipeTax')} onChange={si('antiSnipeTax')} disabled={adminBusy} placeholder="500" onSet={() => adminCall('setAntiSnipeConfig', [BigInt(i('antiSnipeDur') || n(antiSnipeDur ?? 60).toString()), BigInt(i('antiSnipeTax') || '0')])} />
-                      <OnchainInput label="Max Buy per TX (bps of curve, 0=off)" note={maxBuyBps !== undefined ? `Current: ${n(maxBuyBps)} bps = ${n(maxBuyBps) / 100}%` : ''} value={i('maxBuyBps')} onChange={si('maxBuyBps')} disabled={adminBusy} placeholder="500" onSet={() => adminCall('setMaxBuyBps', [BigInt(i('maxBuyBps') || '0')])} />
-                      <OnchainInput label="Buy Cooldown (seconds, 0=off, max 300)" note={buyCooldown !== undefined ? `Current: ${n(buyCooldown)}s` : ''} value={i('buyCooldown')} onChange={si('buyCooldown')} disabled={adminBusy} placeholder="30" onSet={() => adminCall('setBuyCooldown', [BigInt(i('buyCooldown') || '0')])} />
-                      <OnchainInput label="Creator Lock Duration (seconds, max 2592000 = 30d)" note={creatorLock !== undefined ? `Current: ${n(creatorLock)}s = ${(n(creatorLock) / 86400).toFixed(1)} days` : ''} value={i('creatorLock')} onChange={si('creatorLock')} disabled={adminBusy} placeholder="604800" onSet={() => adminCall('setCreatorLockDuration', [BigInt(i('creatorLock') || '0')])} />
-                      <OnchainInput label="Per-Token Graduation Platform Fee (bps, max 500)" note={perGradBps !== undefined ? `Current: ${n(perGradBps)} bps = ${n(perGradBps) / 100}%` : ''} value={i('perGradBps')} onChange={si('perGradBps')} disabled={adminBusy} placeholder="100" onSet={() => adminCall('setPerTokenGraduationFeeBps', [BigInt(i('perGradBps') || '0')])} />
+                      <OnchainInput label="Referral Fee (bps of protocol fee, max 5000)" note={referralBps !== undefined ? `Current: ${n(referralBps)} bps = ${n(referralBps) / 100}%` : ''} value={i('referralBps')} onChange={si('referralBps')} disabled={adminBusy} placeholder="2500" onSet={() => updateConfigWith({ referralFeeBps: BigInt(i('referralBps') || '0') })} />
+                      <OnchainInput label="Anti-Snipe Duration (seconds)" note={antiSnipeDur !== undefined ? `Current: ${n(antiSnipeDur)}s` : ''} value={i('antiSnipeDur')} onChange={si('antiSnipeDur')} disabled={adminBusy} placeholder="60" onSet={() => updateConfigWith({ antiSnipeDuration: BigInt(i('antiSnipeDur') || '0') })} />
+                      <OnchainInput label="Anti-Snipe Tax (bps, max 2000)" note={antiSnipeTax !== undefined ? `Current: ${n(antiSnipeTax)} bps = ${n(antiSnipeTax) / 100}%` : ''} value={i('antiSnipeTax')} onChange={si('antiSnipeTax')} disabled={adminBusy} placeholder="500" onSet={() => updateConfigWith({ antiSnipeTaxBps: BigInt(i('antiSnipeTax') || '0') })} />
+                      <OnchainInput label="Max Buy per TX (bps of curve, 0=off)" note={maxBuyBps !== undefined ? `Current: ${n(maxBuyBps)} bps = ${n(maxBuyBps) / 100}%` : ''} value={i('maxBuyBps')} onChange={si('maxBuyBps')} disabled={adminBusy} placeholder="500" onSet={() => updateConfigWith({ maxBuyBps: BigInt(i('maxBuyBps') || '0') })} />
+                      <OnchainInput label="Buy Cooldown (seconds, 0=off, max 300)" note={buyCooldown !== undefined ? `Current: ${n(buyCooldown)}s` : ''} value={i('buyCooldown')} onChange={si('buyCooldown')} disabled={adminBusy} placeholder="30" onSet={() => updateConfigWith({ buyCooldown: BigInt(i('buyCooldown') || '0') })} />
+                      <OnchainInput label="Creator Lock Duration (seconds, max 2592000 = 30d)" note={creatorLock !== undefined ? `Current: ${n(creatorLock)}s = ${(n(creatorLock) / 86400).toFixed(1)} days` : ''} value={i('creatorLock')} onChange={si('creatorLock')} disabled={adminBusy} placeholder="604800" onSet={() => updateConfigWith({ creatorLockDuration: BigInt(i('creatorLock') || '0') })} />
+                      <OnchainInput label="Per-Token Graduation Platform Fee (bps, max 500)" note={perGradBps !== undefined ? `Current: ${n(perGradBps)} bps = ${n(perGradBps) / 100}%` : ''} value={i('perGradBps')} onChange={si('perGradBps')} disabled={adminBusy} placeholder="100" onSet={() => updateConfigWith({ perTokenGraduationFeeBps: BigInt(i('perGradBps') || '0') })} />
                     </SectionCard>
 
                     <SectionCard title="Recipients (Two-Step)" icon={Users} accent="#34d399">
