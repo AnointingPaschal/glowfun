@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import ImageUpload from '@/components/ImageUpload'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
 import { useConfig } from '@/context/ConfigContext'
+import { useFactoryConfig } from '@/hooks/useFactoryConfig'
 import { parseOnchainError } from '@/utils/errors'
 import { ConnectKitButton } from 'connectkit'
 import {
@@ -204,15 +205,10 @@ export function LaunchPage() {
   // Contract enforces curveBps >= 5000, curveBps <= 9500, curveBps + creatorBps <= 9500
   const overLimit     = curveBps < 5000 || curveBps + creatorBps > 9500
 
-  /* contract reads */
-  const { data: feeRaw } = useReadContract({
-    address:FACTORY_ADDRESS, abi:FACTORY_ABI, functionName:'creationFee',
-    chainId:CHAIN_ID as any, query:{enabled:!!FACTORY_ADDRESS},
-  })
-  const fee = (feeRaw as bigint) ?? 0n
-
-  // graduation is protocol-controlled and instant — silent background mechanic, never shown to users
-  const grad = 69_000n * 1_000_000n
+  /* Live contract config — all admin-set values pulled from chain */
+  const cfg  = useFactoryConfig()
+  const fee  = cfg.creationFee             // e.g. 10 USDC — set by admin via updateConfig
+  const grad = cfg.graduationThreshold     // e.g. $69K   — set by admin via updateConfig
 
   const { data: usdcBal } = useReadContract({
     address:USDC_ADDRESS, abi:erc20Abi, functionName:'balanceOf',

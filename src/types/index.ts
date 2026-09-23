@@ -19,6 +19,14 @@ export interface TokenState {
   realTokensSold: bigint
   graduated: boolean
   createdAt: bigint
+  // V2 extended fields
+  curveTokens?: bigint
+  graduationTokens?: bigint
+  creatorTokens?: bigint
+  totalSupply?: bigint
+  tokenGraduationThreshold?: bigint   // per-token graduation target (set at launch)
+  creatorTokensLocked?: boolean
+  creatorLockExpiry?: bigint
 }
 
 export interface MarketData {

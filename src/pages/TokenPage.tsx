@@ -18,6 +18,7 @@ import { GLOW_TOKEN_ABI } from '@/abi/GlowToken'
 import { useConfig } from '@/context/ConfigContext'
 import { useTokenData, useTokenBalance } from '@/hooks/useTokenData'
 import { formatProgress, formatAddress, timeAgo, parseUsdc, parseTokens, ipfsToHttp, nextIpfsGateway } from '@/utils/format'
+import { useFactoryConfig } from '@/hooks/useFactoryConfig'
 import { parseOnchainError } from '@/utils/errors'
 
 type TradeMode = 'buy' | 'sell'
@@ -260,12 +261,118 @@ function HoldersTab({ tokenAddr, creator, explorer }: { tokenAddr:string; creato
   )
 }
 
+/* ── Force Graduate Panel (creator only) ────────────────────────── */
+function ForceGraduatePanel({ tokenAddr, raisedUsd, threshold, wallet, factoryAddress, usdcAddress, chainId }: {
+  tokenAddr:string; raisedUsd:number; threshold:number; wallet:`0x${string}`;
+  factoryAddress:`0x${string}`|null; usdcAddress:`0x${string}`; chainId:number
+}) {
+  const gap = Math.max(0, threshold - raisedUsd)
+  const [open, setOpen] = useState(false)
+  const { writeContract: approve,  data: approveHash, isPending: approving  } = useWriteContract()
+  const { isLoading: approveConf, isSuccess: approveDone } = useWaitForTransactionReceipt({ hash: approveHash })
+  const { writeContract: graduate, data: gradHash,    isPending: graduating } = useWriteContract()
+  const { isLoading: gradConf, isSuccess: gradDone } = useWaitForTransactionReceipt({ hash: gradHash })
+
+  const { data: usdcBal } = useReadContract({ address:usdcAddress, abi:erc20Abi, functionName:'balanceOf', args:[wallet], chainId:chainId as any })
+  const { data: usdcAllow } = useReadContract({ address:usdcAddress, abi:erc20Abi, functionName:'allowance', args:factoryAddress?[wallet,factoryAddress]:undefined, chainId:chainId as any, query:{enabled:!!factoryAddress} })
+
+  const balUsd   = Number(usdcBal??0n)/1e6
+  const allowUsd = Number(usdcAllow??0n)/1e6
+  const needsApprove = gap > 0 && allowUsd < gap
+  const canAfford    = balUsd >= gap
+  const busy         = approving||approveConf||graduating||gradConf
+
+  useEffect(() => { if (approveDone && !needsApprove) doGraduate() }, [approveDone])
+  useEffect(() => { if (gradDone) toast.success('🎓 Token graduated to Uniswap!') }, [gradDone])
+
+  const doApprove = () => {
+    if (!factoryAddress) return
+    const gapBig = BigInt(Math.ceil(gap * 1e6))
+    approve({ address:usdcAddress, abi:erc20Abi, functionName:'approve', args:[factoryAddress, gapBig], chainId:chainId as any } as any,
+      { onError:(e)=>toast.error(parseOnchainError(e)) })
+  }
+  const doGraduate = () => {
+    if (!factoryAddress) return
+    graduate({ address:factoryAddress, abi:FACTORY_ABI, functionName:'creatorForceGraduate', args:[tokenAddr as `0x${string}`], chainId:chainId as any } as any,
+      { onSuccess:()=>toast.success('Graduation tx sent!'), onError:(e)=>toast.error(parseOnchainError(e)) })
+  }
+
+  if (gradDone) return (
+    <div className="rounded-2xl p-4 text-center" style={{background:'rgba(245,158,11,.06)',border:'1px solid rgba(245,158,11,.2)'}}>
+      <div className="text-2xl mb-1">🎓</div>
+      <p className="text-sm font-bold" style={{color:'var(--gold)'}}>Graduated! Token is now on Uniswap.</p>
+    </div>
+  )
+
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{background:'rgba(245,158,11,.04)',border:'1px solid rgba(245,158,11,.18)'}}>
+      <button onClick={()=>setOpen(v=>!v)} className="w-full flex items-center justify-between px-4 py-3" style={{background:'none',border:'none',cursor:'pointer'}}>
+        <div className="flex items-center gap-2">
+          <Trophy size={14} style={{color:'var(--gold)'}}/>
+          <span className="text-sm font-bold" style={{color:'var(--gold)'}}>Graduate to Uniswap</span>
+          <span className="text-[9px] px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(245,158,11,.12)',color:'var(--gold)'}}>Creator only</span>
+        </div>
+        <ChevronDown size={14} style={{color:'var(--gold)',transform:open?'rotate(180deg)':'none',transition:'transform .2s'}}/>
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div initial={{height:0,opacity:0}} animate={{height:'auto',opacity:1}} exit={{height:0,opacity:0}} style={{overflow:'hidden'}}>
+            <div className="px-4 pb-4 space-y-3">
+              <p className="text-xs leading-relaxed" style={{color:'var(--text2)'}}>
+                Your token needs <strong style={{color:'var(--text1)'}}>${threshold.toLocaleString()} USDC</strong> raised to graduate.
+                It has <strong style={{color:'var(--green)'}}>${raisedUsd.toFixed(2)}</strong> so far.
+                You can pay the <strong style={{color:'var(--gold)'}}>${gap.toFixed(2)} USDC gap</strong> yourself to force graduation and list on Uniswap immediately.
+              </p>
+              {/* Gap visualization */}
+              <div>
+                <div className="flex justify-between text-[9px] mb-1" style={{color:'var(--text2)'}}>
+                  <span>Raised: ${raisedUsd.toFixed(2)}</span>
+                  <span style={{color:'var(--gold)'}}>Gap: ${gap.toFixed(2)}</span>
+                  <span>Target: ${threshold.toLocaleString()}</span>
+                </div>
+                <div className="h-2 rounded-full overflow-hidden flex" style={{background:'var(--surface3)'}}>
+                  <div style={{width:`${Math.min(100,(raisedUsd/threshold)*100)}%`,background:'var(--green)',borderRadius:'4px 0 0 4px'}}/>
+                  <div style={{flex:1,background:'rgba(245,158,11,.25)',borderRadius:'0 4px 4px 0'}}/>
+                </div>
+              </div>
+              {/* Balance check */}
+              <div className="flex items-center justify-between text-[10px] px-3 py-2 rounded-xl" style={{background:'var(--surface2)'}}>
+                <span style={{color:'var(--text2)'}}>Your USDC balance</span>
+                <span className="font-bold" style={{color:canAfford?'var(--green)':'var(--red)'}}>${balUsd.toFixed(2)} {canAfford?'✓':'(insufficient)'}</span>
+              </div>
+              {/* What happens next */}
+              <div className="text-[9px] leading-relaxed px-3 py-2 rounded-xl" style={{background:'var(--surface2)',color:'var(--text2)'}}>
+                After graduation: your USDC gap + all raised USDC seeds a <strong style={{color:'var(--text1)'}}>Uniswap V3 USDC pool on Arc</strong>. You receive your creator allocation bonus in USDC.
+              </div>
+              {/* Action */}
+              {!canAfford
+                ? <div className="text-center py-2 text-xs font-semibold" style={{color:'var(--red)'}}>Need ${(gap - balUsd).toFixed(2)} more USDC to cover the gap</div>
+                : needsApprove
+                ? <button onClick={doApprove} disabled={busy} className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+                    style={{background:'rgba(245,158,11,.15)',color:'var(--gold)',border:'1px solid rgba(245,158,11,.3)',opacity:busy?.6:1}}>
+                    {busy?<Loader2 size={13} className="animate-spin"/>:<Zap size={13}/>}
+                    {busy?'Approving…':`Approve $${gap.toFixed(2)} USDC`}
+                  </button>
+                : <button onClick={doGraduate} disabled={busy||!canAfford} className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+                    style={{background:'linear-gradient(135deg,rgba(245,158,11,.8),rgba(245,158,11,1))',color:'#000',opacity:busy?.6:1,boxShadow:'0 4px 20px rgba(245,158,11,.3)'}}>
+                    {busy?<Loader2 size={13} className="animate-spin"/>:<Trophy size={13}/>}
+                    {busy?'Graduating…':`Pay $${gap.toFixed(2)} & Graduate to Uniswap`}
+                  </button>}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 /* ── Main ────────────────────────────────────────────────────────── */
 export function TokenPage() {
   const { address: tokenAddr } = useParams<{address:string}>()
   const { address: wallet, chainId: walletChain } = useAccount()
   const { switchChain } = useSwitchChain()
   const { FACTORY_ADDRESS, USDC_ADDRESS, CHAIN_ID, EXPLORER_BASE } = useConfig()
+  const cfg = useFactoryConfig()  // live admin config from contract
 
   const { token, isLoading, refetch } = useTokenData(tokenAddr as `0x${string}`|undefined)
   const { balance: tokenBalance, allowance: tokenAllowance, refetch: refetchBal } = useTokenBalance(tokenAddr as `0x${string}`|undefined, wallet)
@@ -665,9 +772,22 @@ export function TokenPage() {
                style={{background:mode==='buy'?'linear-gradient(135deg,rgba(34,197,94,0.9),rgba(34,197,94,1))':'linear-gradient(135deg,rgba(239,68,68,0.9),rgba(239,68,68,1))',color:'#fff',opacity:txBusy||!amount||parseFloat(amount)<=0?0.5:1,boxShadow:mode==='buy'?'0 4px 20px rgba(34,197,94,0.25)':'0 4px 20px rgba(239,68,68,0.25)'}}>
                {txBusy?<><Loader2 size={13} className="animate-spin"/>Processing…</>:mode==='buy'?<><Flame size={13}/>Buy {token.symbol}</>:<><TrendingDown size={13}/>Sell {token.symbol}</>}
              </button>}
-          <p className="text-[8px] text-center" style={{color:'var(--text3)'}}>1% protocol fee · {slip}% slippage · GlowFun bonding curve</p>
+          <p className="text-[8px] text-center" style={{color:'var(--text3)'}}>{cfg.protocolFeePct}% protocol fee · {slip}% slippage · GlowFun bonding curve</p>
         </div>
       </div>
+
+      {/* ── Creator: Force Graduate ───────────────────────────────── */}
+      {wallet && token.creator && wallet.toLowerCase() === (token.creator as string).toLowerCase() && !graduated && (
+        <ForceGraduatePanel
+          tokenAddr={tokenAddr!}
+          raisedUsd={raisedUsd}
+          threshold={Number(token.state?.tokenGraduationThreshold ?? cfg.graduationThreshold)/1e6}
+          wallet={wallet}
+          factoryAddress={FACTORY_ADDRESS}
+          usdcAddress={USDC_ADDRESS}
+          chainId={CHAIN_ID}
+        />
+      )}
 
       {/* ── Floating Buy/Sell ─────────────────────────────────────── */}
       <div className="fixed bottom-20 left-4 right-4 z-40 md:hidden">

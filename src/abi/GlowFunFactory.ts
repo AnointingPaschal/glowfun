@@ -120,6 +120,8 @@ export const FACTORY_ABI = [
 
   { name: 'claimGraduation',        type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'token', type: 'address' }], outputs: [] },
   { name: 'claimCreatorGraduation', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'token', type: 'address' }], outputs: [] },
+  { name: 'forceGraduate',          type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'token', type: 'address' }], outputs: [] },
+  { name: 'creatorForceGraduate',   type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'token', type: 'address' }], outputs: [] },
   { name: 'claimReferral', type: 'function', stateMutability: 'nonpayable', inputs: [], outputs: [] },
   { name: 'updateTokenMetadata', type: 'function', stateMutability: 'nonpayable',
     inputs: [

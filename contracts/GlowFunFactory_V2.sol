@@ -474,6 +474,52 @@ contract GlowFunFactory_V2 is Ownable, ReentrancyGuard, Pausable {
     function proposeGraduationRecipient(address proposed) external onlyOwner { if (proposed == address(0)) revert InvalidAddress(); pendingGraduationRecipient = proposed; emit GraduationRecipientProposed(proposed); }
     function acceptGraduationRecipient() external { if (msg.sender != pendingGraduationRecipient) revert InvalidAddress(); graduationRecipient = pendingGraduationRecipient; pendingGraduationRecipient = address(0); emit GraduationRecipientUpdated(graduationRecipient); }
     function blacklistToken(address token, bool bl) external onlyOwner { if (!isLaunchedToken[token]) revert NotLaunched(); blacklistedTokens[token] = bl; emit TokenBlacklisted(token, bl); }
+
+    /// @notice Force-graduate a token by topping up its curve USDC to the threshold.
+    ///         Owner calls this, pays the gap in USDC from their own wallet.
+    ///         Useful when a creator wants to list on Uniswap before organic graduation.
+    /// @param token   The bonding-curve token address to graduate
+    function forceGraduate(address token) external onlyOwner nonReentrant {
+        if (!isLaunchedToken[token]) revert NotLaunched();
+        TokenState storage state = tokenStates[token];
+        if (state.graduated) revert TokenAlreadyGraduated();
+
+        uint256 threshold = state.tokenGraduationThreshold;
+        uint256 raised    = state.realUsdcRaised;
+
+        if (raised < threshold) {
+            // Top up the shortfall from the caller (owner)
+            uint256 gap = threshold - raised;
+            usdc.safeTransferFrom(msg.sender, address(this), gap);
+            state.virtualUsdcReserves += gap;
+            state.realUsdcRaised       = threshold;
+        }
+
+        _graduateToken(token);
+    }
+
+    /// @notice Identical to forceGraduate but the creator pays the gap instead of owner.
+    ///         Anyone can call — they pay whatever USDC is missing to hit the threshold.
+    /// @param token  The bonding-curve token to graduate
+    function creatorForceGraduate(address token) external nonReentrant {
+        if (!isLaunchedToken[token]) revert NotLaunched();
+        TokenState storage state = tokenStates[token];
+        if (state.graduated) revert TokenAlreadyGraduated();
+        // Only the token creator can self-graduate
+        if (msg.sender != state.creator) revert InvalidAddress();
+
+        uint256 threshold = state.tokenGraduationThreshold;
+        uint256 raised    = state.realUsdcRaised;
+
+        if (raised < threshold) {
+            uint256 gap = threshold - raised;
+            usdc.safeTransferFrom(msg.sender, address(this), gap);
+            state.virtualUsdcReserves += gap;
+            state.realUsdcRaised       = threshold;
+        }
+
+        _graduateToken(token);
+    }
     function blacklistWallet(address wallet, bool bl) external onlyOwner { if (wallet == address(0)) revert InvalidAddress(); blacklistedWallets[wallet] = bl; emit WalletBlacklisted(wallet, bl); }
     function pause() external onlyOwner { pausedAt = block.timestamp; _pause(); }
     function unpause() external onlyOwner { pausedAt = 0; _unpause(); }
