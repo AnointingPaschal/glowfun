@@ -375,13 +375,8 @@ export function TokenPage() {
     if (!FACTORY_ADDRESS||!tokenAddr||!wallet) return
     if (wrong) { switchChain({chainId:CHAIN_ID as any}); return }
     if (mode==='buy') {
-      // buyTokens(address token, uint256 minTokensOut, address referrer)
-      const min = buyQuote ? (buyQuote as bigint)*BigInt(100-Math.ceil(slip))/100n : 0n
-      trade(
-        { address:FACTORY_ADDRESS, abi:FACTORY_ABI, functionName:'buyTokens',
-          args:[tokenAddr as `0x${string}`, min, ZERO_ADDR], chainId:CHAIN_ID as any } as any,
-        { onSuccess:()=>toast.success('🚀 Buy submitted!'), onError:(e)=>toast.error(parseOnchainError(e)) }
-      )
+      // Buy path: always go through approve flow (approve exact → auto-buy in onSuccess)
+      handleApproveUsdc()
     } else {
       // sellTokens(address token, uint256 tokensIn, uint256 minUsdcOut)
       const min = sellQuote ? (sellQuote as bigint)*BigInt(100-Math.ceil(slip))/100n : 0n

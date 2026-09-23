@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchChain, useReadContract } from 'wagmi'
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchChain, useReadContract, useReadContracts } from 'wagmi'
 import { ConnectKitButton } from 'connectkit'
 import { toast } from 'sonner'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
@@ -708,22 +708,9 @@ export function AdminPage() {
                   ) : tokenCountNum === 0 ? (
                     <p className="text-sm py-4 text-center" style={{ color: 'var(--text2)' }}>No tokens launched yet.</p>
                   ) : (
-                    <div className="space-y-1">
+                    <div className="space-y-2">
                       {allTokens && [...(allTokens as unknown as string[])].reverse().map((addr, i) => (
-                        <div key={addr} className="flex items-center justify-between py-3 px-2 rounded-xl transition-colors hover:bg-white/[0.02]">
-                          <div className="flex items-center gap-3">
-                            <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0" style={{ background: `hsl(${parseInt(addr.slice(2,6),16)%360},55%,28%)`, color: 'white' }}>{i + 1}</div>
-                            <span className="text-xs font-mono" style={{ color: 'var(--text1)' }}>{formatAddress(addr)}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <a href={`/token/${addr}`} className="text-xs px-2.5 py-1 rounded-lg no-underline" style={{ background: 'rgba(99,102,241,0.1)', color: '#818cf8' }}>View</a>
-                            {EXPLORER_BASE && (
-                              <a href={`${EXPLORER_BASE}/address/${addr}`} target="_blank" rel="noreferrer" className="text-xs px-2.5 py-1 rounded-lg no-underline flex items-center gap-1" style={{ background: 'var(--surface2)', color: 'var(--text2)' }}>
-                                <ExternalLink size={9} />Exp
-                              </a>
-                            )}
-                          </div>
-                        </div>
+                        <AdminTokenRow key={addr} addr={addr} index={i} factoryAddress={FACTORY_ADDRESS!} chainId={CHAIN_ID} explorerBase={EXPLORER_BASE} />
                       ))}
                     </div>
                   )}
@@ -743,6 +730,73 @@ export function AdminPage() {
         </div>
       </div>
     </motion.div>
+  )
+}
+
+/* ── AdminTokenRow ──────────────────────────────────────────────────────── */
+function AdminTokenRow({ addr, index, factoryAddress, chainId, explorerBase }: { addr: string; index: number; factoryAddress: string; chainId: number; explorerBase: string }) {
+  const { writeContract, data: claimHash, isPending } = useWriteContract()
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: claimHash })
+  const { data: results } = useReadContracts({ contracts: [
+    { address: factoryAddress as `0x${string}`, abi: FACTORY_ABI, functionName: 'getTokenState', args: [addr as `0x${string}`], chainId: chainId as any },
+    { address: factoryAddress as `0x${string}`, abi: FACTORY_ABI, functionName: 'pendingGraduationUsdc', args: [addr as `0x${string}`], chainId: chainId as any },
+  ]})
+
+  const state = results?.[0]?.result as any
+  const pendingUsdc = results?.[1]?.result as bigint | undefined
+  const graduated = state?.graduated === true || (pendingUsdc !== undefined && pendingUsdc > 0n)
+  const hasPending = pendingUsdc !== undefined && pendingUsdc > 0n
+  const busy = isPending || isConfirming
+
+  const handleClaim = () => {
+    writeContract(
+      { address: factoryAddress as `0x${string}`, abi: FACTORY_ABI, functionName: 'claimGraduation', args: [addr as `0x${string}`], chainId: chainId as any } as any,
+      { onSuccess: () => toast.success('Graduation funds claimed!'), onError: (e) => toast.error(parseOnchainError(e)) }
+    )
+  }
+
+  useEffect(() => { if (isSuccess) toast.success('Claimed successfully') }, [isSuccess])
+
+  return (
+    <div className="rounded-xl p-3 space-y-2" style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold flex-shrink-0" style={{ background: `hsl(${parseInt(addr.slice(2,6),16)%360},55%,28%)`, color: 'white' }}>{index + 1}</div>
+          <span className="text-xs font-mono" style={{ color: 'var(--text1)' }}>{formatAddress(addr)}</span>
+          {graduated && (
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>Graduated</span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <a href={`/token/${addr}`} className="text-[10px] px-2 py-1 rounded-lg no-underline" style={{ background: 'rgba(99,102,241,0.1)', color: '#818cf8' }}>View</a>
+          {explorerBase && (
+            <a href={`${explorerBase}/address/${addr}`} target="_blank" rel="noreferrer" className="text-[10px] px-2 py-1 rounded-lg no-underline flex items-center gap-1" style={{ background: 'var(--surface)', color: 'var(--text2)' }}>
+              <ExternalLink size={8} />Exp
+            </a>
+          )}
+        </div>
+      </div>
+      {hasPending && (
+        <div className="flex items-center justify-between p-2 rounded-lg" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
+          <div>
+            <p className="text-[10px] font-semibold" style={{ color: '#f59e0b' }}>Pending graduation funds</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text1)' }}>{formatUsdc(pendingUsdc!)} USDC ready to claim</p>
+          </div>
+          <button
+            onClick={handleClaim}
+            disabled={busy}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+            style={{ background: busy ? 'var(--surface)' : 'rgba(245,158,11,0.2)', color: busy ? 'var(--text2)' : '#f59e0b', border: '1px solid rgba(245,158,11,0.3)' }}
+          >
+            {busy ? <Loader2 size={11} className="animate-spin" /> : <Crown size={11} />}
+            {busy ? 'Claiming…' : 'Claim'}
+          </button>
+        </div>
+      )}
+      {graduated && !hasPending && (
+        <p className="text-[10px]" style={{ color: 'var(--text3)' }}>Graduation funds already claimed.</p>
+      )}
+    </div>
   )
 }
 
