@@ -35,6 +35,7 @@ export interface MarketData {
 }
 
 export interface TokenInfo extends TokenMeta {
+  totalSupply: bigint
   state: TokenState
   price: bigint
   marketCap: bigint

@@ -1,6 +1,16 @@
 export const formatAddress = (addr: string): string =>
   addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : ''
 
+/**
+ * Convert ipfs:// URIs to an https:// Cloudflare gateway URL so browsers can load them.
+ * Passes through http/https URLs unchanged. Safe to call with undefined/empty.
+ */
+export const ipfsToHttp = (uri: string | undefined | null): string => {
+  if (!uri) return ''
+  if (uri.startsWith('ipfs://')) return `https://cloudflare-ipfs.com/ipfs/${uri.slice(7)}`
+  return uri
+}
+
 export const formatUsdc = (raw: bigint | number | undefined): string => {
   if (raw === undefined || raw === null) return '$0.00'
   const n = typeof raw === 'bigint' ? Number(raw) / 1e6 : raw

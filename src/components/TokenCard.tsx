@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useTokenData } from '@/hooks/useTokenData'
 import { useMarketPrice } from '@/hooks/useMarketPrice'
-import { formatProgress, timeAgo } from '@/utils/format'
+import { formatProgress, timeAgo, ipfsToHttp } from '@/utils/format'
 import { Flame, Sprout, Trophy } from 'lucide-react'
 
 interface Props { address: `0x${string}`; index?: number; rank?: number }
@@ -39,7 +39,8 @@ export function TokenCard({ address, index = 0, rank }: Props) {
   const color1     = `hsl(${hue},70%,60%)`
   const color2     = `hsl(${(hue + 120) % 360},65%,50%)`
   const priceUsd   = market?.priceUsd  ?? (Number(token.price ?? 0n) / 1e42)
-  const mcapUsd    = market?.mcapUsd   ?? (Number(token.marketCap ?? 0n) / 1e6)
+  // Use on-chain market cap — DexScreener mcap is for graduated tokens only
+  const mcapUsd    = Number(token.marketCap ?? 0n) / 1e6
   const change24h  = market?.change24h
   const ch24Pos    = (change24h ?? 0) >= 0
 

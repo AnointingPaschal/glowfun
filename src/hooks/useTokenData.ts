@@ -18,6 +18,7 @@ export function useTokenData(tokenAddress: `0x${string}` | undefined) {
       { address: tokenAddress, abi: GLOW_TOKEN_ABI, functionName: 'twitter', chainId: CHAIN_ID as any },
       { address: tokenAddress, abi: GLOW_TOKEN_ABI, functionName: 'telegram', chainId: CHAIN_ID as any },
       { address: tokenAddress, abi: GLOW_TOKEN_ABI, functionName: 'website', chainId: CHAIN_ID as any },
+      { address: tokenAddress, abi: GLOW_TOKEN_ABI, functionName: 'totalSupply', chainId: CHAIN_ID as any },
       { address: tokenAddress, abi: GLOW_TOKEN_ABI, functionName: 'creator', chainId: CHAIN_ID as any },
       { address: tokenAddress, abi: GLOW_TOKEN_ABI, functionName: 'createdAt', chainId: CHAIN_ID as any },
       { address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'getTokenState', args: [tokenAddress], chainId: CHAIN_ID as any },
@@ -29,7 +30,7 @@ export function useTokenData(tokenAddress: `0x${string}` | undefined) {
   })
 
   const token: TokenInfo | null = (data && tokenAddress) ? (() => {
-    const [name, symbol, description, imageUri, twitter, telegram, website, creator, createdAt, state, price, marketCap, progress] = data
+    const [name, symbol, description, imageUri, twitter, telegram, website, totalSupply, creator, createdAt, state, price, marketCap, progress] = data
     if (name?.status !== 'success') return null
     const s = state?.result as any
     return {
@@ -41,6 +42,7 @@ export function useTokenData(tokenAddress: `0x${string}` | undefined) {
       twitter: twitter?.result as string ?? '',
       telegram: telegram?.result as string ?? '',
       website: website?.result as string ?? '',
+      totalSupply: (totalSupply?.result as bigint) ?? 0n,
       creator: creator?.result as `0x${string}` ?? '0x',
       createdAt: Number(createdAt?.result ?? 0),
       state: s ? {

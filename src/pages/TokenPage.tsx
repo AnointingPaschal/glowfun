@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchChain, useReadContract } from 'wagmi'
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchChain, useReadContract, useReadContracts } from 'wagmi'
 import { erc20Abi } from 'viem'
 import { toast } from 'sonner'
 import {
@@ -14,9 +14,10 @@ import {
 import { Comments } from '@/components/Comments'
 import { TVChart } from '@/components/TVChart'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
+import { GLOW_TOKEN_ABI } from '@/abi/GlowToken'
 import { useConfig } from '@/context/ConfigContext'
 import { useTokenData, useTokenBalance } from '@/hooks/useTokenData'
-import { formatProgress, formatAddress, timeAgo, parseUsdc, parseTokens } from '@/utils/format'
+import { formatProgress, formatAddress, timeAgo, parseUsdc, parseTokens, ipfsToHttp } from '@/utils/format'
 import { parseOnchainError } from '@/utils/errors'
 
 type TradeMode = 'buy' | 'sell'
@@ -68,25 +69,7 @@ async function fetchOHLCV(pool: string, tf: string): Promise<any[]> {
   } catch { return [] }
 }
 
-/* ── Synth bonding curve chart ───────────────────────────────────── */
-function synthBondingChart(price: number, raisedUsd: number, createdAt: number): any[] {
-  if (!price || price <= 0) return []
-  const now = Math.floor(Date.now()/1000)
-  const age = Math.max(3600, now - (createdAt || now - 86400))
-  const n = 60; const iv = Math.floor(age / n)
-  const startPrice = price * 0.3
-  let seed = Math.abs(Math.round(price * 1e9) ^ 0x5f375) % 65535 || 12345
-  const rng = () => { seed = (seed*1664525+1013904223)&0xffffffff; return (seed>>>0)/0xffffffff }
-  return Array.from({length:n}, (_,i) => {
-    const t = now - (n-i-1)*iv
-    const prog = (i+1)/n
-    const base = startPrice + (price - startPrice) * Math.pow(prog, 0.65)
-    const ns = 0.02 + rng()*0.04; const dir = rng() > 0.45 ? 1 : -1
-    const o = Math.max(base*(1+(rng()-0.5)*ns*0.5),1e-30)
-    const c = Math.max(base*(1+dir*ns*0.4*rng()),1e-30)
-    return { time:t, open:o, high:Math.max(o,c)*(1+ns*0.08*rng()), low:Math.min(o,c)*(1-ns*0.06*rng()), close:c, volume:rng()*5000+200 }
-  })
-}
+
 
 /* ── Stat cell ──────────────────────────────────────────────────── */
 function Stat({ label, value, accent }: { label:string; value:string; accent?:string }) {
@@ -181,16 +164,9 @@ function TxnsTab({ tokenAddr, factoryAddr, explorer }: { tokenAddr:string; facto
         // Use DexScreener for transactions
         const r = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddr}`, {signal:AbortSignal.timeout(8000)})
         if (r.ok) {
-          const d = await r.json()
-          const pair = (d.pairs??[]).find((p:any)=>p.chainId==='arc')||(d.pairs??[])[0]
-          if (pair) {
-            const mock = Array.from({length:12},(_,i) => ({
-              type: i%3===0?'sell':'buy', usd: (Math.random()*500+10).toFixed(2),
-              tokens: (Math.random()*1e6+1000).toFixed(0), addr:'0x'+Math.random().toString(16).slice(2,10),
-              time: Math.floor(Date.now()/1000) - i*Math.floor(Math.random()*1800+60),
-            }))
-            setTxns(mock)
-          }
+          // Real transaction data would come from an indexer; DexScreener only provides
+          // pair-level stats, not individual txns. Show empty until we have a real source.
+          void r.json()
         }
       } catch {}
       setLoading(false)
@@ -224,35 +200,62 @@ function TxnsTab({ tokenAddr, factoryAddr, explorer }: { tokenAddr:string; facto
   )
 }
 
-/* ── Holders tab ────────────────────────────────────────────────── */
+/* ── Holders tab — real on-chain balances ───────────────────────── */
 function HoldersTab({ tokenAddr, creator, explorer }: { tokenAddr:string; creator:string; explorer:string }) {
-  const holders = [
-    { addr:creator, pct:10, label:'Creator', color:'var(--gold)' },
-    { addr:tokenAddr, pct:80, label:'Bonding Curve', color:'var(--accent)' },
-    { addr:'0x'+Math.random().toString(16).slice(2,42), pct:5, label:null, color:null },
-    { addr:'0x'+Math.random().toString(16).slice(2,42), pct:3, label:null, color:null },
-    { addr:'0x'+Math.random().toString(16).slice(2,42), pct:2, label:null, color:null },
-  ]
+  const { CHAIN_ID } = useConfig()
+  const enabled = !!tokenAddr && !!creator && creator !== '0x'
+  const { data: supplyRaw } = useReadContract({
+    address: tokenAddr as `0x${string}`, abi: GLOW_TOKEN_ABI,
+    functionName: 'totalSupply', chainId: CHAIN_ID as any, query: { enabled: !!tokenAddr },
+  })
+  const { data: bals, isLoading } = useReadContracts({
+    contracts: enabled ? [
+      { address:tokenAddr as `0x${string}`, abi:GLOW_TOKEN_ABI, functionName:'balanceOf', args:[creator as `0x${string}`],   chainId:CHAIN_ID as any },
+      { address:tokenAddr as `0x${string}`, abi:GLOW_TOKEN_ABI, functionName:'balanceOf', args:[tokenAddr as `0x${string}`], chainId:CHAIN_ID as any },
+    ] : [],
+    query: { enabled },
+  })
+  const totalSupply = (supplyRaw as bigint) ?? 0n
+  const creatorBal  = (bals?.[0]?.result as bigint) ?? 0n
+  const curveBal    = (bals?.[1]?.result as bigint) ?? 0n
+  const pctOf = (bal: bigint) => totalSupply > 0n ? Number(bal * 10000n / totalSupply) / 100 : 0
+
+  const holders = totalSupply > 0n ? [
+    ...(creatorBal > 0n ? [{ addr:creator,    bal:creatorBal, pct:pctOf(creatorBal), label:'Creator',      color:'var(--gold)'   }] : []),
+    ...(curveBal   > 0n ? [{ addr:tokenAddr,  bal:curveBal,  pct:pctOf(curveBal),  label:'Bonding Curve', color:'var(--accent)' }] : []),
+  ].sort((a,b) => b.pct - a.pct) : []
+
+  if (isLoading) return (
+    <div className="flex items-center justify-center py-8 gap-2" style={{color:'var(--text2)'}}>
+      <Loader2 size={14} className="animate-spin"/><span className="text-xs">Loading holders…</span>
+    </div>
+  )
   return (
     <div>
-      <div className="text-[9px] font-medium mb-3" style={{color:'var(--text2)'}}>Top holders</div>
-      <div className="space-y-2">
-        {holders.map((h,i) => (
-          <div key={i} className="flex items-center gap-2.5 p-2.5 rounded-xl" style={{background:'var(--surface3)', border:'1px solid var(--border)'}}>
-            <span className="text-[9px] font-bold w-4" style={{color:'var(--text2)'}}>#{i+1}</span>
-            <div className="flex-1">
-              <div className="flex items-center gap-1.5 mb-1">
-                <a href={`${explorer}/address/${h.addr}`} target="_blank" rel="noopener" className="text-[10px] font-mono no-underline" style={{color:'var(--accent)'}}>{formatAddress(h.addr)}</a>
-                {h.label && <span className="text-[8px] px-1 py-px rounded font-bold" style={{background:h.color+'15', color:h.color!}}>{h.label}</span>}
-              </div>
-              <div className="h-1 rounded-full overflow-hidden" style={{background:'var(--surface2)'}}>
-                <div className="h-full rounded-full" style={{width:`${h.pct}%`, background:h.color??'var(--accent)'}}/>
-              </div>
-            </div>
-            <span className="text-[10px] font-bold" style={{color:'var(--text1)'}}>{h.pct}%</span>
-          </div>
-        ))}
+      <div className="text-[9px] font-medium mb-3" style={{color:'var(--text2)'}}>
+        On-chain holders{holders.length > 0 ? ` · ${holders.length} tracked` : ''}
       </div>
+      {holders.length === 0 ? (
+        <div className="py-8 text-center rounded-xl" style={{background:'var(--surface3)'}}>
+          <Users size={20} style={{color:'var(--text3)'}} className="mx-auto mb-2"/>
+          <p className="text-xs font-medium" style={{color:'var(--text2)'}}>No external holders yet</p>
+          <p className="text-[9px] mt-1" style={{color:'var(--text3)'}}>Be the first to buy</p>
+        </div>
+      ) : holders.map((h,i) => (
+        <div key={h.addr} className="flex items-center gap-2.5 p-2.5 rounded-xl mb-2" style={{background:'var(--surface3)', border:'1px solid var(--border)'}}>
+          <span className="text-[9px] font-bold w-4" style={{color:'var(--text2)'}}>#{i+1}</span>
+          <div className="flex-1">
+            <div className="flex items-center gap-1.5 mb-1">
+              <a href={`${explorer}/address/${h.addr}`} target="_blank" rel="noopener" className="text-[10px] font-mono no-underline" style={{color:'var(--accent)'}}>{formatAddress(h.addr)}</a>
+              <span className="text-[8px] px-1 py-px rounded font-bold" style={{background:h.color+'20', color:h.color}}>{h.label}</span>
+            </div>
+            <div className="h-1 rounded-full overflow-hidden" style={{background:'var(--surface2)'}}>
+              <div className="h-full rounded-full" style={{width:`${Math.min(100,h.pct)}%`, background:h.color}}/>
+            </div>
+          </div>
+          <span className="text-[10px] font-bold" style={{color:'var(--text1)'}}>{h.pct.toFixed(1)}%</span>
+        </div>
+      ))}
     </div>
   )
 }
@@ -288,7 +291,8 @@ export function TokenPage() {
   const change1h  = dsData?.priceChange?.h1  ?? token?.market?.change1h
   const change6h  = dsData?.priceChange?.h6  ?? token?.market?.change6h
   const change5m  = dsData?.priceChange?.m5  ?? token?.market?.change5m
-  const mcapUsd   = token?.market?.mcapUsd ?? 0
+  // Always use on-chain market cap for bonding curve tokens — never DexScreener override
+  const mcapUsd   = token ? Number(token.marketCap ?? 0n) / 1e6 : 0
   const raisedUsd = token ? Number(token.state?.realUsdcRaised??0n)/1e6 : 0
   const liqUsd    = dsData?.liquidity?.usd ?? 0
   const progress  = token ? formatProgress(token.progress) : 0
@@ -316,18 +320,13 @@ export function TokenPage() {
       let data: any[] = []
       if (ds?.pairAddress) data = await fetchOHLCV(ds.pairAddress, tf)
       if (dead) return
-      if (!data.length && token) data = synthBondingChart(priceUsd, raisedUsd, token.createdAt)
+      // Only show real OHLCV data — no synthetic candles
       setOhlcv(data); setCL(false)
     })()
     return () => { dead = true }
   }, [tokenAddr, tf])
 
-  // Also generate synth chart once token loads
-  useEffect(() => {
-    if (token && !ohlcv.length && priceUsd > 0) {
-      setOhlcv(synthBondingChart(priceUsd, raisedUsd, token.createdAt))
-    }
-  }, [token?.address, priceUsd])
+  // Chart data comes only from real DEX pair OHLCV — no synthetic data
 
   useEffect(() => {
     const id = setInterval(() => { void refetch(); void refetchBal() }, 30_000)
@@ -414,7 +413,7 @@ export function TokenPage() {
         <div className="flex items-start gap-3 mb-4">
           <div className="flex-shrink-0">
             {token.imageUri
-              ?<img src={token.imageUri} className="w-14 h-14 rounded-2xl object-cover" style={{border:'1.5px solid var(--border2)'}}/>
+              ?<img src={ipfsToHttp(token.imageUri)} className="w-14 h-14 rounded-2xl object-cover" style={{border:'1.5px solid var(--border2)'}}/>
               :<div className="w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-black text-white" style={{background:tokenGrad}}>{token.symbol?.slice(0,2)}</div>}
           </div>
           <div className="flex-1 min-w-0">
@@ -570,7 +569,7 @@ export function TokenPage() {
           {label:'Token Contract',value:formatAddress(tokenAddr??''),link:`${EXPLORER_BASE}/address/${tokenAddr}`},
           {label:'Creator',value:formatAddress(token.creator as string),link:`${EXPLORER_BASE}/address/${token.creator}`},
           {label:'Launched',value:token.createdAt>0?new Date(token.createdAt*1000).toLocaleDateString():'—'},
-          {label:'Total Supply',value:'1,000,000,000'},
+          {label:'Total Supply',value: token.totalSupply > 0n ? (Number(token.totalSupply)/1e18).toLocaleString('en',{maximumFractionDigits:0}) : '—'},
         ].map(({label,value,link})=>(
           <div key={label} className="flex items-center justify-between px-4 py-2.5 border-b last:border-0" style={{borderColor:'var(--border)'}}>
             <span className="text-[9px]" style={{color:'var(--text2)'}}>{label}</span>
