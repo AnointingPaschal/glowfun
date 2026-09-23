@@ -387,10 +387,13 @@ export function AdminPage() {
       perTokenGraduationFeeBps: overrides.perTokenGraduationFeeBps ?? BigInt(n(perGradBps)),
     }
 
-    // ── Local validation (mirrors contract InvalidAmount() checks) ──────────
+    // ── Local validation (mirrors DEPLOYED GlowFunFactory_V2 on Arc Mainnet) ─
+    // Deployed contract: graduationThreshold < 1000e6 → InvalidAmount()
+    // This means minimum is $1,000 USDC (1_000_000_000 in 6-decimal form).
+    // Note: instant graduation (0) requires redeploying the updated contract.
     const gt = Number(params.graduationThreshold)
-    if (gt > 0 && gt < 1_000_000_000) {       // 1000e6 = 1,000 USDC
-      toast.error('Graduation threshold must be 0 (instant mode) or ≥ $1,000 USDC (1000000000). Value rejected by contract.')
+    if (gt < 1_000_000_000) {   // strictly less than $1,000 USDC — includes 0
+      toast.error('Minimum graduation threshold is $1,000 USDC on the deployed contract. Enter at least 1000.')
       return
     }
     if (Number(params.protocolFeeBps)           > 1000) { toast.error('Protocol fee max 10% (1000 bps)'); return }
@@ -705,7 +708,21 @@ export function AdminPage() {
                       <OnchainInput label="Creation Fee (USDC)" note={creationFee !== undefined ? `Current: $${n(creationFee) / 1e6} USDC` : ''} value={i('creationFee')} onChange={si('creationFee')} disabled={adminBusy} placeholder="10" onSet={() => updateConfigWith({ creationFee: BigInt(Math.round(parseFloat(i('creationFee') || '0') * 1e6)) })} />
                       <OnchainInput label="Protocol Fee (bps, max 1000 = 10%)" note={feeBps !== undefined ? `Current: ${n(feeBps)} bps = ${n(feeBps) / 100}%` : ''} value={i('feeBps')} onChange={si('feeBps')} disabled={adminBusy} placeholder="100" onSet={() => updateConfigWith({ protocolFeeBps: BigInt(i('feeBps') || '0') })} />
                       <OnchainInput label="Creator Graduation Bonus (bps, max 1000 = 10%)" note={creatorGradBps !== undefined ? `Current: ${n(creatorGradBps)} bps = ${n(creatorGradBps) / 100}%` : ''} value={i('creatorGradBps')} onChange={si('creatorGradBps')} disabled={adminBusy} placeholder="500" onSet={() => updateConfigWith({ creatorGraduationFeeBps: BigInt(i('creatorGradBps') || '0') })} />
-                      <OnchainInput label="Graduation Threshold — 0 = instant Uniswap, else min $1,000" note={gradThresh !== undefined ? `Current: $${(n(gradThresh) / 1e6).toLocaleString()}` : ''} value={i('gradThresh')} onChange={si('gradThresh')} disabled={adminBusy} placeholder="0 for instant / 69000 for normal" onSet={() => updateConfigWith({ graduationThreshold: BigInt(Math.round(parseFloat(i('gradThresh') || '0') * 1e6)) })} />
+                      <OnchainInput
+                        label="Graduation Threshold (USDC) — min $1,000"
+                        note={gradThresh !== undefined
+                          ? `On-chain: $${(n(gradThresh) / 1e6).toLocaleString()} USDC · Enter the dollar amount (e.g. 1000 = $1K, 10000 = $10K, 69000 = $69K)`
+                          : 'Min $1,000 · enter dollar amount'}
+                        value={i('gradThresh')}
+                        onChange={si('gradThresh')}
+                        disabled={adminBusy}
+                        placeholder="e.g. 1000 (min) or 69000 (default)"
+                        onSet={() => {
+                          const usd = parseFloat(i('gradThresh') || '0')
+                          if (usd < 1000) { toast.error('Minimum is $1,000 USDC. Enter at least 1000.'); return }
+                          updateConfigWith({ graduationThreshold: BigInt(Math.round(usd * 1_000_000)) })
+                        }}
+                      />
                     </SectionCard>
 
                     <SectionCard title="Anti-Bot Controls" icon={Sliders} accent="#6366f1">
