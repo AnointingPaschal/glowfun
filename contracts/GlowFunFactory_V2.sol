@@ -477,7 +477,19 @@ contract GlowFunFactory_V2 is Ownable, ReentrancyGuard, Pausable {
 
     // ── Admin Config Updater ──────────────────────────────────────────────
     function updateConfig(UpdateSettingsParams calldata s) external onlyOwner {
-        if (s.graduationThreshold < 1000e6 || s.protocolFeeBps > MAX_FEE_BPS || s.creatorGraduationFeeBps > MAX_FEE_BPS || s.referralFeeBps > 5000 || s.antiSnipeTaxBps > 2000 || s.maxBuyBps > 5000 || s.buyCooldown > 300 || s.creatorLockDuration > 30 days || s.perTokenGraduationFeeBps > 500) revert InvalidAmount();
+        // graduationThreshold: 0 = instant graduation mode (skip bonding curve)
+        //                      1..999e6 = rejected (too low for a meaningful pool)
+        //                      >= 1000e6 = normal bonding curve mode
+        if ((s.graduationThreshold > 0 && s.graduationThreshold < 1000e6)
+            || s.protocolFeeBps           > MAX_FEE_BPS
+            || s.creatorGraduationFeeBps  > MAX_FEE_BPS
+            || s.referralFeeBps           > 5000
+            || s.antiSnipeTaxBps          > 2000
+            || s.maxBuyBps                > 5000
+            || s.buyCooldown              > 300
+            || s.creatorLockDuration      > 30 days
+            || s.perTokenGraduationFeeBps > 500
+        ) revert InvalidAmount();
         
         graduationThreshold = s.graduationThreshold;
         protocolFeeBps = s.protocolFeeBps;

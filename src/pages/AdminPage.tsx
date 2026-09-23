@@ -347,9 +347,24 @@ export function AdminPage() {
 
   const n = (v: unknown) => Number(v ?? 0)
 
+  /** Contract limits — mirrors GlowFunFactory_V2 validation exactly */
+  const LIMITS = {
+    graduationThreshold:     { min: 0,    max: Infinity, note: '0 = instant mode, or ≥ $1,000 USDC. Values 1–999 rejected.' },
+    protocolFeeBps:          { min: 0,    max: 1000,     note: 'Max 10% (1000 bps)' },
+    creationFee:             { min: 0,    max: Infinity, note: 'USDC amount' },
+    creatorGraduationFeeBps: { min: 0,    max: 1000,     note: 'Max 10% (1000 bps)' },
+    referralFeeBps:          { min: 0,    max: 5000,     note: 'Max 50% of protocol fee (5000 bps)' },
+    antiSnipeDuration:       { min: 0,    max: Infinity, note: 'Seconds' },
+    antiSnipeTaxBps:         { min: 0,    max: 2000,     note: 'Max 20% (2000 bps)' },
+    maxBuyBps:               { min: 0,    max: 5000,     note: 'Max 50% of curve (5000 bps). 0 = no limit' },
+    buyCooldown:             { min: 0,    max: 300,      note: 'Max 300 seconds between buys' },
+    creatorLockDuration:     { min: 0,    max: 2592000,  note: 'Max 30 days (2,592,000 seconds)' },
+    perTokenGraduationFeeBps:{ min: 0,    max: 500,      note: 'Max 5% per-token graduation fee (500 bps)' },
+  }
+
   /** Build the full UpdateSettingsParams struct from current on-chain values,
    *  then merge in whichever field(s) you're changing.
-   *  This is the ONLY way to update settings — updateConfig() requires all 11 fields. */
+   *  Validates locally first to give clear errors before the tx fires. */
   const updateConfigWith = (overrides: Partial<{
     graduationThreshold: bigint; protocolFeeBps: bigint; creationFee: bigint;
     creatorGraduationFeeBps: bigint; referralFeeBps: bigint; antiSnipeDuration: bigint;
@@ -357,6 +372,7 @@ export function AdminPage() {
     creatorLockDuration: bigint; perTokenGraduationFeeBps: bigint;
   }>) => {
     if (wrong) { switchChain({ chainId: CHAIN_ID as any }); return }
+
     const params = {
       graduationThreshold:      overrides.graduationThreshold      ?? BigInt(n(gradThresh)),
       protocolFeeBps:           overrides.protocolFeeBps           ?? BigInt(n(feeBps)),
@@ -370,6 +386,22 @@ export function AdminPage() {
       creatorLockDuration:      overrides.creatorLockDuration      ?? BigInt(n(creatorLock)),
       perTokenGraduationFeeBps: overrides.perTokenGraduationFeeBps ?? BigInt(n(perGradBps)),
     }
+
+    // ── Local validation (mirrors contract InvalidAmount() checks) ──────────
+    const gt = Number(params.graduationThreshold)
+    if (gt > 0 && gt < 1_000_000_000) {       // 1000e6 = 1,000 USDC
+      toast.error('Graduation threshold must be 0 (instant mode) or ≥ $1,000 USDC (1000000000). Value rejected by contract.')
+      return
+    }
+    if (Number(params.protocolFeeBps)           > 1000) { toast.error('Protocol fee max 10% (1000 bps)'); return }
+    if (Number(params.creatorGraduationFeeBps)  > 1000) { toast.error('Creator graduation fee max 10% (1000 bps)'); return }
+    if (Number(params.referralFeeBps)           > 5000) { toast.error('Referral fee max 50% of protocol fee (5000 bps)'); return }
+    if (Number(params.antiSnipeTaxBps)          > 2000) { toast.error('Anti-snipe tax max 20% (2000 bps)'); return }
+    if (Number(params.maxBuyBps)                > 5000) { toast.error('Max buy limit max 50% (5000 bps)'); return }
+    if (Number(params.buyCooldown)              > 300)  { toast.error('Buy cooldown max 300 seconds'); return }
+    if (Number(params.creatorLockDuration)      > 2592000) { toast.error('Creator lock max 30 days (2,592,000 seconds)'); return }
+    if (Number(params.perTokenGraduationFeeBps) > 500)  { toast.error('Per-token graduation fee max 5% (500 bps)'); return }
+
     adminWrite(
       { address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'updateConfig',
         args: [params], chainId: CHAIN_ID as any } as any,
@@ -671,9 +703,9 @@ export function AdminPage() {
 
                     <SectionCard title="Fee Settings" icon={DollarSign} accent="#fb923c">
                       <OnchainInput label="Creation Fee (USDC)" note={creationFee !== undefined ? `Current: $${n(creationFee) / 1e6} USDC` : ''} value={i('creationFee')} onChange={si('creationFee')} disabled={adminBusy} placeholder="10" onSet={() => updateConfigWith({ creationFee: BigInt(Math.round(parseFloat(i('creationFee') || '0') * 1e6)) })} />
-                      <OnchainInput label="Protocol Fee (bps, max 500)" note={feeBps !== undefined ? `Current: ${n(feeBps)} bps = ${n(feeBps) / 100}%` : ''} value={i('feeBps')} onChange={si('feeBps')} disabled={adminBusy} placeholder="100" onSet={() => updateConfigWith({ protocolFeeBps: BigInt(i('feeBps') || '0') })} />
-                      <OnchainInput label="Creator Graduation Bonus (bps, max 2000)" note={creatorGradBps !== undefined ? `Current: ${n(creatorGradBps)} bps = ${n(creatorGradBps) / 100}%` : ''} value={i('creatorGradBps')} onChange={si('creatorGradBps')} disabled={adminBusy} placeholder="500" onSet={() => updateConfigWith({ creatorGraduationFeeBps: BigInt(i('creatorGradBps') || '0') })} />
-                      <OnchainInput label="Graduation Threshold (USDC, min $1,000)" note={gradThresh !== undefined ? `Current: $${(n(gradThresh) / 1e6).toLocaleString()}` : ''} value={i('gradThresh')} onChange={si('gradThresh')} disabled={adminBusy} placeholder="69000" onSet={() => updateConfigWith({ graduationThreshold: BigInt(Math.round(parseFloat(i('gradThresh') || '0') * 1e6)) })} />
+                      <OnchainInput label="Protocol Fee (bps, max 1000 = 10%)" note={feeBps !== undefined ? `Current: ${n(feeBps)} bps = ${n(feeBps) / 100}%` : ''} value={i('feeBps')} onChange={si('feeBps')} disabled={adminBusy} placeholder="100" onSet={() => updateConfigWith({ protocolFeeBps: BigInt(i('feeBps') || '0') })} />
+                      <OnchainInput label="Creator Graduation Bonus (bps, max 1000 = 10%)" note={creatorGradBps !== undefined ? `Current: ${n(creatorGradBps)} bps = ${n(creatorGradBps) / 100}%` : ''} value={i('creatorGradBps')} onChange={si('creatorGradBps')} disabled={adminBusy} placeholder="500" onSet={() => updateConfigWith({ creatorGraduationFeeBps: BigInt(i('creatorGradBps') || '0') })} />
+                      <OnchainInput label="Graduation Threshold — 0 = instant Uniswap, else min $1,000" note={gradThresh !== undefined ? `Current: $${(n(gradThresh) / 1e6).toLocaleString()}` : ''} value={i('gradThresh')} onChange={si('gradThresh')} disabled={adminBusy} placeholder="0 for instant / 69000 for normal" onSet={() => updateConfigWith({ graduationThreshold: BigInt(Math.round(parseFloat(i('gradThresh') || '0') * 1e6)) })} />
                     </SectionCard>
 
                     <SectionCard title="Anti-Bot Controls" icon={Sliders} accent="#6366f1">
