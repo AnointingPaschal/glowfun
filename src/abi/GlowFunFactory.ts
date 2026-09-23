@@ -99,6 +99,7 @@ export const FACTORY_ABI = [
       { name: 'curveAllocationBps',      type: 'uint256' },
       { name: 'creatorAllocationBps',    type: 'uint256' },
       { name: 'graduationThresholdUsdc', type: 'uint256' },
+      { name: 'initialLiquidityUsdc',   type: 'uint256' },
     ]}],
     outputs: [{ name: 'token', type: 'address' }] },
 

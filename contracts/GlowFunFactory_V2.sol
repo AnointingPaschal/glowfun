@@ -176,7 +176,13 @@ contract GlowFunFactory_V2 is Ownable, ReentrancyGuard, Pausable {
         uint256 totalSupply;
         uint256 curveAllocationBps;
         uint256 creatorAllocationBps;
+        /// @dev Set to 0 to skip the bonding curve and graduate immediately.
+        ///      When 0, you MUST provide initialLiquidityUsdc to seed the Uniswap pool.
         uint256 graduationThresholdUsdc;
+        /// @dev Only used when graduationThresholdUsdc == 0.
+        ///      This USDC is taken from the creator at launch and seeds the Uniswap pool directly.
+        ///      Min 100 USDC recommended for a meaningful price on DexScreener.
+        uint256 initialLiquidityUsdc;
     }
 
     struct LaunchAllocations {
@@ -308,23 +314,37 @@ contract GlowFunFactory_V2 is Ownable, ReentrancyGuard, Pausable {
         if (bytes(p.name).length == 0 || bytes(p.symbol).length == 0) revert InvalidToken();
         if (bytes(p.name).length > 64  || bytes(p.symbol).length > 16) revert InvalidToken();
 
+        // Resolve graduation threshold:
+        //   p.graduationThresholdUsdc > 0 → use that (per-token override)
+        //   p.graduationThresholdUsdc == 0 AND global > 0 → use global
+        //   both 0 → instant graduation mode (creator provides initialLiquidityUsdc)
+        bool instantMode = (p.graduationThresholdUsdc == 0 && graduationThreshold == 0);
+        if (instantMode && p.initialLiquidityUsdc == 0) revert InvalidAmount(); // must seed pool
+
+        uint256 resolvedThreshold = p.graduationThresholdUsdc > 0
+            ? p.graduationThresholdUsdc
+            : graduationThreshold; // 0 = instant mode
+
         LaunchAllocations memory a = _validateAndCompute(p);
+        // Collect creation fee
         if (creationFee > 0) usdc.safeTransferFrom(msg.sender, feeRecipient, creationFee);
+        // Collect instant-mode liquidity upfront (before deploy so accounting is clean)
+        if (instantMode) usdc.safeTransferFrom(msg.sender, address(this), p.initialLiquidityUsdc);
 
         token = _deployToken(p, a.supply);
         if (isLaunchedToken[token]) revert AlreadyLaunched();
         isLaunchedToken[token] = true;
 
         TokenState storage state = tokenStates[token];
-        state.creator                 = msg.sender;
-        state.virtualUsdcReserves     = INITIAL_VIRTUAL_USDC_RESERVES;
-        state.virtualTokenReserves    = INITIAL_VIRTUAL_TOKEN_RESERVES;
-        state.createdAt               = block.timestamp;
-        state.curveTokens             = a.curveTokens;
-        state.graduationTokens        = a.graduationTokens;
-        state.creatorTokens           = a.creatorTokens;
-        state.totalSupply             = a.supply;
-        state.tokenGraduationThreshold = 1;
+        state.creator                  = msg.sender;
+        state.virtualUsdcReserves      = INITIAL_VIRTUAL_USDC_RESERVES;
+        state.virtualTokenReserves     = INITIAL_VIRTUAL_TOKEN_RESERVES;
+        state.createdAt                = block.timestamp;
+        state.curveTokens              = a.curveTokens;
+        state.graduationTokens         = a.graduationTokens;
+        state.creatorTokens            = a.creatorTokens;
+        state.totalSupply              = a.supply;
+        state.tokenGraduationThreshold = resolvedThreshold; // 0 = instant
 
         if (a.creatorTokens > 0) {
             IERC20(token).safeTransfer(msg.sender, a.creatorTokens);
@@ -335,8 +355,13 @@ contract GlowFunFactory_V2 is Ownable, ReentrancyGuard, Pausable {
             }
         }
         launchedTokens.push(token);
+        _emitTokenLaunched(token, msg.sender, p, a, resolvedThreshold);
 
-        _emitTokenLaunched(token, msg.sender, p, a, state.tokenGraduationThreshold);
+        // Instant graduation — seed Uniswap immediately with creator's liquidity
+        if (instantMode) {
+            state.realUsdcRaised = p.initialLiquidityUsdc;
+            _graduateToken(token);
+        }
     }
 
     // ── Buy ───────────────────────────────────────────────────────────────
