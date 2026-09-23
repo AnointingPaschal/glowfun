@@ -351,13 +351,31 @@ export function TokenPage() {
   const needsTokenApproval = mode==='sell' && parsedTokens>0n && tokenAllowance < parsedTokens
   const txBusy = isApproving||isApproveConf||isApprovingTok||isApproveTokConf||isTrading||isTxConf
 
-  const handleApproveUsdc  = () => {
-    // If stale allowance exists, reset to 0 first, then the button re-renders to approve exact amount
-    const resetFirst = usdcAllow > 0n && usdcAllow !== parsedUsdc
-    approveUsdc({ address:USDC_ADDRESS, abi:erc20Abi, functionName:'approve', args:[FACTORY_ADDRESS!, resetFirst ? 0n : parsedUsdc], chainId:CHAIN_ID as any } as any, {
-      onSuccess: () => resetFirst ? toast.info('Allowance reset — approve again to set exact amount') : toast.success('Approved'),
-      onError: (e) => toast.error(parseOnchainError(e))
-    })
+  const executeBuy = () => {
+    if (!FACTORY_ADDRESS||!tokenAddr) return
+    const min = buyQuote ? (buyQuote as bigint)*BigInt(100-Math.ceil(slip))/100n : 0n
+    trade(
+      { address:FACTORY_ADDRESS, abi:FACTORY_ABI, functionName:'buyTokens', args:[tokenAddr as `0x${string}`, min], chainId:CHAIN_ID as any } as any,
+      { onSuccess:()=>toast.success('Buy submitted!'), onError:(e)=>toast.error(parseOnchainError(e)) }
+    )
+  }
+
+  const handleApproveUsdc = () => {
+    if (!FACTORY_ADDRESS) return
+    const approveExact = () => approveUsdc(
+      { address:USDC_ADDRESS, abi:erc20Abi, functionName:'approve', args:[FACTORY_ADDRESS, parsedUsdc], chainId:CHAIN_ID as any } as any,
+      // After exact approval confirms → immediately fire buyTokens, no second click needed
+      { onSuccess: executeBuy, onError:(e)=>toast.error(parseOnchainError(e)) }
+    )
+    if (usdcAllow > 0n && usdcAllow !== parsedUsdc) {
+      // Stale allowance — reset to 0 first, then set exact and buy
+      approveUsdc(
+        { address:USDC_ADDRESS, abi:erc20Abi, functionName:'approve', args:[FACTORY_ADDRESS, 0n], chainId:CHAIN_ID as any } as any,
+        { onSuccess: approveExact, onError:(e)=>toast.error(parseOnchainError(e)) }
+      )
+    } else {
+      approveExact()
+    }
   }
   const handleApproveToken = () => { approveToken({ address:tokenAddr as `0x${string}`, abi:erc20Abi, functionName:'approve', args:[FACTORY_ADDRESS!,parsedTokens*2n], chainId:CHAIN_ID as any } as any, { onSuccess:()=>toast.success('Approved'), onError:(e)=>toast.error(parseOnchainError(e)) }) }
   const handleTrade = () => {
