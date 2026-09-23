@@ -557,6 +557,23 @@ export function TokenPage() {
             </div>
             <div className="text-xs font-medium mb-2" style={{color:'var(--text2)'}}>{token.name}</div>
             <div className="flex items-center gap-1.5">
+              {/* Add to Wallet — wallet_watchAsset (EIP-747) */}
+              {(window as any).ethereum && (
+                <button title="Add to wallet with logo"
+                  onClick={()=>{
+                    const img = token.imageUri?.startsWith('ipfs://')
+                      ? `https://gateway.pinata.cloud/ipfs/${token.imageUri.slice(7)}`
+                      : (token.imageUri||'')
+                    ;(window as any).ethereum.request({
+                      method:'wallet_watchAsset',
+                      params:{ type:'ERC20', options:{ address:tokenAddr, symbol:token.symbol?.slice(0,11), decimals:18, image:img }}
+                    }).catch(()=>{})
+                  }}
+                  className="p-1.5 rounded-lg flex items-center gap-1 text-[9px] font-bold"
+                  style={{background:'var(--surface3)',border:'1px solid var(--border)',color:'var(--text2)'}}>
+                  🦊 Add
+                </button>
+              )}
               {token.twitter&&<a href={`https://x.com/${token.twitter.replace('@','')}`} target="_blank" rel="noopener" className="p-1.5 rounded-lg no-underline" style={{background:'var(--surface3)',border:'1px solid var(--border)'}}><Twitter size={11} style={{color:'var(--text2)'}}/></a>}
               {token.telegram&&<a href={`https://t.me/${token.telegram.replace('@','')}`} target="_blank" rel="noopener" className="p-1.5 rounded-lg no-underline" style={{background:'var(--surface3)',border:'1px solid var(--border)'}}><Send size={11} style={{color:'var(--text2)'}}/></a>}
               {token.website&&<a href={token.website} target="_blank" rel="noopener" className="p-1.5 rounded-lg no-underline" style={{background:'var(--surface3)',border:'1px solid var(--border)'}}><Globe size={11} style={{color:'var(--text2)'}}/></a>}

@@ -187,7 +187,8 @@ export function LaunchPage() {
 
   /* tx */
   const [approveTx, setAppTx] = useState<`0x${string}`|undefined>()
-  const [launchTx,  setLTx]   = useState<`0x${string}`|undefined>()
+  const [launchTx,  setLTx]         = useState<`0x${string}`|undefined>()
+  const [launchedAddr, setLaunched] = useState<string>('')
 
   /* computed supply */
   const supply: bigint = (() => {
@@ -243,7 +244,38 @@ export function LaunchPage() {
   const { isLoading: lnchConf, isSuccess: lnchDone } = useWaitForTransactionReceipt({ hash: launchTx })
 
   useEffect(()=>{ if(appDone && txStep==='approving') doLaunch() },[appDone])
-  useEffect(()=>{ if(lnchDone) setTxStep('done') },[lnchDone])
+  const { data: lnchReceipt } = useWaitForTransactionReceipt({ hash: launchTx })
+  useEffect(()=>{
+    if (!lnchDone || !lnchReceipt) return
+    setTxStep('done')
+    // Extract the deployed token address from the TokenLaunched event log (topic[1])
+    const log = lnchReceipt.logs?.find((l: any) => l.topics?.[0]?.toLowerCase().startsWith('0x'))
+    const tokenAddr = log?.topics?.[1]
+      ? '0x' + log.topics[1].slice(26)   // ABI-decode address from topic
+      : ''
+    if (tokenAddr) setLaunched(tokenAddr)
+
+    // wallet_watchAsset — adds token to MetaMask/Coinbase/Rainbow with logo instantly
+    const logoUrl = form.imageUri
+      ? (form.imageUri.startsWith('ipfs://')
+          ? `https://gateway.pinata.cloud/ipfs/${form.imageUri.slice(7)}`
+          : form.imageUri)
+      : ''
+    if (tokenAddr && (window as any).ethereum) {
+      ;(window as any).ethereum.request({
+        method: 'wallet_watchAsset',
+        params: {
+          type: 'ERC20',
+          options: {
+            address: tokenAddr,
+            symbol:  form.symbol.toUpperCase().slice(0, 11),
+            decimals: 18,
+            image:   logoUrl,
+          },
+        },
+      }).catch(() => {}) // silent — user may dismiss
+    }
+  }, [lnchDone, lnchReceipt])
 
   const busy = isPending || appConf || lnchConf
 
@@ -321,31 +353,96 @@ export function LaunchPage() {
 
   /* ══ SUCCESS ══════════════════════════════════════════════════════ */
   if (txStep==='done') return (
-    <div className="min-h-[70vh] flex items-center justify-center">
+    <div className="min-h-[70vh] flex items-center justify-center py-8">
       <motion.div initial={{scale:0.85,opacity:0}} animate={{scale:1,opacity:1}} transition={{type:'spring',stiffness:200}}
-        className="max-w-sm w-full mx-auto text-center px-4">
-        <motion.div animate={{y:[0,-16,0]}} transition={{repeat:Infinity,duration:2.4,ease:'easeInOut'}}
-          className="text-6xl mb-6">
-          <Rocket size={56} className="mx-auto" style={{color:'#818cf8'}}/>
+        className="max-w-sm w-full mx-auto text-center px-4 space-y-4">
+        <motion.div animate={{y:[0,-14,0]}} transition={{repeat:Infinity,duration:2.4,ease:'easeInOut'}}>
+          <Rocket size={52} className="mx-auto" style={{color:'#818cf8'}}/>
         </motion.div>
-        <h2 className="text-3xl font-black mb-2"
-          style={{fontFamily:'Space Grotesk,sans-serif',letterSpacing:'-0.03em',color:'var(--text1)'}}>
-          Token Launched!
-        </h2>
-        <p className="text-sm mb-1" style={{color:'var(--text2)'}}>
-          <strong style={{color:'var(--text1)'}}>${form.symbol.toUpperCase()}</strong> is live on Arc Mainnet
-        </p>
-        <p className="text-xs mb-8 tabular-nums" style={{color:'var(--text3)'}}>
-          {fmt(supply)} total supply · {curvePct.toFixed(0)}% bonding curve · {creatorPct.toFixed(0)}% creator
-        </p>
-        <div className="flex flex-col gap-3">
-          <button onClick={()=>navigate('/')}
-            className="py-3.5 rounded-2xl text-sm font-bold text-white"
-            style={{background:'linear-gradient(135deg,#6366f1,#8b5cf6)',boxShadow:'0 4px 24px rgba(99,102,241,0.35)'}}>
-            View All Tokens <ArrowRight size={14} className="inline ml-1"/>
+
+        <div>
+          <h2 className="text-3xl font-black mb-1.5"
+            style={{fontFamily:'Space Grotesk,sans-serif',letterSpacing:'-0.03em',color:'var(--text1)'}}>
+            Token Launched! 🎉
+          </h2>
+          <p className="text-sm" style={{color:'var(--text2)'}}>
+            <strong style={{color:'var(--text1)'}}>${form.symbol.toUpperCase()}</strong> is live on Arc Mainnet
+          </p>
+          <p className="text-xs mt-1 tabular-nums" style={{color:'var(--text3)'}}>
+            {fmt(supply)} supply · {curvePct.toFixed(0)}% curve · {creatorPct.toFixed(0)}% creator
+          </p>
+        </div>
+
+        {/* Token address */}
+        {launchedAddr && (
+          <div className="rounded-xl px-3 py-2.5 text-left" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
+            <p className="text-[9px] font-bold uppercase tracking-widest mb-1" style={{color:'var(--text2)'}}>Token Address</p>
+            <p className="text-[10px] font-mono break-all" style={{color:'var(--accent)'}}>{launchedAddr}</p>
+          </div>
+        )}
+
+        {/* wallet_watchAsset button */}
+        {launchedAddr && (window as any).ethereum && (
+          <button
+            onClick={()=>{
+              const logoUrl = form.imageUri?.startsWith('ipfs://')
+                ? `https://gateway.pinata.cloud/ipfs/${form.imageUri.slice(7)}`
+                : (form.imageUri || '')
+              ;(window as any).ethereum.request({
+                method:'wallet_watchAsset',
+                params:{ type:'ERC20', options:{ address:launchedAddr, symbol:form.symbol.toUpperCase().slice(0,11), decimals:18, image:logoUrl }}
+              }).catch(()=>{})
+            }}
+            className="w-full py-3 rounded-2xl text-sm font-bold flex items-center justify-center gap-2"
+            style={{background:'rgba(99,102,241,0.1)',color:'#818cf8',border:'1px solid rgba(99,102,241,0.25)'}}>
+            🦊 Add to Wallet with Logo
           </button>
+        )}
+
+        {/* Logo visibility info */}
+        <div className="rounded-xl p-3 text-left space-y-2" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
+          <p className="text-[9px] font-bold uppercase tracking-widest" style={{color:'var(--text2)'}}>Logo Visibility</p>
+          {[
+            { icon:'✅', label:'contractURI()', desc:'Wallets that support ERC-7572 show your logo immediately' },
+            { icon:'✅', label:'wallet_watchAsset', desc:'MetaMask/Coinbase/Rainbow — click "Add to Wallet" above' },
+            { icon:'🔜', label:'DexScreener', desc:'Auto-detected once trading activity appears' },
+            { icon:'📋', label:'Token List', desc:`Add ${window.location.origin}/api/token-list.json to Uniswap` },
+          ].map(({icon,label,desc})=>(
+            <div key={label} className="flex items-start gap-2">
+              <span className="text-sm flex-shrink-0">{icon}</span>
+              <div>
+                <span className="text-[10px] font-bold" style={{color:'var(--text1)'}}>{label}</span>
+                <span className="text-[9px] ml-1" style={{color:'var(--text2)'}}>{desc}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Copy token list URL */}
+        <div className="rounded-xl px-3 py-2.5 flex items-center gap-2" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
+          <span className="text-[9px] font-bold flex-shrink-0" style={{color:'var(--text2)'}}>Token List:</span>
+          <span className="text-[9px] font-mono flex-1 truncate" style={{color:'var(--accent)'}}>
+            {window.location.origin}/api/token-list.json
+          </span>
+          <button onClick={()=>navigator.clipboard.writeText(`${window.location.origin}/api/token-list.json`).then(()=>toast.success('Copied!'))}
+            className="text-[9px] font-bold px-2 py-1 rounded-lg flex-shrink-0"
+            style={{background:'rgba(99,102,241,0.1)',color:'#818cf8'}}>Copy</button>
+        </div>
+
+        <div className="flex flex-col gap-2.5">
+          {launchedAddr
+            ? <button onClick={()=>navigate(`/token/${launchedAddr}`)}
+                className="py-3.5 rounded-2xl text-sm font-bold text-white"
+                style={{background:'linear-gradient(135deg,#6366f1,#8b5cf6)',boxShadow:'0 4px 24px rgba(99,102,241,0.35)'}}>
+                View My Token <ArrowRight size={14} className="inline ml-1"/>
+              </button>
+            : <button onClick={()=>navigate('/')}
+                className="py-3.5 rounded-2xl text-sm font-bold text-white"
+                style={{background:'linear-gradient(135deg,#6366f1,#8b5cf6)'}}>
+                View All Tokens <ArrowRight size={14} className="inline ml-1"/>
+              </button>}
           <button onClick={()=>{reset();setTxStep('form')}}
-            className="py-3.5 rounded-2xl text-sm font-semibold"
+            className="py-3 rounded-2xl text-sm font-semibold"
             style={{background:'var(--surface2)',color:'var(--text1)',border:'1px solid var(--border)'}}>
             Launch Another
           </button>
