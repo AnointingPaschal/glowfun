@@ -270,8 +270,8 @@ export function TokenPage() {
   const { token, isLoading, refetch } = useTokenData(tokenAddr as `0x${string}`|undefined)
   const { balance: tokenBalance, allowance: tokenAllowance, refetch: refetchBal } = useTokenBalance(tokenAddr as `0x${string}`|undefined, wallet)
 
-  const { data: usdcBalance }   = useReadContract({ address:USDC_ADDRESS, abi:erc20Abi, functionName:'balanceOf',  args:wallet?[wallet]:undefined,                                   chainId:CHAIN_ID as any, query:{enabled:!!wallet} })
-  const { data: usdcAllowance } = useReadContract({ address:USDC_ADDRESS, abi:erc20Abi, functionName:'allowance', args:wallet&&FACTORY_ADDRESS?[wallet,FACTORY_ADDRESS]:undefined, chainId:CHAIN_ID as any, query:{enabled:!!wallet&&!!FACTORY_ADDRESS} })
+  const { data: usdcBalance }                       = useReadContract({ address:USDC_ADDRESS, abi:erc20Abi, functionName:'balanceOf',  args:wallet?[wallet]:undefined,                                   chainId:CHAIN_ID as any, query:{enabled:!!wallet} })
+  const { data: usdcAllowance, refetch: refetchAllow } = useReadContract({ address:USDC_ADDRESS, abi:erc20Abi, functionName:'allowance', args:wallet&&FACTORY_ADDRESS?[wallet,FACTORY_ADDRESS]:undefined, chainId:CHAIN_ID as any, query:{enabled:!!wallet&&!!FACTORY_ADDRESS} })
 
   const [mode, setMode]       = useState<TradeMode>('buy')
   const [amount, setAmount]   = useState('')
@@ -349,16 +349,21 @@ export function TokenPage() {
   const needsTokenApproval = mode==='sell' && parsedTokens>0n && tokenAllowance < parsedTokens
   const txBusy = isApproving||isApproveConf||isApprovingTok||isApproveTokConf||isTrading||isTxConf
 
-  const handleApproveUsdc  = () => { approveUsdc({ address:USDC_ADDRESS, abi:erc20Abi, functionName:'approve', args:[FACTORY_ADDRESS!,parsedUsdc*2n], chainId:CHAIN_ID as any } as any, { onSuccess:()=>toast.success('Approved'), onError:(e)=>toast.error(parseOnchainError(e)) }) }
-  const handleApproveToken = () => { approveToken({ address:tokenAddr as `0x${string}`, abi:erc20Abi, functionName:'approve', args:[FACTORY_ADDRESS!,parsedTokens*2n], chainId:CHAIN_ID as any } as any, { onSuccess:()=>toast.success('Approved'), onError:(e)=>toast.error(parseOnchainError(e)) }) }
+  const ZERO_ADDR = '0x0000000000000000000000000000000000000000' as `0x${string}`
+  const MAX_UINT  = 2n**256n-1n  // approve max so users never need to re-approve
+
+  const handleApproveUsdc  = () => { approveUsdc({ address:USDC_ADDRESS, abi:erc20Abi, functionName:'approve', args:[FACTORY_ADDRESS!,MAX_UINT], chainId:CHAIN_ID as any } as any, { onSuccess:()=>{ toast.success('USDC approved! You can now buy.'); setTimeout(()=>void refetchAllow(), 2000) }, onError:(e)=>toast.error(parseOnchainError(e)) }) }
+  const handleApproveToken = () => { approveToken({ address:tokenAddr as `0x${string}`, abi:erc20Abi, functionName:'approve', args:[FACTORY_ADDRESS!,MAX_UINT], chainId:CHAIN_ID as any } as any, { onSuccess:()=>{ toast.success('Token approved!'); void refetchBal() }, onError:(e)=>toast.error(parseOnchainError(e)) }) }
   const handleTrade = () => {
     if (!FACTORY_ADDRESS||!tokenAddr||!wallet) return
     if (wrong) { switchChain({chainId:CHAIN_ID as any}); return }
     if (mode==='buy') {
       const min = buyQuote?(buyQuote as bigint)*BigInt(100-Math.ceil(slip))/100n:0n
-      trade({ address:FACTORY_ADDRESS, abi:FACTORY_ABI, functionName:'buyTokens', args:[tokenAddr as `0x${string}`,min], chainId:CHAIN_ID as any } as any, { onSuccess:()=>toast.success('Buy submitted!'), onError:(e)=>toast.error(parseOnchainError(e)) })
+      // buyTokens(address token, uint256 minTokensOut, address referrer)
+      trade({ address:FACTORY_ADDRESS, abi:FACTORY_ABI, functionName:'buyTokens', args:[tokenAddr as `0x${string}`,min,ZERO_ADDR], chainId:CHAIN_ID as any } as any, { onSuccess:()=>toast.success('Buy submitted! 🚀'), onError:(e)=>toast.error(parseOnchainError(e)) })
     } else {
       const min = sellQuote?(sellQuote as bigint)*BigInt(100-Math.ceil(slip))/100n:0n
+      // sellTokens(address token, uint256 tokensIn, uint256 minUsdcOut)
       trade({ address:FACTORY_ADDRESS, abi:FACTORY_ABI, functionName:'sellTokens', args:[tokenAddr as `0x${string}`,parsedTokens,min], chainId:CHAIN_ID as any } as any, { onSuccess:()=>toast.success('Sell submitted!'), onError:(e)=>toast.error(parseOnchainError(e)) })
     }
   }
