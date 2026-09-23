@@ -345,11 +345,20 @@ export function TokenPage() {
 
   useEffect(() => { if (isTxDone) { void refetch(); void refetchBal(); setAmount('') } }, [isTxDone])
 
-  const needsUsdcApproval  = mode==='buy'  && parsedUsdc>0n   && (usdcAllowance  as bigint??0n) < parsedUsdc
+  // Also re-approve if allowance is too HIGH (stale approval) — _spendableUsdc uses min(allowance,balance) so excess allowance overspends
+  const usdcAllow = (usdcAllowance as bigint) ?? 0n
+  const needsUsdcApproval  = mode==='buy'  && parsedUsdc>0n   && usdcAllow !== parsedUsdc
   const needsTokenApproval = mode==='sell' && parsedTokens>0n && tokenAllowance < parsedTokens
   const txBusy = isApproving||isApproveConf||isApprovingTok||isApproveTokConf||isTrading||isTxConf
 
-  const handleApproveUsdc  = () => { approveUsdc({ address:USDC_ADDRESS, abi:erc20Abi, functionName:'approve', args:[FACTORY_ADDRESS!,parsedUsdc*2n], chainId:CHAIN_ID as any } as any, { onSuccess:()=>toast.success('Approved'), onError:(e)=>toast.error(parseOnchainError(e)) }) }
+  const handleApproveUsdc  = () => {
+    // If stale allowance exists, reset to 0 first, then the button re-renders to approve exact amount
+    const resetFirst = usdcAllow > 0n && usdcAllow !== parsedUsdc
+    approveUsdc({ address:USDC_ADDRESS, abi:erc20Abi, functionName:'approve', args:[FACTORY_ADDRESS!, resetFirst ? 0n : parsedUsdc], chainId:CHAIN_ID as any } as any, {
+      onSuccess: () => resetFirst ? toast.info('Allowance reset — approve again to set exact amount') : toast.success('Approved'),
+      onError: (e) => toast.error(parseOnchainError(e))
+    })
+  }
   const handleApproveToken = () => { approveToken({ address:tokenAddr as `0x${string}`, abi:erc20Abi, functionName:'approve', args:[FACTORY_ADDRESS!,parsedTokens*2n], chainId:CHAIN_ID as any } as any, { onSuccess:()=>toast.success('Approved'), onError:(e)=>toast.error(parseOnchainError(e)) }) }
   const handleTrade = () => {
     if (!FACTORY_ADDRESS||!tokenAddr||!wallet) return
