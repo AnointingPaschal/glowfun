@@ -18,7 +18,7 @@ import {
   Rocket, Twitter, Send, Globe, ChevronDown, Zap,
   Loader2, ShieldCheck, ArrowRight,
   AlertTriangle, Info, RotateCcw, Check,
-  Lock, TrendingUp, Star, Trophy, PlusCircle, Flame,
+  Lock, TrendingUp, Star, PlusCircle, Flame,
   MessageCircle, Hash, Image, Settings2,
 } from 'lucide-react'
 
@@ -217,19 +217,21 @@ export function LaunchPage() {
   // Contract enforces curveBps >= 5000, curveBps <= 9500, curveBps + creatorBps <= 9500
   const overLimit     = curveBps < 5000 || curveBps + creatorBps > 9500
 
+  const [initLiqRaw, setInitLiq] = useState('')  // USDC the creator seeds the Uniswap pool with
+
   /* Live contract config — all admin-set values pulled from chain */
   const cfg  = useFactoryConfig()
   const fee  = cfg.creationFee
   const grad = cfg.graduationThreshold   // 0 = admin has enabled instant graduation mode
 
-  /* Instant graduation mode — active when admin set threshold to 0 */
-  const instantMode   = grad === 0n
-  const [initLiqRaw, setInitLiq] = useState('')  // USDC the creator seeds the Uniswap pool with
+  /* Instant graduation mode — admin must have set threshold to 0, AND user must have entered liquidity */
+  const instantMode      = grad === 0n   // admin has enabled the option
+  const userChoseInstant = instantMode && initLiqRaw !== ''
   const initLiqUsdc   = parseUsdc(initLiqRaw)    // bigint in 6 dec
   const initLiqUsd    = Number(initLiqUsdc) / 1e6
 
   /* Total USDC the creator must have approved: launch fee + initial liquidity (instant mode) */
-  const totalUsdcNeeded = fee + (instantMode ? initLiqUsdc : 0n)
+  const totalUsdcNeeded = fee + (userChoseInstant ? initLiqUsdc : 0n)
 
   const { data: usdcBal } = useReadContract({
     address:USDC_ADDRESS, abi:erc20Abi, functionName:'balanceOf',
@@ -246,7 +248,7 @@ export function LaunchPage() {
   const needApprove    = totalUsdcNeeded > 0n && usdcAllowance < totalUsdcNeeded
   const canAfford      = usdcBalance >= totalUsdcNeeded
   const canSubmit      = !!form.name.trim() && !!form.symbol.trim() && canAfford && !overLimit
-                      && (!instantMode || initLiqUsdc > 0n)
+                      && (!userChoseInstant || initLiqUsdc > 0n)
 
   /* wagmi writes */
   const { writeContract, isPending } = useWriteContract()
@@ -325,7 +327,7 @@ export function LaunchPage() {
         totalSupply:supply, curveAllocationBps:BigInt(curveBps),
         creatorAllocationBps:BigInt(creatorBps),
         graduationThresholdUsdc: grad,
-        initialLiquidityUsdc:    instantMode ? initLiqUsdc : 0n,
+        initialLiquidityUsdc:    userChoseInstant ? initLiqUsdc : 0n,
         pairToken:  (pairToken && pairToken !== '' && pairToken !== 'EURC') ? pairToken as `0x${string}` : ZERO_ADDR,
         mintable,   burnable,   pausable: false,   hasBlacklist,
         maxSupply:  mintable ? supply * 2n : 0n,   // allow up to 2x if mintable
@@ -343,7 +345,7 @@ export function LaunchPage() {
     if (!isConnected) { toast.error('Connect wallet first'); return }
     if (chainId !== CHAIN_ID) { switchChain({chainId:CHAIN_ID as any}); return }
     if (!form.name.trim()||!form.symbol.trim()) { toast.error('Name and symbol required'); return }
-    if (instantMode && initLiqUsdc === 0n) { toast.error('Enter initial liquidity USDC to seed Uniswap'); return }
+    if (userChoseInstant && initLiqUsdc === 0n) { toast.error('Enter initial liquidity USDC to seed Uniswap'); return }
     if (!canAfford) { toast.error(`Need ${fmtUsdc(totalUsdcNeeded)} USDC to launch`); return }
     if (curveBps < 5000) { toast.error('Curve allocation must be at least 50%'); return }
     if (curveBps > 9500) { toast.error('Curve allocation cannot exceed 95%'); return }
@@ -378,7 +380,7 @@ export function LaunchPage() {
         <div>
           <h2 className="text-3xl font-black mb-1.5"
             style={{fontFamily:'Space Grotesk,sans-serif',letterSpacing:'-0.03em',color:'var(--text1)'}}>
-            Token Launched! 🎉
+            Token Launched!
           </h2>
           <p className="text-sm" style={{color:'var(--text2)'}}>
             <strong style={{color:'var(--text1)'}}>${form.symbol.toUpperCase()}</strong> is live on Arc Mainnet
@@ -410,7 +412,7 @@ export function LaunchPage() {
             }}
             className="w-full py-3 rounded-2xl text-sm font-bold flex items-center justify-center gap-2"
             style={{background:'rgba(99,102,241,0.1)',color:'#818cf8',border:'1px solid rgba(99,102,241,0.25)'}}>
-            🦊 Add to Wallet with Logo
+            <Zap size={14}/> Add to Wallet with Logo
           </button>
         )}
 
@@ -418,13 +420,13 @@ export function LaunchPage() {
         <div className="rounded-xl p-3 text-left space-y-2" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
           <p className="text-[9px] font-bold uppercase tracking-widest" style={{color:'var(--text2)'}}>Logo Visibility</p>
           {[
-            { icon:'✅', label:'contractURI()', desc:'Wallets that support ERC-7572 show your logo immediately' },
-            { icon:'✅', label:'wallet_watchAsset', desc:'MetaMask/Coinbase/Rainbow — click "Add to Wallet" above' },
-            { icon:'🔜', label:'DexScreener', desc:'Auto-detected once trading activity appears' },
-            { icon:'📋', label:'Token List', desc:`Add ${window.location.origin}/api/token-list.json to Uniswap` },
-          ].map(({icon,label,desc})=>(
+            { Icon:Check,      color:'var(--green)', label:'contractURI()',     desc:'Wallets that support ERC-7572 show your logo immediately' },
+            { Icon:Check,      color:'var(--green)', label:'wallet_watchAsset', desc:'MetaMask/Coinbase/Rainbow — click "Add to Wallet" above' },
+            { Icon:ArrowRight, color:'#818cf8',       label:'DexScreener',       desc:'Auto-detected once trading activity appears' },
+            { Icon:Hash,       color:'var(--text3)',  label:'Token List',        desc:`Add ${window.location.origin}/api/token-list.json to Uniswap` },
+          ].map(({Icon,color,label,desc})=>(
             <div key={label} className="flex items-start gap-2">
-              <span className="text-sm flex-shrink-0">{icon}</span>
+              <Icon size={12} style={{color,flexShrink:0,marginTop:2}}/>
               <div>
                 <span className="text-[10px] font-bold" style={{color:'var(--text1)'}}>{label}</span>
                 <span className="text-[9px] ml-1" style={{color:'var(--text2)'}}>{desc}</span>
@@ -620,7 +622,7 @@ export function LaunchPage() {
 
           {/* ─── 2. Tokenomics ─── */}
           <Section title="Tokenomics" icon={TrendingUp} iconColor="#22c55e" step={2}
-            subtitle={instantMode ? 'Instant Uniswap listing — admin has disabled the bonding curve threshold' : 'Configure total supply and graduation target'}>
+            subtitle="Configure total supply and how your token reaches a DEX">
 
             {/* Total supply */}
             <div className="mb-6">
@@ -664,58 +666,110 @@ export function LaunchPage() {
             </div>
 
 
-            {/* Graduation mode — shown based on admin config */}
-            {instantMode ? (
-              /* ── Instant graduation panel ─────────────────────── */
-              <motion.div initial={{opacity:0,y:6}} animate={{opacity:1,y:0}}
-                className="rounded-2xl overflow-hidden"
-                style={{border:'1px solid rgba(245,158,11,0.25)',background:'rgba(245,158,11,0.04)'}}>
-                <div className="flex items-center gap-2.5 px-4 py-3"
-                  style={{borderBottom:'1px solid rgba(245,158,11,0.12)'}}>
-                  <Rocket size={14} style={{color:'var(--gold)'}}/>
-                  <span className="text-sm font-bold" style={{color:'var(--gold)'}}>Instant Uniswap Listing</span>
-                  <span className="ml-auto text-[9px] font-bold px-2 py-0.5 rounded-full"
-                    style={{background:'rgba(245,158,11,0.12)',color:'var(--gold)',border:'1px solid rgba(245,158,11,0.25)'}}>
-                    ADMIN ENABLED
-                  </span>
-                </div>
-                <div className="p-4 space-y-4">
-                  <p className="text-xs leading-relaxed" style={{color:'var(--text2)'}}>
-                    The bonding curve threshold is <strong style={{color:'var(--gold)'}}>disabled by admin</strong>.
-                    Your token will skip the bonding curve and go <strong style={{color:'var(--text1)'}}>straight to Uniswap</strong> the moment it launches.
-                    You seed the initial Uniswap pool with USDC — this sets the opening price and makes your token immediately visible on DexScreener.
+            {/* Listing mode selector */}
+            <div className="mt-2">
+              <Label text="Listing mode" tip="Choose how your token gets to a DEX."/>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                {/* Option A: Bonding curve */}
+                <button type="button"
+                  onClick={()=>setInitLiq('')}
+                  className="p-4 rounded-2xl text-left transition-all"
+                  style={{
+                    background: initLiqRaw==='' ? 'rgba(99,102,241,0.08)' : 'var(--surface2)',
+                    border: `1.5px solid ${initLiqRaw==='' ? 'rgba(99,102,241,0.35)' : 'var(--border)'}`,
+                  }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center"
+                      style={{background:'rgba(99,102,241,0.12)'}}>
+                      <TrendingUp size={13} style={{color:'#818cf8'}}/>
+                    </div>
+                    {initLiqRaw==='' && (
+                      <div className="w-4 h-4 rounded-full flex items-center justify-center"
+                        style={{background:'#6366f1'}}>
+                        <Check size={9} style={{color:'#fff'}}/>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[12px] font-bold mb-1" style={{color:'var(--text1)'}}>Raise on Bonding Curve</p>
+                  <p className="text-[10px] leading-relaxed" style={{color:'var(--text2)'}}>
+                    Raise liquidity through trading. Token auto-lists on a DEX when the curve fills.
                   </p>
-                  {/* How the price is set */}
+                </button>
+
+                {/* Option B: Instant listing — always visible */}
+                <button type="button"
+                  onClick={()=>{ if(!initLiqRaw) setInitLiq('500') }}
+                  className="p-4 rounded-2xl text-left transition-all"
+                  style={{
+                    background: initLiqRaw!=='' ? 'rgba(245,158,11,0.08)' : 'var(--surface2)',
+                    border: `1.5px solid ${initLiqRaw!=='' ? 'rgba(245,158,11,0.35)' : 'var(--border)'}`,
+                    opacity: !instantMode ? 0.5 : 1,
+                    cursor: !instantMode ? 'not-allowed' : 'pointer',
+                  }}
+                  disabled={!instantMode}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center"
+                      style={{background:'rgba(245,158,11,0.12)'}}>
+                      <Rocket size={13} style={{color:'#f59e0b'}}/>
+                    </div>
+                    {initLiqRaw!=='' && (
+                      <div className="w-4 h-4 rounded-full flex items-center justify-center"
+                        style={{background:'#f59e0b'}}>
+                        <Check size={9} style={{color:'#fff'}}/>
+                      </div>
+                    )}
+                    {!instantMode && (
+                      <Lock size={11} style={{color:'var(--text3)'}}/>
+                    )}
+                  </div>
+                  <p className="text-[12px] font-bold mb-1" style={{color: initLiqRaw!=='' ? '#f59e0b' : 'var(--text1)'}}>Seed Initial Liquidity</p>
+                  <p className="text-[10px] leading-relaxed" style={{color:'var(--text2)'}}>
+                    {instantMode
+                      ? 'Deposit USDC to seed a Uniswap pool at launch. Token is tradeable immediately.'
+                      : 'Disabled — admin has not enabled instant listing yet.'}
+                  </p>
+                </button>
+              </div>
+
+              {/* Instant listing USDC input — shown when selected */}
+              {instantMode && initLiqRaw!=='' && (
+                <motion.div initial={{opacity:0,y:4}} animate={{opacity:1,y:0}}
+                  className="rounded-2xl p-4 space-y-4"
+                  style={{background:'rgba(245,158,11,0.04)',border:'1px solid rgba(245,158,11,0.18)'}}>
+
+                  {/* Stats row */}
                   <div className="grid grid-cols-3 gap-2 text-center">
                     {[
-                      {emoji:'💵',label:'You deposit',val:initLiqUsd>0?`$${initLiqUsd.toFixed(0)} USDC`:'—'},
-                      {emoji:'🪙',label:'Pool tokens',val:initLiqUsd>0?`${(Number(dexTokens)*100/Number(supply)).toFixed(0)}% supply`:'—'},
-                      {emoji:'💰',label:'Opening price',val:initLiqUsd>0&&Number(dexTokens)>0?`$${(initLiqUsd/(Number(dexTokens)/1e18)).toFixed(8).replace(/0+$/,'')}`:'—'},
-                    ].map(({emoji,label,val})=>(
+                      {Icon:Zap,       label:'You deposit',   val:initLiqUsd>0?`$${initLiqUsd.toFixed(0)} USDC`:'—'},
+                      {Icon:Settings2, label:'Pool tokens',   val:initLiqUsd>0?`${dexPct.toFixed(0)}% supply`:'—'},
+                      {Icon:TrendingUp,label:'Opening price', val:initLiqUsd>0&&Number(dexTokens)>0?`$${(initLiqUsd/(Number(dexTokens)/1e18)).toFixed(8).replace(/0+$/,'')}`:'—'},
+                    ].map(({Icon,label,val})=>(
                       <div key={label} className="rounded-xl p-2.5"
                         style={{background:'var(--surface2)',border:'1px solid var(--border)'}}>
-                        <div className="text-lg mb-1">{emoji}</div>
+                        <div className="flex justify-center mb-1.5">
+                          <Icon size={13} style={{color:'#f59e0b'}}/>
+                        </div>
                         <div className="text-[8.5px] font-semibold uppercase tracking-widest mb-0.5"
                           style={{color:'var(--text2)'}}>{label}</div>
                         <div className="text-[11px] font-bold" style={{color:'var(--text1)'}}>{val}</div>
                       </div>
                     ))}
                   </div>
+
                   {/* USDC input */}
                   <div>
                     <Label text="Initial liquidity (USDC)" required
-                      tip="This USDC seeds your Uniswap pool. More liquidity = less price impact for buyers. Minimum 100 USDC recommended for DexScreener to pick it up."/>
+                      tip="Seeds your Uniswap pool. More liquidity means less price impact for buyers."/>
                     <div className="relative">
                       <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-sm"
                         style={{color:'var(--text3)'}}>$</span>
                       <input className={`${inCls} pl-7`} style={{...inSt,...inFocus}}
                         type="number" min={1} step={10}
-                        placeholder="e.g. 500  (minimum 100 USDC for DexScreener)"
+                        placeholder="e.g. 500"
                         value={initLiqRaw} onChange={e=>setInitLiq(e.target.value)}/>
                       <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold"
                         style={{color:'var(--text2)'}}>USDC</span>
                     </div>
-                    {/* Quick amounts */}
                     <div className="flex gap-2 mt-2">
                       {['100','500','1000','5000'].map(v=>(
                         <button key={v} type="button" onClick={()=>setInitLiq(v)}
@@ -730,45 +784,9 @@ export function LaunchPage() {
                       ))}
                     </div>
                   </div>
-                  {/* Flow diagram */}
-                  <div className="flex items-center gap-2 text-[10px] flex-wrap"
-                    style={{color:'var(--text2)'}}>
-                    <span className="px-2 py-1 rounded-lg font-bold"
-                      style={{background:'var(--surface2)',color:'var(--text1)'}}>
-                      Pay {fmtUsdc(fee)} fee + ${initLiqUsd||'?'} liquidity
-                    </span>
-                    <span style={{color:'var(--text3)'}}>→</span>
-                    <span className="px-2 py-1 rounded-lg font-bold"
-                      style={{background:'var(--surface2)',color:'var(--text1)'}}>Token launches</span>
-                    <span style={{color:'var(--text3)'}}>→</span>
-                    <span className="px-2 py-1 rounded-lg font-bold"
-                      style={{background:'rgba(34,197,94,0.08)',color:'var(--green)'}}>
-                      Uniswap pool live
-                    </span>
-                    <span style={{color:'var(--text3)'}}>→</span>
-                    <span className="px-2 py-1 rounded-lg font-bold"
-                      style={{background:'rgba(99,102,241,0.08)',color:'#818cf8'}}>
-                      DexScreener indexes
-                    </span>
-                  </div>
-                </div>
-              </motion.div>
-            ) : (
-              /* ── Normal graduation target info ─────────────────── */
-              <div className="rounded-xl px-4 py-3 flex items-center gap-3"
-                style={{background:'var(--surface2)',border:'1px solid var(--border)'}}>
-                <Trophy size={13} style={{color:'var(--gold)',flexShrink:0}}/>
-                <div>
-                  <span className="text-xs font-bold" style={{color:'var(--text1)'}}>
-                    Graduation target: <span style={{color:'var(--gold)'}}>${cfg.graduationThresholdUsd.toLocaleString()} USDC</span>
-                  </span>
-                  <p className="text-[10px] mt-0.5" style={{color:'var(--text2)'}}>
-                    When ${cfg.graduationThresholdUsd.toLocaleString()} USDC is raised on the bonding curve, this token automatically seeds a Uniswap pool on Arc and appears on DexScreener.
-                    Your admin can lower this threshold or enable instant listing from the admin panel.
-                  </p>
-                </div>
-              </div>
-            )}
+                </motion.div>
+              )}
+            </div>
           </Section>
 
           {/* ─── 3. Token Features ─── */}
@@ -911,8 +929,8 @@ export function LaunchPage() {
                         style={{background:'var(--surface3)',border:'1px solid var(--border)',color:'var(--text1)'}}/>
                     </div>
                   </div>
-                  {vestingDays&&<p className="text-[9px]" style={{color:'var(--green)'}}>
-                    ✓ {vestingCliffDays?`${vestingCliffDays}-day cliff, then `:''}linear release over {vestingDays} days. Call releaseVested() to claim unlocked tokens.
+                  {vestingDays&&<p className="text-[9px] flex items-center gap-1.5" style={{color:'var(--green)'}}>
+                    <Check size={10}/>{vestingCliffDays?`${vestingCliffDays}-day cliff, then `:''}linear release over {vestingDays} days. Call releaseVested() to claim unlocked tokens.
                   </p>}
                 </div>
               )}
