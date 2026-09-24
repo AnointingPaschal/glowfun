@@ -13,24 +13,32 @@ const ARC_MAINNET_CHAIN_ID = 5042
 const ARC_USDC             = '0x3600000000000000000000000000000000000000' as `0x${string}`
 const ARC_EXPLORER         = 'https://explorer.arc.io'
 
+export interface FactoryEntry {
+  address: `0x${string}`
+  label:   string   // "V1", "V2", "V3" or custom
+  version: number
+}
+
 export interface AppConfig {
-  FACTORY_ADDRESS:         `0x${string}`
-  USDC_ADDRESS:            `0x${string}`
-  CHAIN_ID:                number
-  EXPLORER_BASE:           string
+  FACTORY_ADDRESS:          `0x${string}`        // primary (first in list)
+  FACTORY_ADDRESSES:        FactoryEntry[]        // all factories — V1, V2, V3…
+  USDC_ADDRESS:             `0x${string}`
+  CHAIN_ID:                 number
+  EXPLORER_BASE:            string
   WALLETCONNECT_PROJECT_ID: string
-  CIRCLE_APP_ID:           string
-  R2_PUBLIC_URL:           string
-  SITE_TITLE:              string
-  SITE_LOGO:               string
-  SITE_DESCRIPTION:        string
-  TWITTER_HANDLE:          string
-  ADMIN_SECRET:            string
-  loaded:                  boolean
+  CIRCLE_APP_ID:            string
+  R2_PUBLIC_URL:            string
+  SITE_TITLE:               string
+  SITE_LOGO:                string
+  SITE_DESCRIPTION:         string
+  TWITTER_HANDLE:           string
+  ADMIN_SECRET:             string
+  loaded:                   boolean
 }
 
 const DEFAULT_CONFIG: AppConfig = {
   FACTORY_ADDRESS:          (import.meta.env.VITE_FACTORY_ADDRESS ?? '') as `0x${string}`,
+  FACTORY_ADDRESSES:        [],
   USDC_ADDRESS:             (import.meta.env.VITE_USDC_ADDRESS    ?? ARC_USDC) as `0x${string}`,
   CHAIN_ID:                 Number(import.meta.env.VITE_CHAIN_ID  ?? ARC_MAINNET_CHAIN_ID),
   EXPLORER_BASE:            ARC_EXPLORER,
@@ -65,10 +73,24 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
       if (!res.ok) return
       const data = await res.json() as Record<string, string>
 
+      // Parse FACTORY_ADDRESSES — JSON array of FactoryEntry
+      let factories: FactoryEntry[] = []
+      try {
+        const raw = data['FACTORY_ADDRESSES']
+        if (raw) factories = JSON.parse(raw) as FactoryEntry[]
+      } catch {}
+      // Backward compat: if only single FACTORY_ADDRESS set, wrap it
+      const singleAddr = (data['FACTORY_ADDRESS'] || '') as `0x${string}`
+      if (!factories.length && singleAddr) {
+        factories = [{ address: singleAddr, label: 'V1', version: 1 }]
+      }
+      const primaryAddr = (factories[0]?.address ?? singleAddr) as `0x${string}`
+
       setCfg(prev => {
         const next: AppConfig = {
           ...prev,
-          FACTORY_ADDRESS:          (data['FACTORY_ADDRESS']          || prev.FACTORY_ADDRESS)  as `0x${string}`,
+          FACTORY_ADDRESS:          primaryAddr || prev.FACTORY_ADDRESS,
+          FACTORY_ADDRESSES:        factories.length ? factories : prev.FACTORY_ADDRESSES,
           USDC_ADDRESS:             (data['USDC_ADDRESS']             || prev.USDC_ADDRESS)     as `0x${string}`,
           CHAIN_ID:                 data['CHAIN_ID'] ? Number(data['CHAIN_ID']) : prev.CHAIN_ID,
           WALLETCONNECT_PROJECT_ID: data['WALLETCONNECT_PROJECT_ID']  || prev.WALLETCONNECT_PROJECT_ID,

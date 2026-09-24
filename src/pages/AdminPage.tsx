@@ -4,14 +4,14 @@ import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchCh
 import { ConnectKitButton } from 'connectkit'
 import { toast } from 'sonner'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
-import { useConfig } from '@/context/ConfigContext'
+import { useConfig, type FactoryEntry } from '@/context/ConfigContext'
 import { formatUsdc, formatAddress } from '@/utils/format'
 import {
   Shield, Settings, Key, Database, Globe, Loader2, Check, Eye, EyeOff,
   RefreshCw, Save, ExternalLink, AlertTriangle, BarChart2, Image,
   MessageSquare, DollarSign, Zap, Lock, Unlock, Users, Crown,
   Ban, Activity, ChevronRight, Server, Sliders, Upload, X as XIcon,
-  Trophy, Settings2
+  Trophy, Settings2, Info, PlusCircle
 } from 'lucide-react'
 import { parseOnchainError } from '@/utils/errors'
 import { useTokenList } from '@/hooks/useTokenList'
@@ -297,6 +297,171 @@ function OnchainInput({ label, note, value, onChange, onSet, disabled, placehold
 /* ── Main AdminPage ─────────────────────────────────────────────────────── */
 
 /* ── Boost Tier Editor ───────────────────────────────────────────── */
+/* ── Factory Address Editor ──────────────────────────────────────────── */
+function FactoryAddressEditor({ onSave }: { onSave?: (f: FactoryEntry[]) => void }) {
+  const { FACTORY_ADDRESSES, FACTORY_ADDRESS, ADMIN_SECRET } = useConfig()
+  const [entries, setEntries] = useState<FactoryEntry[]>([])
+  const [dirty,   setDirty]   = useState(false)
+  const [saving,  setSaving]  = useState(false)
+
+  useEffect(() => {
+    if (dirty) return
+    if (FACTORY_ADDRESSES.length > 0) {
+      setEntries(FACTORY_ADDRESSES.map(e => ({ ...e })))
+    } else if (FACTORY_ADDRESS) {
+      setEntries([{ address: FACTORY_ADDRESS, label: 'V1', version: 1 }])
+    }
+  }, [FACTORY_ADDRESSES, FACTORY_ADDRESS, dirty])
+
+  const update = (i: number, field: keyof FactoryEntry, val: string | number) => {
+    setEntries(prev => prev.map((e, j) => j === i ? { ...e, [field]: val } : e))
+    setDirty(true)
+  }
+
+  const add = () => {
+    const nextV = (entries[entries.length - 1]?.version ?? 0) + 1
+    setEntries(prev => [...prev, { address: '' as `0x${string}`, label: `V${nextV}`, version: nextV }])
+    setDirty(true)
+  }
+
+  const remove = (i: number) => {
+    if (entries.length <= 1) { toast.error('Keep at least one factory'); return }
+    setEntries(prev => prev.filter((_, j) => j !== i))
+    setDirty(true)
+  }
+
+  const save = async () => {
+    const valid = entries.filter(e => e.address?.startsWith('0x') && e.address.length >= 10)
+    if (!valid.length) { toast.error('Add at least one valid address'); return }
+    setSaving(true)
+    try {
+      const res = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Token': ADMIN_SECRET ?? '' },
+        body: JSON.stringify({
+          updates: JSON.stringify({
+            FACTORY_ADDRESSES: JSON.stringify(valid),
+            FACTORY_ADDRESS:   valid[0].address,
+          }),
+        }),
+      })
+      if (res.ok) {
+        toast.success(`✓ ${valid.length} factory address${valid.length > 1 ? 'es' : ''} saved`)
+        setDirty(false)
+        onSave?.(valid)
+      } else {
+        const err = await res.json().catch(() => ({})) as any
+        toast.error(`Save failed: ${err.error ?? res.status}`)
+      }
+    } catch (e: any) { toast.error(e.message) }
+    setSaving(false)
+  }
+
+  const COLORS = ['#6366f1','#22c55e','#f59e0b','#ec4899','#14b8a6','#0ea5e9']
+
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ background:'var(--surface)', border:'1px solid var(--border)' }}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom:'1px solid var(--border)' }}>
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background:'rgba(99,102,241,0.12)' }}>
+            <Database size={15} style={{ color:'var(--accent)' }}/>
+          </div>
+          <div>
+            <p className="text-sm font-bold" style={{ color:'var(--text1)' }}>Factory Contracts</p>
+            <p className="text-[10px]" style={{ color:'var(--text3)' }}>
+              Tokens from ALL factories appear in the feed. V1, V2, V3 — add any version.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {dirty && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full" style={{ background:'rgba(245,158,11,0.12)', color:'var(--gold)' }}>Unsaved</span>}
+          <button onClick={add}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold"
+            style={{ background:'rgba(99,102,241,0.1)', color:'var(--accent)', border:'1px solid rgba(99,102,241,0.2)' }}>
+            <span className="text-base leading-none">+</span> Add factory
+          </button>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-2.5">
+        {!entries.length && (
+          <p className="text-xs text-center py-4" style={{ color:'var(--text2)' }}>
+            No factories. Click "+ Add factory" to add your first contract address.
+          </p>
+        )}
+
+        {entries.map((entry, i) => {
+          const color   = COLORS[i % COLORS.length]
+          const primary = i === 0
+          return (
+            <div key={i} className="rounded-xl overflow-hidden"
+              style={{ border:`1px solid ${primary ? color+'35' : 'var(--border)'}`, background:'var(--surface2)' }}>
+              {/* Label row */}
+              <div className="flex items-center gap-2.5 px-3 pt-3 pb-2">
+                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background:color }}/>
+                <input
+                  value={entry.label}
+                  onChange={e => update(i, 'label', e.target.value)}
+                  placeholder={`Version ${i + 1}`}
+                  maxLength={30}
+                  className="flex-1 bg-transparent outline-none text-xs font-bold truncate min-w-0"
+                  style={{ color }}
+                />
+                {primary && (
+                  <span className="text-[8px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+                    style={{ background:`${color}18`, color, border:`1px solid ${color}30` }}>
+                    PRIMARY
+                  </span>
+                )}
+                <button onClick={() => remove(i)} disabled={entries.length <= 1}
+                  className="w-6 h-6 flex items-center justify-center rounded-lg flex-shrink-0 disabled:opacity-20"
+                  style={{ background:'rgba(239,68,68,0.08)', color:'var(--red)', border:'none', cursor:'pointer' }}>
+                  <XIcon size={10}/>
+                </button>
+              </div>
+              {/* Address input */}
+              <div className="px-3 pb-3">
+                <input
+                  value={entry.address}
+                  onChange={e => update(i, 'address', e.target.value as `0x${string}`)}
+                  placeholder="0x contract address"
+                  className="w-full px-3 py-2.5 rounded-lg text-[11px] font-mono outline-none"
+                  style={{
+                    background:'var(--surface3)',
+                    border:`1px solid ${entry.address?.startsWith('0x') ? color+'25' : 'var(--border)'}`,
+                    color:'var(--text1)',
+                  }}
+                />
+              </div>
+            </div>
+          )
+        })}
+
+        {entries.length > 1 && (
+          <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl text-[10px]"
+            style={{ background:'rgba(99,102,241,0.05)', border:'1px solid rgba(99,102,241,0.12)', color:'var(--text2)' }}>
+            <Info size={11} style={{ color:'var(--accent)', flexShrink:0, marginTop:1 }}/>
+            <span>
+              Feed shows tokens from <strong style={{ color:'var(--text1)' }}>all factories</strong> combined.
+              New launches use the <strong style={{ color:'var(--accent)' }}>PRIMARY</strong> factory.
+              Buy/sell routes automatically to the correct factory per token.
+            </span>
+          </div>
+        )}
+
+        <button onClick={save} disabled={saving || !dirty}
+          className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40"
+          style={{ background:dirty?'linear-gradient(135deg,#6366f1,#8b5cf6)':'var(--surface3)', color:dirty?'#fff':'var(--text2)' }}>
+          {saving
+            ? <><Loader2 size={14} className="animate-spin"/>Saving…</>
+            : <><Save size={14}/>Save {entries.length} factory address{entries.length !== 1 ? 'es' : ''}</>}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function BoostTierEditor({ chainId, factoryAddress, adminBusy, adminCall, wrong, switchChain }: {
   chainId:number; factoryAddress:`0x${string}`|null;
   adminBusy:boolean; adminCall:(fn:string,args:any[])=>void;
@@ -850,7 +1015,18 @@ export function AdminPage() {
                       />
                     </div>
                   )}
-                  {filteredKeys.map(({ key, label, placeholder, secret }) => (
+                  {/* Factory address editor — shown in Contract + All tabs */}
+                  {(cat === 'contract' || cat === 'all') && (
+                    <FactoryAddressEditor
+                      onSave={factories => {
+                        setEditVals(v => ({ ...v, FACTORY_ADDRESS: factories[0]?.address ?? '' }))
+                      }}
+                    />
+                  )}
+
+                  {filteredKeys
+                    .filter(f => !(f.key === 'FACTORY_ADDRESS' && cat === 'contract'))
+                    .map(({ key, label, placeholder, secret }) => (
                     <FieldRow
                       key={key}
                       label={label}
