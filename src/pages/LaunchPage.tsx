@@ -60,6 +60,8 @@ interface Form {
   twitter: string; telegram: string; website: string; discord: string
 }
 const INIT: Form = { name:'', symbol:'', description:'', imageUri:'', bannerUri:'', twitter:'', telegram:'', website:'', discord:'' }
+
+const ZERO_ADDR = '0x0000000000000000000000000000000000000000' as `0x${string}`
 type Step = 'form'|'approving'|'launching'|'done'
 
 /* ─── Donut SVG ───────────────────────────────────────────────────── */
@@ -184,6 +186,15 @@ export function LaunchPage() {
   const [allocMode, setAllocMode] = useState('community')
   const [curveBps,  setCurve]     = useState(8000)
   const [creatorBps,setCr]        = useState(0)
+
+  // V3 Feature toggles
+  const [mintable,    setMintable]    = useState(false)
+  const [burnable,    setBurnable]    = useState(false)
+  const [pausable,    setPausable]    = useState(false)
+  const [hasBlacklist,setBlacklist]   = useState(false)
+  const [pairToken,   setPairToken]   = useState<string>('')  // '' = default (USDC)
+  const [vestingDays, setVestingDays] = useState('')   // vesting duration in days
+  const [vestingCliffDays, setVCliff] = useState('')   // cliff in days
 
   /* tx */
   const [approveTx, setAppTx] = useState<`0x${string}`|undefined>()
@@ -314,8 +325,13 @@ export function LaunchPage() {
         twitter:form.twitter, telegram:form.telegram, website:form.website,
         totalSupply:supply, curveAllocationBps:BigInt(curveBps),
         creatorAllocationBps:BigInt(creatorBps),
-        graduationThresholdUsdc: grad,           // 0 = instant, or per-admin setting
+        graduationThresholdUsdc: grad,
         initialLiquidityUsdc:    instantMode ? initLiqUsdc : 0n,
+        pairToken:  (pairToken && pairToken !== '' && pairToken !== 'EURC') ? pairToken as `0x${string}` : ZERO_ADDR,
+        mintable,   burnable,   pausable,   hasBlacklist,
+        maxSupply:  mintable ? supply * 2n : 0n,   // allow up to 2x if mintable
+        vestingDuration: vestingDays ? BigInt(Math.round(parseFloat(vestingDays) * 86400)) : 0n,
+        vestingCliff:    vestingCliffDays ? BigInt(Math.round(parseFloat(vestingCliffDays) * 86400)) : 0n,
       }],
       chainId:CHAIN_ID as any,
     } as any, {
@@ -756,7 +772,97 @@ export function LaunchPage() {
             )}
           </Section>
 
-          {/* ─── 3. Advanced ─── */}
+          {/* ─── 3. Token Features ─── */}
+          <Section title="Token Features" icon={Zap} iconColor="#818cf8" step={3}
+            subtitle="Optional capabilities baked into your token's bytecode at deploy time">
+            <div className="space-y-4">
+              {/* Feature toggles */}
+              <div className="grid grid-cols-2 gap-2.5">
+                {([
+                  { key:'mintable',    label:'Mintable',    icon:'🪙', desc:'Owner can mint more tokens in the future', val:mintable,    set:setMintable,    risk:'med' },
+                  { key:'burnable',    label:'Burnable',    icon:'🔥', desc:'Anyone can burn their own tokens to reduce supply', val:burnable,    set:setBurnable,    risk:'low' },
+                  { key:'pausable',    label:'Pausable',    icon:'⏸️', desc:'Creator can pause all transfers in an emergency', val:pausable,    set:setPausable,    risk:'low' },
+                  { key:'hasBlacklist',label:'Blacklist',   icon:'🚫', desc:'Creator can block wallets (compliance)', val:hasBlacklist, set:setBlacklist,   risk:'med' },
+                ] as const).map(({label,icon,desc,val,set,risk})=>(
+                  <button key={label} type="button" onClick={()=>set((v:boolean)=>!v)}
+                    className="p-3 rounded-xl text-left transition-all"
+                    style={{
+                      background:val?'rgba(99,102,241,0.1)':'var(--surface2)',
+                      border:`1px solid ${val?'rgba(99,102,241,0.3)':'var(--border)'}`,
+                    }}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span>{icon}</span>
+                        <span className="text-sm font-bold" style={{color:val?'#818cf8':'var(--text1)'}}>{label}</span>
+                      </div>
+                      <div className="w-8 h-4 rounded-full transition-all relative" style={{background:val?'#6366f1':'var(--surface3)'}}>
+                        <div className="w-3 h-3 rounded-full bg-white absolute top-0.5 transition-all" style={{left:val?'17px':'3px'}}/>
+                      </div>
+                    </div>
+                    <p className="text-[9px] leading-relaxed" style={{color:'var(--text2)'}}>{desc}</p>
+                    {val&&risk==='med'&&<p className="text-[8px] mt-1 font-bold" style={{color:'var(--gold)'}}>⚠ Shown as warning badge on token page</p>}
+                  </button>
+                ))}
+              </div>
+
+              {/* Pair token selector */}
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest block mb-2" style={{color:'var(--text2)'}}>Pair Token</label>
+                <div className="flex gap-2">
+                  {[
+                    {label:'USDC', addr:'', icon:'💵', note:'Default · Circle USD on Arc'},
+                    {label:'EURC', addr:'EURC', icon:'💶', note:'Circle EUR on Arc'},
+                  ].map(({label,addr,icon,note})=>(
+                    <button key={label} type="button" onClick={()=>setPairToken(addr as any)}
+                      className="flex-1 p-3 rounded-xl text-left transition-all"
+                      style={{
+                        background:pairToken===addr?'rgba(99,102,241,0.1)':'var(--surface2)',
+                        border:`1px solid ${pairToken===addr?'rgba(99,102,241,0.3)':'var(--border)'}`,
+                      }}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-lg">{icon}</span>
+                        <span className="font-bold" style={{color:pairToken===addr?'#818cf8':'var(--text1)'}}>{label}</span>
+                      </div>
+                      <p className="text-[9px]" style={{color:'var(--text2)'}}>{note}</p>
+                    </button>
+                  ))}
+                </div>
+                {pairToken==='EURC'&&<p className="text-[9px] mt-1.5 px-1" style={{color:'var(--gold)'}}>⚠ Ensure EURC address is configured in Admin → add accepted pair token before launching</p>}
+              </div>
+
+              {/* Vesting for creator tokens */}
+              {creatorBps > 0 && (
+                <div className="p-3 rounded-xl space-y-3" style={{background:'var(--surface2)',border:'1px solid var(--border)'}}>
+                  <p className="text-[10px] font-bold uppercase tracking-widest" style={{color:'var(--text2)'}}>Creator Token Vesting</p>
+                  <p className="text-[10px]" style={{color:'var(--text2)'}}>
+                    You have {(creatorBps/100).toFixed(0)}% creator allocation ({(Number(supply)*creatorBps/1000000/1e18).toLocaleString()} tokens).
+                    Set a linear vesting schedule instead of a binary lock.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="text-[9px] font-bold uppercase tracking-widest block mb-1.5" style={{color:'var(--text2)'}}>Vesting Duration (days)</label>
+                      <input type="number" min={0} step={1} placeholder="e.g. 365 (1 year)"
+                        value={vestingDays} onChange={e=>setVestingDays(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                        style={{background:'var(--surface3)',border:'1px solid var(--border)',color:'var(--text1)'}}/>
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-bold uppercase tracking-widest block mb-1.5" style={{color:'var(--text2)'}}>Cliff (days)</label>
+                      <input type="number" min={0} step={1} placeholder="e.g. 90 (3 months)"
+                        value={vestingCliffDays} onChange={e=>setVCliff(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                        style={{background:'var(--surface3)',border:'1px solid var(--border)',color:'var(--text1)'}}/>
+                    </div>
+                  </div>
+                  {vestingDays&&<p className="text-[9px]" style={{color:'var(--green)'}}>
+                    ✓ {vestingCliffDays?`${vestingCliffDays}-day cliff, then `:''}linear release over {vestingDays} days. Call releaseVested() to claim unlocked tokens.
+                  </p>}
+                </div>
+              )}
+            </div>
+          </Section>
+
+          {/* ─── 4. Advanced ─── */}
           <Section title="Advanced settings" icon={Settings2} iconColor="#f59e0b"
             badge="Optional" step={3}
             subtitle="Token allocation split — how supply is distributed across curve, DEX, and creator">

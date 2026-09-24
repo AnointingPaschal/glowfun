@@ -45,37 +45,154 @@ contract GlowToken is ERC20 {
     error ZeroAddress();
     error NotFactory();
     error TransferLocked();
+    error MintDisabled();
+    error BurnDisabled();
+    error Blacklisted();
+    error PauseDisabled();
 
     address public immutable factory;
     address public immutable creator;
     uint256 public immutable createdAt;
+    uint256 public immutable maxSupply;       // 0 = uncapped (if mintable)
+
+    // Feature flags — set once at deployment, immutable
+    bool public immutable mintable;
+    bool public immutable burnable;
+    bool public immutable pausable;
+    bool public immutable hasBlacklist;
 
     string public description;
     string public imageUri;
     string public twitter;
     string public telegram;
     string public website;
-    bool   public locked;
+    bool   public locked;          // factory transfer lock during bonding
+    bool   public tokenPaused;     // creator-controlled pause (if pausable)
+
+    // Blacklist (if hasBlacklist)
+    mapping(address => bool) public blacklisted;
+
+    // Vesting for creator tokens
+    uint256 public vestingStart;
+    uint256 public vestingDuration;   // 0 = no vesting (locked binary)
+    uint256 public vestingCliff;      // seconds before any tokens release
+    uint256 public vestingTotal;      // total tokens under vesting
+    uint256 public vestingReleased;   // already released
+
+    struct TokenFeatures {
+        bool mintable;
+        bool burnable;
+        bool pausable;
+        bool hasBlacklist;
+        uint256 maxSupply;       // 0 = totalSupply (fixed), >0 = cap for future mints
+        uint256 vestingDuration; // creator token vesting duration in seconds (0 = binary lock)
+        uint256 vestingCliff;    // seconds before any vesting release
+    }
 
     constructor(
         TokenMetadata memory meta,
+        TokenFeatures memory features,
         address creator_,
         address factory_,
-        uint256 totalSupply_
+        uint256 totalSupply_,
+        uint256 vestingAmount_  // creator tokens subject to vesting
     ) ERC20(meta.name, meta.symbol) {
         if (creator_ == address(0) || factory_ == address(0)) revert ZeroAddress();
-        creator     = creator_;
-        factory     = factory_;
-        createdAt   = block.timestamp;
-        description = meta.description;
-        imageUri    = meta.imageUri;
-        twitter     = meta.twitter;
-        telegram    = meta.telegram;
-        website     = meta.website;
+        creator      = creator_;
+        factory      = factory_;
+        createdAt    = block.timestamp;
+        description  = meta.description;
+        imageUri     = meta.imageUri;
+        twitter      = meta.twitter;
+        telegram     = meta.telegram;
+        website      = meta.website;
+
+        // Feature flags
+        mintable     = features.mintable;
+        burnable     = features.burnable;
+        pausable     = features.pausable;
+        hasBlacklist = features.hasBlacklist;
+        maxSupply    = features.maxSupply > 0 ? features.maxSupply : totalSupply_;
+
+        // Vesting for creator tokens
+        if (vestingAmount_ > 0 && features.vestingDuration > 0) {
+            vestingTotal    = vestingAmount_;
+            vestingDuration = features.vestingDuration;
+            vestingCliff    = features.vestingCliff;
+            vestingStart    = block.timestamp;
+        }
+
         _mint(factory_, totalSupply_);
     }
 
-    event MetadataUpdated(address indexed token, string imageUri, string description);
+    // ── Events ──────────────────────────────────────────────────────────────
+    event TokenMinted(address indexed to, uint256 amount, uint256 newSupply);
+    event TokenBurned(address indexed from, uint256 amount, uint256 newSupply);
+    event TokenPauseSet(bool paused);
+    event AddressBlacklisted(address indexed account, bool status);
+    event VestingReleased(address indexed to, uint256 amount);
+
+    // ── Mint (owner/factory only, if mintable) ───────────────────────────────
+    function mint(address to, uint256 amount) external {
+        if (!mintable) revert MintDisabled();
+        if (msg.sender != creator && msg.sender != factory) revert NotFactory();
+        if (maxSupply > 0 && totalSupply() + amount > maxSupply) revert InvalidAmount();
+        _mint(to, amount);
+        emit TokenMinted(to, amount, totalSupply());
+    }
+
+    // ── Burn (self or approved, if burnable) ─────────────────────────────────
+    function burn(uint256 amount) external {
+        if (!burnable) revert BurnDisabled();
+        _burn(msg.sender, amount);
+        emit TokenBurned(msg.sender, amount, totalSupply());
+    }
+    function burnFrom(address account, uint256 amount) external {
+        if (!burnable) revert BurnDisabled();
+        _spendAllowance(account, msg.sender, amount);
+        _burn(account, amount);
+        emit TokenBurned(account, amount, totalSupply());
+    }
+
+    // ── Pause (creator only, if pausable) ────────────────────────────────────
+    function setTokenPaused(bool _paused) external {
+        if (!pausable) revert PauseDisabled();
+        if (msg.sender != creator && msg.sender != factory) revert NotFactory();
+        tokenPaused = _paused;
+        emit TokenPauseSet(_paused);
+    }
+
+    // ── Blacklist (creator only, if hasBlacklist) ────────────────────────────
+    function setBlacklisted(address account, bool status) external {
+        if (!hasBlacklist) revert BurnDisabled();
+        if (msg.sender != creator && msg.sender != factory) revert NotFactory();
+        blacklisted[account] = status;
+        emit AddressBlacklisted(account, status);
+    }
+
+    // ── Vesting release (creator claims unlocked portion) ────────────────────
+    function releaseVested() external {
+        if (msg.sender != creator) revert NotFactory();
+        uint256 releasable = vestedAmount() - vestingReleased;
+        if (releasable == 0) return;
+        vestingReleased += releasable;
+        _transfer(factory, creator, releasable); // factory holds vested tokens
+        emit VestingReleased(creator, releasable);
+    }
+
+    function vestedAmount() public view returns (uint256) {
+        if (vestingTotal == 0 || vestingDuration == 0) return vestingTotal;
+        if (block.timestamp < vestingStart + vestingCliff) return 0;
+        uint256 elapsed = block.timestamp - vestingStart;
+        if (elapsed >= vestingDuration) return vestingTotal;
+        return (vestingTotal * elapsed) / vestingDuration;
+    }
+
+    function vestedClaimable() external view returns (uint256) {
+        return vestedAmount() - vestingReleased;
+    }
+
+        event MetadataUpdated(address indexed token, string imageUri, string description);
     event URIUpdated(string contractURI);
 
     function setLocked(bool _locked) external {
@@ -118,6 +235,7 @@ contract GlowToken is ERC20 {
     }
 
     function _update(address from, address to, uint256 value) internal override {
+        // Factory transfer lock during bonding curve phase
         if (locked
             && from != address(0)
             && to   != address(0)
@@ -126,6 +244,12 @@ contract GlowToken is ERC20 {
             && from != creator
             && to   != creator
         ) revert TransferLocked();
+        // Creator pause (if feature enabled)
+        if (tokenPaused && from != address(0) && to != address(0)) revert TransferLocked();
+        // Compliance blacklist (if feature enabled)
+        if (hasBlacklist) {
+            if (blacklisted[from] || blacklisted[to]) revert Blacklisted();
+        }
         super._update(from, to, value);
     }
 
@@ -143,6 +267,32 @@ contract GlowToken is ERC20 {
     function _hexChar(uint8 v) internal pure returns (bytes1) {
         return v < 10 ? bytes1(v + 48) : bytes1(v + 87);
     }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Interfaces for Uniswap V3 auto-pool creation
+// ─────────────────────────────────────────────────────────────────────────────
+interface IUniswapV3Factory {
+    function createPool(address tokenA, address tokenB, uint24 fee) external returns (address pool);
+    function getPool(address tokenA, address tokenB, uint24 fee) external view returns (address pool);
+}
+
+interface IUniswapV3Pool {
+    function initialize(uint160 sqrtPriceX96) external;
+    function token0() external view returns (address);
+}
+
+interface INonfungiblePositionManager {
+    struct MintParams {
+        address token0; address token1; uint24 fee;
+        int24 tickLower; int24 tickUpper;
+        uint256 amount0Desired; uint256 amount1Desired;
+        uint256 amount0Min; uint256 amount1Min;
+        address recipient; uint256 deadline;
+    }
+    function mint(MintParams calldata params) external returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1);
+    function createAndInitializePoolIfNecessary(address token0, address token1, uint24 fee, uint160 sqrtPriceX96) external payable returns (address pool);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -188,6 +338,7 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         uint256 graduationTokens;
         uint256 creatorTokens;
         uint256 totalSupply;
+        address pairToken;                 // USDC or EURC address for this token
         uint256 tokenGraduationThreshold;  // 0 = instant, else USDC target
         bool    creatorTokensLocked;
         uint256 creatorLockExpiry;
@@ -209,6 +360,16 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         uint256 graduationThresholdUsdc;
         /// @dev USDC sent by creator at launch to seed Uniswap instantly (only when threshold==0).
         uint256 initialLiquidityUsdc;
+        /// @dev Pair token: address(0) = use factory default (USDC). Can set EURC address.
+        address pairToken;
+        /// @dev Feature flags for the GlowToken
+        bool mintable;
+        bool burnable;
+        bool pausable;
+        bool hasBlacklist;
+        uint256 maxSupply;           // 0 = fixed at totalSupply (no future mints)
+        uint256 vestingDuration;     // seconds for creator token vesting (0 = binary lock)
+        uint256 vestingCliff;        // seconds before any vesting release
     }
 
     struct LaunchAllocations {
@@ -250,6 +411,12 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         string  label;     // display label e.g. "25%"
     }
     BoostTier[] public boostTiers;  // up to 10 tiers, set by admin
+    // ── IDO / Auto-pool config ──────────────────────────────────────────────
+    address public uniswapV3Factory;         // 0x1F98431c8aD98523631AE4a59f267346ea31F984 on Arc
+    address public nonfungiblePositionMgr;   // Uniswap V3 NonfungiblePositionManager on Arc
+    uint24  public defaultPoolFee;           // Uniswap fee tier: 500 / 3000 / 10000
+    mapping(address => bool) public acceptedPairTokens;  // USDC=true, EURC=true, others=false
+
     uint256 public initialVirtualUsdcReserves;  // seed USDC reserves for price discovery (default 30K)
     uint256 public initialVirtualTokenReserves; // seed token reserves (default ~1.073B)
 
@@ -269,6 +436,11 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
     mapping(address => uint256)            public pendingGraduationUsdc;
     mapping(address => uint256)            public pendingGraduationTokens;
     mapping(address => address)            public pendingGraduationCreator;
+    // LP NFT lock (Uniswap V3 position NFT held by factory after auto-pool creation)
+    mapping(address => uint256)            public pendingLpNftId;
+    mapping(address => address)            public pendingLpNftOwner;
+    mapping(address => uint256)            public pendingLpUnlockTime;
+    uint256 public lpLockDuration;  // seconds LP is locked (default 30 days)
     mapping(address => uint256)            public pendingCreatorGraduationUsdc;
     // Boost graduation tracking
     mapping(address => uint256)            public totalBoostedUsdc;  // per token
@@ -293,6 +465,8 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
     event FeeRecipientUpdated(address indexed newRecipient);
     event GraduationRecipientProposed(address indexed proposed);
     event GraduationRecipientUpdated(address indexed newRecipient);
+    event UniswapPoolCreated(address indexed token, address token0, address token1, uint24 fee, uint256 lpNftId);
+    event LpPositionClaimed(address indexed token, address indexed to, uint256 nftId);
     event GraduationBoosted(address indexed token, address indexed booster, uint256 usdcSent, uint256 usdcAdded, uint256 feeTaken, uint256 tierIndex, uint256 boostBps);
     event BoostTiersUpdated();
     event TokenThresholdUpdated(address indexed token, uint256 oldThreshold, uint256 newThreshold);
@@ -332,6 +506,15 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         buyCooldown              = 30;          // 30-second cooldown
         creatorLockDuration      = 7 days;      // 7-day creator lock
         perTokenGraduationFeeBps = 100;         // 1% platform fee on graduation
+        lpLockDuration = 30 days;  // LP NFT locked 30 days by default
+        // Uniswap V3 on Arc Mainnet
+        uniswapV3Factory       = 0x1F98431c8aD98523631AE4a59f267346ea31F984;
+        nonfungiblePositionMgr = 0xC36442b4a4522E871399CD717aBDD847Ab11FE88;
+        defaultPoolFee         = 3000; // 0.3% fee tier
+
+        // Accept USDC as pair token by default
+        acceptedPairTokens[_usdc] = true;
+
         // Default boost tiers: 10% (1% fee), 25% (2%), 50% (3%), 100% (5%)
         boostTiers.push(BoostTier(1000, 100,  "10%"));
         boostTiers.push(BoostTier(2500, 200,  "25%"));
@@ -367,12 +550,15 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         if (creationFee > 0) usdc.safeTransferFrom(msg.sender, feeRecipient, creationFee);
         if (instantMode)     usdc.safeTransferFrom(msg.sender, address(this), p.initialLiquidityUsdc);
 
-        token = _deployToken(p, a.supply);
+        address pair = _resolvePairToken(p.pairToken);
+
+        token = _deployToken(p, a.supply, pair);
         if (isLaunchedToken[token]) revert AlreadyLaunched();
         isLaunchedToken[token] = true;
 
         TokenState storage state = tokenStates[token];
         state.creator                  = msg.sender;
+        state.pairToken                = pair;
         state.virtualUsdcReserves      = initialVirtualUsdcReserves;
         state.virtualTokenReserves     = initialVirtualTokenReserves;
         state.createdAt                = block.timestamp;
@@ -382,12 +568,20 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         state.totalSupply              = a.supply;
         state.tokenGraduationThreshold = resolvedThreshold;
 
+        // Creator allocation: vesting or binary lock
         if (a.creatorTokens > 0) {
-            IERC20(token).safeTransfer(msg.sender, a.creatorTokens);
-            if (creatorLockDuration > 0) {
+            if (p.vestingDuration > 0) {
+                // Tokens stay in factory; creator calls releaseVested() over time
+                // (GlowToken tracks vesting internally)
                 state.creatorTokensLocked = true;
-                state.creatorLockExpiry   = block.timestamp + creatorLockDuration;
                 GlowToken(token).setLocked(true);
+            } else {
+                IERC20(token).safeTransfer(msg.sender, a.creatorTokens);
+                if (creatorLockDuration > 0) {
+                    state.creatorTokensLocked = true;
+                    state.creatorLockExpiry   = block.timestamp + creatorLockDuration;
+                    GlowToken(token).setLocked(true);
+                }
             }
         }
 
@@ -433,8 +627,8 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         }
         f.feeToRecipient = f.snipeTax + (f.protocolFee - f.referralFee);
 
-        usdc.safeTransferFrom(msg.sender, address(this), usdcIn);
-        if (f.feeToRecipient > 0) usdc.safeTransfer(feeRecipient, f.feeToRecipient);
+        IERC20(state.pairToken).safeTransferFrom(msg.sender, address(this), usdcIn);
+        if (f.feeToRecipient > 0) IERC20(state.pairToken).safeTransfer(feeRecipient, f.feeToRecipient);
         IERC20(token).safeTransfer(msg.sender, tokensOut);
 
         emit TokensBought(token, msg.sender, referrer, usdcIn, tokensOut,
@@ -472,8 +666,8 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         state.realTokensSold       -= tokensIn;
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), tokensIn);
-        if (fee > 0) usdc.safeTransfer(feeRecipient, fee);
-        usdc.safeTransfer(msg.sender, usdcOut);
+        if (fee > 0) IERC20(state.pairToken).safeTransfer(feeRecipient, fee);
+        IERC20(state.pairToken).safeTransfer(msg.sender, usdcOut);
 
         emit TokensSold(token, msg.sender, tokensIn, usdcOut,
             _priceFromReserves(state.virtualUsdcReserves, state.virtualTokenReserves),
@@ -492,7 +686,8 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         if (u == 0 && t == 0) revert NothingToClaim();
         pendingGraduationUsdc[token]   = 0;
         pendingGraduationTokens[token] = 0;
-        if (u > 0) usdc.safeTransfer(graduationRecipient, u);
+        IERC20 pair = IERC20(tokenStates[token].pairToken == address(0) ? address(usdc) : tokenStates[token].pairToken);
+        if (u > 0) pair.safeTransfer(graduationRecipient, u);
         if (t > 0) IERC20(token).safeTransfer(graduationRecipient, t);
         emit GraduationClaimed(token, graduationRecipient, u, t);
     }
@@ -778,6 +973,34 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
 
     /// @notice Set initial virtual USDC reserves for new launches (affects starting price).
     ///         Default 30,000e6 = $30,000 virtual USDC seed.
+    /// @notice Creator claims their locked LP NFT after lpLockDuration expires
+    function claimLpPosition(address token) external nonReentrant {
+        if (!isLaunchedToken[token]) revert NotLaunched();
+        if (msg.sender != pendingLpNftOwner[token]) revert Unauthorized();
+        if (block.timestamp < pendingLpUnlockTime[token]) revert PauseNotExpired();
+        uint256 nftId = pendingLpNftId[token];
+        if (nftId == 0) revert NothingToClaim();
+        pendingLpNftId[token] = 0;
+        // Transfer LP NFT to creator
+        (bool ok,) = nonfungiblePositionMgr.call(
+            abi.encodeWithSignature("transferFrom(address,address,uint256)", address(this), msg.sender, nftId)
+        );
+        if (!ok) revert InvalidAmount();
+        emit LpPositionClaimed(token, msg.sender, nftId);
+    }
+
+    function setUniswapV3Factory(address addr)         external onlyOwner { uniswapV3Factory = addr; emit ConfigUpdated("uniswapV3Factory", 0); }
+    function setNonfungiblePositionMgr(address addr)    external onlyOwner { nonfungiblePositionMgr = addr; emit ConfigUpdated("nonfungiblePositionMgr", 0); }
+    function setDefaultPoolFee(uint24 fee)              external onlyOwner { defaultPoolFee = fee; emit ConfigUpdated("defaultPoolFee", fee); }
+    function setLpLockDuration(uint256 seconds_)        external onlyOwner { lpLockDuration = seconds_; emit ConfigUpdated("lpLockDuration", seconds_); }
+    function addAcceptedPairToken(address token, bool ok) external onlyOwner {
+        try IERC20Metadata(token).decimals() returns (uint8 d) {
+            if (d != 6) revert InvalidToken();
+        } catch { revert InvalidToken(); }
+        acceptedPairTokens[token] = ok;
+        emit ConfigUpdated("pairToken", ok ? 1 : 0);
+    }
+
     function setInitialVirtualUsdcReserves(uint256 value) external onlyOwner {
         if (value == 0) revert InvalidAmount();
         initialVirtualUsdcReserves = value;
@@ -971,27 +1194,121 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         if (state.graduated) revert TokenAlreadyGraduated();
         state.graduated = true;
 
-        uint256 pooled      = state.realUsdcRaised;
+        uint256 pooled       = state.realUsdcRaised;
         state.realUsdcRaised = 0;
 
-        uint256 platFee     = (pooled * perTokenGraduationFeeBps) / BPS_DENOMINATOR;
-        uint256 creatorBonus= ((pooled - platFee) * creatorGraduationFeeBps) / BPS_DENOMINATOR;
-        uint256 dexUsdc     = pooled - platFee - creatorBonus;
+        uint256 platFee      = (pooled * perTokenGraduationFeeBps) / BPS_DENOMINATOR;
+        uint256 creatorBonus = ((pooled - platFee) * creatorGraduationFeeBps) / BPS_DENOMINATOR;
+        uint256 dexUsdc      = pooled - platFee - creatorBonus;
+        uint256 dexTokens    = IERC20(token).balanceOf(address(this)) - state.creatorTokens;
 
-        if (platFee > 0) usdc.safeTransfer(feeRecipient, platFee);
+        if (platFee > 0) IERC20(state.pairToken).safeTransfer(feeRecipient, platFee);
 
-        pendingGraduationUsdc[token]        = dexUsdc;
         pendingCreatorGraduationUsdc[token] = creatorBonus;
         pendingGraduationCreator[token]     = state.creator;
-        pendingGraduationTokens[token]      = IERC20(token).balanceOf(address(this));
 
-        emit TokenGraduated(token, state.creator, pooled, pendingGraduationTokens[token], block.timestamp);
+        emit TokenGraduated(token, state.creator, pooled, dexTokens, block.timestamp);
+
+        // Attempt auto-creation of Uniswap V3 pool
+        if (uniswapV3Factory != address(0) && nonfungiblePositionMgr != address(0) && dexUsdc > 0 && dexTokens > 0) {
+            _createUniswapPool(token, state.pairToken, dexTokens, dexUsdc);
+        } else {
+            // Fallback: put into pending for manual claim
+            pendingGraduationUsdc[token]   = dexUsdc;
+            pendingGraduationTokens[token] = dexTokens;
+        }
 
         if (pooled > kingOfHillRaised) {
             kingOfHill = token;
             kingOfHillRaised = pooled;
             emit KingOfHill(token, pooled, block.timestamp);
         }
+    }
+
+    /// @notice Creates Uniswap V3 pool, initializes price, and seeds initial liquidity.
+    ///         Called automatically on graduation when Uniswap addresses are configured.
+    function _createUniswapPool(
+        address token,
+        address pairToken,
+        uint256 tokenAmount,
+        uint256 pairAmount
+    ) internal {
+        // Approve both tokens to NonfungiblePositionManager
+        IERC20(token).approve(nonfungiblePositionMgr, tokenAmount);
+        IERC20(pairToken).approve(nonfungiblePositionMgr, pairAmount);
+
+        // Determine token ordering (Uniswap requires token0 < token1)
+        (address t0, address t1, uint256 a0, uint256 a1) = token < pairToken
+            ? (token, pairToken, tokenAmount, pairAmount)   // token is token0
+            : (pairToken, token, pairAmount, tokenAmount);  // pairToken is token0
+
+        // Compute sqrtPriceX96 for initial price
+        // price = a1/a0 (how much t1 per t0, both raw amounts)
+        // sqrtPriceX96 = sqrt(a1/a0) * 2^96
+        // Using integer math: sqrtPriceX96 = sqrt(a1 * 2^192 / a0)
+        uint160 sqrtPriceX96 = _computeSqrtPriceX96(a0, a1);
+
+        // Create + initialize pool (idempotent if pool already exists)
+        try INonfungiblePositionManager(nonfungiblePositionMgr)
+            .createAndInitializePoolIfNecessary(t0, t1, defaultPoolFee, sqrtPriceX96)
+        returns (address /*pool*/) {
+            // Seed initial liquidity — use full-range position
+            INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
+                token0:          t0,
+                token1:          t1,
+                fee:             defaultPoolFee,
+                tickLower:       -887200,  // near min tick (full range for 0.3% fee)
+                tickUpper:        887200,  // near max tick
+                amount0Desired:  a0,
+                amount1Desired:  a1,
+                amount0Min:      0,
+                amount1Min:      0,
+                recipient:       address(this),  // factory holds LP NFT (locked)
+                deadline:        block.timestamp + 300
+            });
+            try INonfungiblePositionManager(nonfungiblePositionMgr).mint(params)
+                returns (uint256 tokenId, uint128, uint256, uint256) {
+                // LP NFT held by factory — creator can claim after lpLockDuration
+                pendingLpNftId[token]      = tokenId;
+                pendingLpNftOwner[token]   = tokenStates[token].creator;
+                pendingLpUnlockTime[token] = block.timestamp + lpLockDuration;
+                emit UniswapPoolCreated(token, t0, t1, defaultPoolFee, tokenId);
+            } catch {
+                // Pool seeding failed — fall back to manual claim
+                pendingGraduationUsdc[token]   = pairAmount;
+                pendingGraduationTokens[token] = tokenAmount;
+            }
+        } catch {
+            pendingGraduationUsdc[token]   = pairAmount;
+            pendingGraduationTokens[token] = tokenAmount;
+        }
+
+        // Remove unused approvals
+        IERC20(token).approve(nonfungiblePositionMgr, 0);
+        IERC20(pairToken).approve(nonfungiblePositionMgr, 0);
+    }
+
+    /// @notice Babylonian sqrt for computing sqrtPriceX96
+    function _computeSqrtPriceX96(uint256 amount0, uint256 amount1) internal pure returns (uint160) {
+        if (amount0 == 0 || amount1 == 0) return 0;
+        // ratioX192 = (amount1 / amount0) * 2^192
+        // sqrtPriceX96 = sqrt(ratioX192)
+        uint256 ratioX192 = (amount1 << 128) / amount0; // intermediate precision
+        ratioX192 = ratioX192 << 64;                    // full 2^192 precision
+        return uint160(_sqrt(ratioX192));
+    }
+
+    function _sqrt(uint256 x) internal pure returns (uint256 y) {
+        if (x == 0) return 0;
+        uint256 z = (x + 1) / 2;
+        y = x;
+        while (z < y) { y = z; z = (x / z + z) / 2; }
+    }
+
+    function _resolvePairToken(address requested) internal view returns (address) {
+        if (requested == address(0)) return address(usdc); // default = USDC
+        if (!acceptedPairTokens[requested]) revert InvalidToken();
+        return requested;
     }
 
     function _validateAndCompute(LaunchParams calldata p) internal pure returns (LaunchAllocations memory a) {
@@ -1007,10 +1324,28 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         a.graduationTokens = a.supply - a.curveTokens - a.creatorTokens;
     }
 
-    function _deployToken(LaunchParams calldata p, uint256 supply) internal returns (address) {
+    function _deployToken(LaunchParams calldata p, uint256 supply, address /*pair*/) internal returns (address) {
+        GlowToken.TokenFeatures memory f = GlowToken.TokenFeatures({
+            mintable:     p.mintable,
+            burnable:     p.burnable,
+            pausable:     p.pausable,
+            hasBlacklist: p.hasBlacklist,
+            maxSupply:    p.maxSupply,
+            vestingDuration: p.vestingDuration,
+            vestingCliff: p.vestingCliff
+        });
+        uint256 vestAmt = (p.vestingDuration > 0)
+            ? ((supply * (p.curveAllocationBps == 0 ? 8000 : p.curveAllocationBps)) / 10000 == 0 ? 0 : supply - (supply * (p.curveAllocationBps == 0 ? 8000 : p.curveAllocationBps)) / 10000)
+            : 0; // rough — factory recomputes precisely
+        // Recalculate creatorTokens for vesting
+        uint256 curveBps   = p.curveAllocationBps == 0 ? 8000 : p.curveAllocationBps;
+        uint256 creatorBps = p.creatorAllocationBps;
+        vestAmt = (supply * creatorBps) / 10000;
         return address(new GlowToken(
             TokenMetadata(p.name, p.symbol, p.description, p.imageUri, p.twitter, p.telegram, p.website),
-            msg.sender, address(this), supply
+            f,
+            msg.sender, address(this), supply,
+            vestAmt
         ));
     }
 
