@@ -1204,85 +1204,34 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         }
     }
 
-    /// @notice Creates Uniswap V3 pool, initializes price, and seeds initial liquidity.
-    ///         Called automatically on graduation when Uniswap addresses are configured.
+
+    /// @notice Creates Uniswap V3 pool via UniswapPoolLib (keeps factory bytecode small)
     function _createUniswapPool(
         address token,
         address pairToken,
         uint256 tokenAmount,
         uint256 pairAmount
     ) internal {
-        // Approve both tokens to NonfungiblePositionManager
-        IERC20(token).approve(nonfungiblePositionMgr, tokenAmount);
-        IERC20(pairToken).approve(nonfungiblePositionMgr, pairAmount);
-
-        // Determine token ordering (Uniswap requires token0 < token1)
-        (address t0, address t1, uint256 a0, uint256 a1) = token < pairToken
-            ? (token, pairToken, tokenAmount, pairAmount)   // token is token0
-            : (pairToken, token, pairAmount, tokenAmount);  // pairToken is token0
-
-        // Compute sqrtPriceX96 for initial price
-        // price = a1/a0 (how much t1 per t0, both raw amounts)
-        // sqrtPriceX96 = sqrt(a1/a0) * 2^96
-        // Using integer math: sqrtPriceX96 = sqrt(a1 * 2^192 / a0)
-        uint160 sqrtPriceX96 = _computeSqrtPriceX96(a0, a1);
-
-        // Create + initialize pool (idempotent if pool already exists)
-        try INonfungiblePositionManager(nonfungiblePositionMgr)
-            .createAndInitializePoolIfNecessary(t0, t1, defaultPoolFee, sqrtPriceX96)
-        returns (address /*pool*/) {
-            // Seed initial liquidity — use full-range position
-            INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
-                token0:          t0,
-                token1:          t1,
-                fee:             defaultPoolFee,
-                tickLower:       -887200,  // near min tick (full range for 0.3% fee)
-                tickUpper:        887200,  // near max tick
-                amount0Desired:  a0,
-                amount1Desired:  a1,
-                amount0Min:      0,
-                amount1Min:      0,
-                recipient:       address(this),  // factory holds LP NFT (locked)
-                deadline:        block.timestamp + 300
-            });
-            try INonfungiblePositionManager(nonfungiblePositionMgr).mint(params)
-                returns (uint256 tokenId, uint128, uint256, uint256) {
-                // LP NFT held by factory — creator can claim after lpLockDuration
-                pendingLpNftId[token]      = tokenId;
-                pendingLpNftOwner[token]   = tokenStates[token].creator;
-                pendingLpUnlockTime[token] = block.timestamp + lpLockDuration;
-                emit UniswapPoolCreated(token, t0, t1, defaultPoolFee, tokenId);
-            } catch {
-                // Pool seeding failed — fall back to manual claim
-                pendingGraduationUsdc[token]   = pairAmount;
-                pendingGraduationTokens[token] = tokenAmount;
-            }
-        } catch {
+        UniswapPoolLib.PoolResult memory r = UniswapPoolLib.createAndSeed(
+            nonfungiblePositionMgr,
+            token, pairToken,
+            tokenAmount, pairAmount,
+            defaultPoolFee,
+            address(this)
+        );
+        if (r.success && r.tokenId > 0) {
+            pendingLpNftId[token]      = r.tokenId;
+            pendingLpNftOwner[token]   = tokenStates[token].creator;
+            pendingLpUnlockTime[token] = block.timestamp + lpLockDuration;
+            (address t0, address t1) = token < pairToken
+                ? (token, pairToken) : (pairToken, token);
+            emit UniswapPoolCreated(token, t0, t1, defaultPoolFee, r.tokenId);
+        } else {
             pendingGraduationUsdc[token]   = pairAmount;
             pendingGraduationTokens[token] = tokenAmount;
         }
-
-        // Remove unused approvals
-        IERC20(token).approve(nonfungiblePositionMgr, 0);
-        IERC20(pairToken).approve(nonfungiblePositionMgr, 0);
     }
 
-    /// @notice Babylonian sqrt for computing sqrtPriceX96
-    function _computeSqrtPriceX96(uint256 amount0, uint256 amount1) internal pure returns (uint160) {
-        if (amount0 == 0 || amount1 == 0) return 0;
-        // ratioX192 = (amount1 / amount0) * 2^192
-        // sqrtPriceX96 = sqrt(ratioX192)
-        uint256 ratioX192 = (amount1 << 128) / amount0; // intermediate precision
-        ratioX192 = ratioX192 << 64;                    // full 2^192 precision
-        return uint160(_sqrt(ratioX192));
-    }
-
-    function _sqrt(uint256 x) internal pure returns (uint256 y) {
-        if (x == 0) return 0;
-        uint256 z = (x + 1) / 2;
-        y = x;
-        while (z < y) { y = z; z = (x / z + z) / 2; }
-    }
 
     function _resolvePairToken(address requested) internal view returns (address) {
         if (requested == address(0)) return address(usdc); // default = USDC
