@@ -17,10 +17,10 @@ const ARC_RPC = 'https://rpc.arc.io'
 const CHAIN_ID = 5042
 
 // arc-studio-allow-onchain-literal — verified deployed GlowFun factory addresses (public, read-only)
-const FACTORIES = [
-  '0x96f460a73fCcF8301Aa3E14B1d5c684b7f714cb3', // V1
-  '0x12FBDe4338D9f78DF4d3c24d42F4AA00A98741DA', // V2
-  '0xf54c92d87B271Ca707C89ED0c929bb51139a407d', // V3
+const FACTORIES: Array<{ address: string; version: 1 | 2 | 3 }> = [
+  { address: '0x96f460a73fCcF8301Aa3E14B1d5c684b7f714cb3', version: 1 }, // V1 — uses allTokens()
+  { address: '0x12FBDe4338D9f78DF4d3c24d42F4AA00A98741DA', version: 2 }, // V2 — uses launchedTokensCount + launchedTokens(i)
+  { address: '0xf54c92d87B271Ca707C89ED0c929bb51139a407d', version: 3 }, // V3 — uses launchedTokensCount + launchedTokens(i)
 ]
 
 function toHex32(n: number): string {
@@ -65,16 +65,34 @@ async function ethCall(to: string, data: string): Promise<string> {
 
 async function getTokenCount(factory: string): Promise<number> {
   try {
-    const res = await ethCall(factory, '0x4b35026c')
+    const res = await ethCall(factory, '0x4b35026c') // launchedTokensCount()
     return Number(decodeUint(res))
   } catch { return 0 }
 }
 
 async function getTokenAt(factory: string, index: number): Promise<string> {
   try {
-    const res = await ethCall(factory, '0x8a3b4a11' + toHex32(index))
+    const res = await ethCall(factory, '0x8a3b4a11' + toHex32(index)) // launchedTokens(uint256)
     return decodeAddress(res)
   } catch { return '' }
+}
+
+// V1 only — returns all token addresses in a single call via allTokens()
+async function getAllTokensV1(factory: string): Promise<string[]> {
+  try {
+    const res = await ethCall(factory, '0x2b8d777c') // allTokens()
+    if (!res || res === '0x') return []
+    const hex = stripHex(res)
+    // ABI: offset (32 bytes) + length (32 bytes) + addresses (32 bytes each)
+    const arrOffset = Number(decodeUint(res, 0)) * 2
+    const count = Number(BigInt('0x' + hex.slice(arrOffset, arrOffset + 64)))
+    const addrs: string[] = []
+    for (let i = 0; i < count; i++) {
+      const slot = hex.slice(arrOffset + 64 + i * 64, arrOffset + 64 + i * 64 + 64)
+      if (slot) addrs.push('0x' + slot.slice(24))
+    }
+    return addrs
+  } catch { return [] }
 }
 
 function resolveIpfs(uri: string): string {
@@ -107,18 +125,20 @@ async function getTokenInfo(tokenAddr: string, factory: string): Promise<{
     }
   } catch { /* fall through */ }
 
-  // Fallback: direct ERC-20 calls
+  // Fallback: direct ERC-20 + token contract fields (works for V1 too)
   try {
-    const [nameRes, symbolRes, decimalsRes] = await Promise.all([
-      ethCall(tokenAddr, '0x06fdde03'),
-      ethCall(tokenAddr, '0x95d89b41'),
-      ethCall(tokenAddr, '0x313ce567'),
+    const [nameRes, symbolRes, decimalsRes, imageRes] = await Promise.all([
+      ethCall(tokenAddr, '0x06fdde03'), // name()
+      ethCall(tokenAddr, '0x95d89b41'), // symbol()
+      ethCall(tokenAddr, '0x313ce567'), // decimals()
+      ethCall(tokenAddr, '0x3a7c1c78'), // imageUri() — present on V1 GlowToken
     ])
+    const logoRaw = imageRes && imageRes !== '0x' ? decodeString(imageRes) : ''
     return {
       name:     decodeString(nameRes),
       symbol:   decodeString(symbolRes),
       decimals: Number(decodeUint(decimalsRes)) || 18,
-      logoURI:  '',
+      logoURI:  resolveIpfs(logoRaw),
     }
   } catch {
     return { name: '', symbol: '', decimals: 18, logoURI: '' }
@@ -138,11 +158,18 @@ export const onRequestGet: PagesFunction<Env> = async ({ request }) => {
     // Collect all token addresses from all factories in parallel
     const allEntries: Array<{ addr: string; factory: string }> = []
 
-    await Promise.all(FACTORIES.map(async (factory) => {
-      const count = await getTokenCount(factory)
-      const addrs = await Promise.all(
-        Array.from({ length: count }, (_, i) => getTokenAt(factory, i))
-      )
+    await Promise.all(FACTORIES.map(async ({ address: factory, version }) => {
+      let addrs: string[] = []
+      if (version === 1) {
+        // V1 uses allTokens() — returns full array in one call
+        addrs = await getAllTokensV1(factory)
+      } else {
+        // V2/V3 use launchedTokensCount() + launchedTokens(i)
+        const count = await getTokenCount(factory)
+        addrs = await Promise.all(
+          Array.from({ length: count }, (_, i) => getTokenAt(factory, i))
+        )
+      }
       addrs.forEach(addr => {
         if (addr && addr.toLowerCase() !== '0x' + '0'.repeat(40)) {
           allEntries.push({ addr, factory })
@@ -162,7 +189,9 @@ export const onRequestGet: PagesFunction<Env> = async ({ request }) => {
     // Fetch metadata for every token
     const tokenEntries = await Promise.all(
       unique.map(async ({ addr, factory }) => {
-        const info = await getTokenInfo(addr, factory)
+        // For V1, pass empty string so getTokenInfo skips factory metadata call
+        const factoryForMeta = FACTORIES.find(f => f.address === factory)?.version === 1 ? '' : factory
+        const info = await getTokenInfo(addr, factoryForMeta)
         if (!info.name || !info.symbol) return null
         return {
           chainId:  CHAIN_ID,
