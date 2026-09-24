@@ -590,7 +590,19 @@ export function AdminPage() {
 
     adminWrite(
       { address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'updateConfig',
-        args: [params], chainId: CHAIN_ID as any } as any,
+        args: [
+          params.graduationThreshold,
+          params.protocolFeeBps,
+          params.creationFee,
+          params.creatorGraduationFeeBps,
+          params.referralFeeBps,
+          params.antiSnipeDuration,
+          params.antiSnipeTaxBps,
+          params.maxBuyBps,
+          params.buyCooldown,
+          params.creatorLockDuration,
+          params.perTokenGraduationFeeBps,
+        ], chainId: CHAIN_ID as any } as any,
       { onSuccess: () => toast.success('Config updated on-chain ✓'),
         onError:   (e) => toast.error(parseOnchainError(e)) }
     )
