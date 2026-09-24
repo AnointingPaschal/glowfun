@@ -367,29 +367,56 @@ function ForceGraduatePanel({ tokenAddr, raisedUsd, threshold, wallet, factoryAd
 }
 
 /* ── Boost Graduation Panel (everyone) ──────────────────────────── */
+/* ── Boost Graduation Panel — tier-based ────────────────────────── */
 function BoostPanel({ tokenAddr, raisedUsd, threshold, wallet, factoryAddress, usdcAddress, chainId }: {
   tokenAddr:string; raisedUsd:number; threshold:number; wallet?:`0x${string}`;
   factoryAddress:`0x${string}`|null; usdcAddress:`0x${string}`; chainId:number
 }) {
-  const gap      = Math.max(0, threshold - raisedUsd)
-  const [open, setOpen]       = useState(false)
-  const [amount, setAmount]   = useState('')
-  const boostUsd              = parseFloat(amount) || 0
+  const [open, setOpen]         = useState(false)
+  const [selected, setSelected] = useState<number|null>(null)
 
-  const { data: boostFeeBpsRaw } = useReadContract({ address:factoryAddress as any, abi:FACTORY_ABI, functionName:'boostFeeBps', chainId:chainId as any, query:{enabled:!!factoryAddress} })
-  const { data: totalBoosted }   = useReadContract({ address:factoryAddress as any, abi:FACTORY_ABI, functionName:'totalBoostedUsdc', args:[tokenAddr as `0x${string}`], chainId:chainId as any, query:{enabled:!!factoryAddress} })
-  const { data: userBoostRaw }   = useReadContract({ address:factoryAddress as any, abi:FACTORY_ABI, functionName:'getUserBoost', args:wallet?[tokenAddr as `0x${string}`,wallet]:undefined, chainId:chainId as any, query:{enabled:!!factoryAddress&&!!wallet} })
-  const { data: usdcBal }        = useReadContract({ address:usdcAddress, abi:erc20Abi, functionName:'balanceOf', args:wallet?[wallet]:undefined, chainId:chainId as any, query:{enabled:!!wallet} })
-  const { data: usdcAllow }      = useReadContract({ address:usdcAddress, abi:erc20Abi, functionName:'allowance', args:wallet&&factoryAddress?[wallet,factoryAddress as `0x${string}`]:undefined, chainId:chainId as any, query:{enabled:!!wallet&&!!factoryAddress} })
+  const gap = Math.max(0, threshold - raisedUsd)
 
-  const boostFeePct  = Number(boostFeeBpsRaw??0n) / 100
-  const feeAmount    = boostUsd * boostFeePct / 100
-  const netAmount    = boostUsd - feeAmount
-  const totalB       = Number(totalBoosted??0n)/1e6
-  const userB        = Number(userBoostRaw??0n)/1e6
-  const balUsd       = Number(usdcBal??0n)/1e6
-  const parsedBoost  = parseUsdc(amount)
-  const needsApprove = parsedBoost>0n && (usdcAllow as bigint??0n) < parsedBoost
+  // Read all boost tiers from contract
+  const { data: tiersRaw } = useReadContract({
+    address:factoryAddress as any, abi:FACTORY_ABI, functionName:'getBoostTiers',
+    chainId:chainId as any, query:{enabled:!!factoryAddress, staleTime:60_000},
+  })
+  const tiers = (tiersRaw as any[] ?? []) as Array<{boostBps:bigint;feeBps:bigint;label:string}>
+
+  // Preview cost for selected tier
+  const { data: costRaw } = useReadContract({
+    address:factoryAddress as any, abi:FACTORY_ABI, functionName:'getBoostTierCost',
+    args:selected!=null?[tokenAddr as `0x${string}`, BigInt(selected)]:undefined,
+    chainId:chainId as any, query:{enabled:!!factoryAddress&&selected!=null},
+  })
+  const costArr  = costRaw as readonly [bigint,bigint,bigint,boolean]|undefined
+  const cost = costArr ? { fillAmount:costArr[0], fee:costArr[1], totalCost:costArr[2], willGraduate:costArr[3] } : undefined
+
+  // User stats
+  const { data: userBoostRaw } = useReadContract({
+    address:factoryAddress as any, abi:FACTORY_ABI, functionName:'getUserBoost',
+    args:wallet?[tokenAddr as `0x${string}`,wallet]:undefined,
+    chainId:chainId as any, query:{enabled:!!factoryAddress&&!!wallet},
+  })
+  const { data: totalBoostedRaw } = useReadContract({
+    address:factoryAddress as any, abi:FACTORY_ABI, functionName:'totalBoostedUsdc',
+    args:[tokenAddr as `0x${string}`],
+    chainId:chainId as any, query:{enabled:!!factoryAddress},
+  })
+  const { data: usdcBal  } = useReadContract({ address:usdcAddress, abi:erc20Abi, functionName:'balanceOf', args:wallet?[wallet]:undefined, chainId:chainId as any, query:{enabled:!!wallet} })
+  const { data: usdcAllow} = useReadContract({ address:usdcAddress, abi:erc20Abi, functionName:'allowance', args:wallet&&factoryAddress?[wallet,factoryAddress as `0x${string}`]:undefined, chainId:chainId as any, query:{enabled:!!wallet&&!!factoryAddress} })
+
+  const totalCostUsdc  = cost ? Number(cost.totalCost)/1e6  : 0
+  const fillUsdc       = cost ? Number(cost.fillAmount)/1e6 : 0
+  const feeUsdc        = cost ? Number(cost.fee)/1e6        : 0
+  const willGrad       = cost?.willGraduate ?? false
+  const balUsd         = Number(usdcBal??0n)/1e6
+  const userB          = Number(userBoostRaw??0n)/1e6
+  const totalB         = Number(totalBoostedRaw??0n)/1e6
+  const totalCostBig   = cost?.totalCost ?? 0n
+  const needsApprove   = selected!=null && totalCostBig>0n && (usdcAllow as bigint??0n) < totalCostBig
+  const canAfford      = balUsd >= totalCostUsdc
 
   const { writeContract: approve, data:approveHash, isPending:approving } = useWriteContract()
   const { isLoading:approveConf, isSuccess:approveDone } = useWaitForTransactionReceipt({hash:approveHash})
@@ -397,11 +424,22 @@ function BoostPanel({ tokenAddr, raisedUsd, threshold, wallet, factoryAddress, u
   const { isLoading:boostConf, isSuccess:boostDone } = useWaitForTransactionReceipt({hash:boostHash})
   const busy = approving||approveConf||boosting||boostConf
 
-  useEffect(()=>{ if(approveDone) doBoost() },[approveDone])
-  useEffect(()=>{ if(boostDone){ toast.success('🚀 Boost sent! Token is closer to graduation.'); setAmount('') } },[boostDone])
+  const doApprove = () => {
+    approve({ address:usdcAddress, abi:erc20Abi, functionName:'approve', args:[factoryAddress as `0x${string}`, totalCostBig], chainId:chainId as any } as any,
+      { onError:(e)=>toast.error(parseOnchainError(e)) })
+  }
+  const doBoost = () => {
+    if (selected===null||!factoryAddress) return
+    boost({ address:factoryAddress as `0x${string}`, abi:FACTORY_ABI, functionName:'boostByTier', args:[tokenAddr as `0x${string}`, BigInt(selected)], chainId:chainId as any } as any,
+      { onSuccess:()=>toast.success(willGrad?'🎓 Boosted — token graduated!':'🚀 Boost confirmed!'), onError:(e)=>toast.error(parseOnchainError(e)) })
+  }
+  useEffect(()=>{ if(approveDone)doBoost() },[approveDone])
+  useEffect(()=>{ if(boostDone)setSelected(null) },[boostDone])
 
-  const doApprove = () => { approve({ address:usdcAddress, abi:erc20Abi, functionName:'approve', args:[factoryAddress as `0x${string}`, parsedBoost], chainId:chainId as any } as any, { onError:(e)=>toast.error(parseOnchainError(e)) }) }
-  const doBoost   = () => { boost({ address:factoryAddress as `0x${string}`, abi:FACTORY_ABI, functionName:'boostGraduation', args:[tokenAddr as `0x${string}`, parsedBoost], chainId:chainId as any } as any, { onSuccess:()=>toast.success('Boost submitted!'), onError:(e)=>toast.error(parseOnchainError(e)) }) }
+  if (!tiers.length) return null
+
+  // Tier card colours
+  const tierColors = ['#6366f1','#8b5cf6','#a855f7','#ec4899','#f59e0b','#22c55e','#14b8a6','#0ea5e9','#3b82f6','#6366f1']
 
   return (
     <div className="rounded-2xl overflow-hidden" style={{background:'rgba(99,102,241,0.04)',border:'1px solid rgba(99,102,241,0.15)'}}>
@@ -409,69 +447,122 @@ function BoostPanel({ tokenAddr, raisedUsd, threshold, wallet, factoryAddress, u
         <div className="flex items-center gap-2">
           <Zap size={14} style={{color:'var(--accent)'}}/>
           <span className="text-sm font-bold" style={{color:'var(--accent)'}}>Boost Graduation</span>
-          {totalB>0&&<span className="text-[9px] px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(99,102,241,0.1)',color:'var(--accent)'}}>${totalB.toFixed(0)} boosted total</span>}
+          {totalB>0&&<span className="text-[9px] px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(99,102,241,0.1)',color:'var(--accent)'}}>${totalB.toFixed(0)} total</span>}
         </div>
         <ChevronDown size={13} style={{color:'var(--accent)',transform:open?'rotate(180deg)':'none',transition:'transform .2s'}}/>
       </button>
+
       <AnimatePresence>
         {open && (
           <motion.div initial={{height:0,opacity:0}} animate={{height:'auto',opacity:1}} exit={{height:0,opacity:0}} style={{overflow:'hidden'}}>
             <div className="px-4 pb-4 space-y-3">
-              <p className="text-xs leading-relaxed" style={{color:'var(--text2)'}}>
-                Contribute USDC to push this token toward graduation. Your USDC goes directly into the bonding curve — raising the price and the graduation progress. {boostFeePct>0?`Platform takes ${boostFeePct}% of each boost.`:'Boosts are free (0% fee).'}
+              <p className="text-[11px] leading-relaxed" style={{color:'var(--text2)'}}>
+                Pick how much of the graduation gap to fill. Your USDC goes directly into the bonding curve — raising the price and graduation progress. A per-tier platform fee is added on top.
               </p>
-              {/* Gap bar */}
+
+              {/* Gap progress */}
               <div>
                 <div className="flex justify-between text-[9px] mb-1" style={{color:'var(--text2)'}}>
-                  <span>${raisedUsd.toFixed(0)} raised</span>
-                  <span style={{color:'var(--accent)'}}>Gap: ${gap.toFixed(0)}</span>
-                  <span>${threshold.toLocaleString()} target</span>
+                  <span>Raised: ${raisedUsd.toFixed(0)}</span>
+                  <span style={{color:'#ef4444',fontWeight:600}}>Gap: ${gap.toFixed(0)}</span>
+                  <span>Target: ${threshold.toLocaleString()}</span>
                 </div>
-                <div className="h-1.5 rounded-full overflow-hidden flex" style={{background:'var(--surface3)'}}>
-                  <div style={{width:`${Math.min(100,(raisedUsd/threshold)*100)}%`,background:'var(--accent)',borderRadius:'4px 0 0 4px'}}/>
+                <div className="h-2 rounded-full overflow-hidden relative" style={{background:'var(--surface3)'}}>
+                  <div style={{height:'100%',width:`${Math.min(100,(raisedUsd/threshold)*100)}%`,background:'var(--accent)',borderRadius:'4px 0 0 4px',transition:'width .5s'}}/>
+                  {/* Show fill preview */}
+                  {selected!=null&&fillUsdc>0&&(
+                    <div className="absolute top-0 bottom-0 rounded-r" style={{
+                      left:`${Math.min(100,(raisedUsd/threshold)*100)}%`,
+                      width:`${Math.min(100-((raisedUsd/threshold)*100),(fillUsdc/threshold)*100)}%`,
+                      background:'rgba(99,102,241,0.4)',
+                    }}/>
+                  )}
                 </div>
               </div>
-              {/* Amount input */}
-              <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold" style={{color:'var(--text3)'}}>$</span>
-                <input type="number" placeholder="USDC to boost" value={amount} onChange={e=>setAmount(e.target.value)}
-                  className="w-full pl-7 pr-16 py-2.5 rounded-xl text-sm outline-none"
-                  style={{background:'var(--surface2)',border:`1px solid ${amount?'rgba(99,102,241,0.3)':'var(--border)'}`,color:'var(--text1)'}}/>
-                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold" style={{color:'var(--text2)'}}>USDC</span>
+
+              {/* Tier cards */}
+              <div className="grid grid-cols-2 gap-2">
+                {tiers.map((tier, i) => {
+                  const boost = Number(tier.boostBps)/100
+                  const fee   = Number(tier.feeBps)/100
+                  const fill  = gap * boost / 100
+                  const feeAmt= fill * fee / 100
+                  const total = fill + feeAmt
+                  const color = tierColors[i % tierColors.length]
+                  const active= selected===i
+                  const grads = (raisedUsd + fill) >= threshold
+                  return (
+                    <button key={i} onClick={()=>setSelected(active?null:i)}
+                      className="rounded-xl p-3 text-left transition-all border"
+                      style={{
+                        background:active?`${color}15`:'var(--surface2)',
+                        borderColor:active?`${color}40`:'var(--border)',
+                      }}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-base font-black" style={{color:active?color:'var(--text1)',fontFamily:'Space Grotesk'}}>{tier.label}</span>
+                        {grads&&<span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full" style={{background:'rgba(34,197,94,0.15)',color:'var(--green)'}}>🎓 GRAD</span>}
+                      </div>
+                      <div className="text-[10px] space-y-0.5">
+                        <div className="flex justify-between">
+                          <span style={{color:'var(--text2)'}}>Fill gap</span>
+                          <span className="font-bold" style={{color:'var(--text1)'}}>${fill.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span style={{color:'var(--text2)'}}>Fee ({fee}%)</span>
+                          <span style={{color:'var(--red)'}}>+${feeAmt.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between border-t pt-0.5 mt-0.5" style={{borderColor:'rgba(255,255,255,0.07)'}}>
+                          <span className="font-bold" style={{color:'var(--text2)'}}>You pay</span>
+                          <span className="font-black" style={{color:active?color:'var(--text1)'}}>${total.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </button>
+                  )
+                })}
               </div>
-              {/* Quick amounts */}
-              <div className="flex gap-1.5">
-                {['10','50','100','500'].map(v=>(
-                  <button key={v} onClick={()=>setAmount(v)} className="flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all"
-                    style={{background:amount===v?'rgba(99,102,241,0.12)':'var(--surface2)',color:amount===v?'var(--accent)':'var(--text2)',border:`1px solid ${amount===v?'rgba(99,102,241,0.3)':'var(--border)'}`}}>
-                    ${v}
-                  </button>
-                ))}
-              </div>
-              {/* Fee preview */}
-              {boostUsd>0&&(
-                <div className="flex justify-between text-[10px] px-3 py-2 rounded-xl" style={{background:'var(--surface2)'}}>
-                  <span style={{color:'var(--text2)'}}>Platform fee ({boostFeePct}%)</span><span style={{color:'var(--red)'}}>-${feeAmount.toFixed(2)}</span>
-                  <span style={{color:'var(--text2)'}}>Goes to curve</span><span style={{color:'var(--green)'}}>${netAmount.toFixed(2)}</span>
+
+              {/* Selected tier summary */}
+              {selected!=null&&cost&&(
+                <div className="rounded-xl p-3" style={{background:'rgba(99,102,241,0.06)',border:'1px solid rgba(99,102,241,0.2)'}}>
+                  <div className="flex items-center justify-between text-xs">
+                    <span style={{color:'var(--text2)'}}>Tier selected</span>
+                    <span className="font-bold" style={{color:'var(--accent)'}}>{tiers[selected]?.label} of gap</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs mt-1">
+                    <span style={{color:'var(--text2)'}}>Goes to curve</span>
+                    <span className="font-bold" style={{color:'var(--green)'}}>${fillUsdc.toFixed(4)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs mt-1">
+                    <span style={{color:'var(--text2)'}}>Platform fee</span>
+                    <span style={{color:'var(--red)'}}>+${feeUsdc.toFixed(4)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm font-bold mt-2 pt-2" style={{borderTop:'1px solid rgba(99,102,241,0.2)'}}>
+                    <span style={{color:'var(--text1)'}}>Total you pay</span>
+                    <span style={{color:'var(--accent)'}}>${totalCostUsdc.toFixed(4)} USDC</span>
+                  </div>
+                  {willGrad&&<div className="text-center text-[10px] font-bold mt-2" style={{color:'var(--green)'}}>🎓 This boost will graduate the token!</div>}
+                  {!canAfford&&<div className="text-center text-[10px] mt-1" style={{color:'var(--red)'}}>Insufficient USDC (have ${balUsd.toFixed(2)})</div>}
                 </div>
               )}
-              {userB>0&&<p className="text-[10px] text-center" style={{color:'var(--text2)'}}>You've boosted ${userB.toFixed(2)} total on this token</p>}
-              {/* Balance */}
-              <p className="text-[9px]" style={{color:'var(--text2)'}}>Balance: <span style={{color:'var(--text1)',fontWeight:600}}>${balUsd.toFixed(2)} USDC</span></p>
-              {/* Action */}
-              {!wallet
-                ?<div className="text-center py-2 text-xs font-semibold rounded-xl" style={{background:'var(--surface2)',color:'var(--text2)'}}>Connect wallet to boost</div>
-                :needsApprove
-                ?<button onClick={doApprove} disabled={busy||!amount||boostUsd<=0} className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40"
-                   style={{background:'linear-gradient(135deg,#6366f1,#8b5cf6)',color:'#fff'}}>
-                   {busy?<Loader2 size={13} className="animate-spin"/>:<Zap size={13}/>}
-                   {busy?'Approving…':`Approve $${amount} USDC`}
-                 </button>
-                :<button onClick={doBoost} disabled={busy||!amount||boostUsd<=0||balUsd<boostUsd} className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40"
-                   style={{background:'linear-gradient(135deg,#6366f1,#8b5cf6)',color:'#fff',boxShadow:'0 4px 20px rgba(99,102,241,0.3)'}}>
-                   {busy?<Loader2 size={13} className="animate-spin"/>:<Zap size={13}/>}
-                   {busy?'Boosting…':`Boost $${amount} → Graduation`}
-                 </button>}
+
+              {userB>0&&<p className="text-[9px] text-center" style={{color:'var(--text2)'}}>You've contributed ${userB.toFixed(2)} to this token's graduation</p>}
+
+              {/* Action button */}
+              {selected!=null&&(
+                !wallet
+                  ?<div className="py-3 text-center text-xs font-semibold rounded-xl" style={{background:'var(--surface2)',color:'var(--text2)'}}>Connect wallet to boost</div>
+                  :needsApprove
+                  ?<button onClick={doApprove} disabled={busy||!canAfford} className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40"
+                     style={{background:'linear-gradient(135deg,#6366f1,#8b5cf6)',color:'#fff'}}>
+                     {busy?<Loader2 size={13} className="animate-spin"/>:<Zap size={13}/>}
+                     {busy?'Approving…':`Approve $${totalCostUsdc.toFixed(2)} USDC`}
+                   </button>
+                  :<button onClick={doBoost} disabled={busy||!canAfford} className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40"
+                     style={{background:'linear-gradient(135deg,#6366f1,#8b5cf6)',color:'#fff',boxShadow:'0 4px 20px rgba(99,102,241,0.3)'}}>
+                     {busy?<Loader2 size={13} className="animate-spin"/>:<Zap size={13}/>}
+                     {busy?'Boosting…':willGrad?`Graduate with ${tiers[selected]?.label} boost →`:`Boost ${tiers[selected]?.label} → Graduation`}
+                   </button>
+              )}
             </div>
           </motion.div>
         )}
@@ -479,6 +570,7 @@ function BoostPanel({ tokenAddr, raisedUsd, threshold, wallet, factoryAddress, u
     </div>
   )
 }
+
 
 /* ── Main ────────────────────────────────────────────────────────── */
 export function TokenPage() {

@@ -296,6 +296,196 @@ function OnchainInput({ label, note, value, onChange, onSet, disabled, placehold
 
 /* ── Main AdminPage ─────────────────────────────────────────────────────── */
 
+/* ── Boost Tier Editor ───────────────────────────────────────────── */
+function BoostTierEditor({ chainId, factoryAddress, adminBusy, adminCall, wrong, switchChain }: {
+  chainId:number; factoryAddress:`0x${string}`|null;
+  adminBusy:boolean; adminCall:(fn:string,args:any[])=>void;
+  wrong:boolean; switchChain:(args:any)=>void;
+}) {
+  const { data: tiersRaw, refetch } = useReadContract({
+    address: factoryAddress as any, abi: FACTORY_ABI, functionName: 'getBoostTiers',
+    chainId: chainId as any, query: { enabled: !!factoryAddress, staleTime: 5000 },
+  })
+  const onChainTiers = (tiersRaw as any[] ?? []) as Array<{boostBps:bigint;feeBps:bigint;label:string}>
+
+  // Local editable copy
+  const [tiers, setTiers] = useState<Array<{boostBps:string;feeBps:string;label:string}>>([])
+  const [dirty, setDirty] = useState(false)
+
+  // Sync from chain whenever loaded
+  useEffect(() => {
+    if (onChainTiers.length > 0 && !dirty) {
+      setTiers(onChainTiers.map(t => ({
+        boostBps: (Number(t.boostBps)/100).toString(),
+        feeBps:   (Number(t.feeBps)/100).toString(),
+        label:    t.label,
+      })))
+    }
+  }, [tiersRaw, dirty])
+
+  const update = (i: number, field: string, val: string) => {
+    setTiers(prev => prev.map((t,j) => j===i ? {...t,[field]:val} : t))
+    setDirty(true)
+  }
+
+  const saveTiers = () => {
+    if (wrong) { switchChain({ chainId: chainId as any }); return }
+    const boostBpsArr = tiers.map(t => BigInt(Math.round(parseFloat(t.boostBps||'0') * 100)))
+    const feeBpsArr   = tiers.map(t => BigInt(Math.round(parseFloat(t.feeBps||'0')   * 100)))
+    const labels      = tiers.map(t => t.label)
+    adminCall('setBoostTiers', [boostBpsArr as any, feeBpsArr as any, labels as any])
+    setDirty(false)
+    setTimeout(() => refetch(), 3000)
+  }
+
+  const addTier = () => {
+    if (tiers.length >= 10) { toast.error('Max 10 tiers'); return }
+    setTiers(prev => [...prev, { boostBps:'10', feeBps:'1', label:'10%' }])
+    setDirty(true)
+  }
+
+  const removeTier = (i: number) => {
+    setTiers(prev => prev.filter((_,j) => j!==i))
+    setDirty(true)
+  }
+
+  // Quick-fill label when boostBps changes
+  const handleBoostChange = (i: number, val: string) => {
+    const n = parseFloat(val)
+    const autoLabel = !isNaN(n) ? (n % 1 === 0 ? `${n}%` : `${n.toFixed(1)}%`) : val
+    setTiers(prev => prev.map((t,j) => j===i ? {...t, boostBps:val, label:autoLabel} : t))
+    setDirty(true)
+  }
+
+  // Tier colour palette
+  const COLORS = ['#6366f1','#8b5cf6','#a855f7','#ec4899','#f59e0b','#22c55e','#14b8a6','#0ea5e9','#3b82f6','#818cf8']
+
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
+      <div className="flex items-center justify-between px-5 py-4" style={{borderBottom:'1px solid var(--border)'}}>
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{background:'rgba(245,158,11,0.12)'}}>
+            <Zap size={15} style={{color:'var(--gold)'}}/>
+          </div>
+          <div>
+            <p className="text-sm font-bold" style={{color:'var(--text1)'}}>Boost Graduation Tiers</p>
+            <p className="text-[10px]" style={{color:'var(--text3)'}}>
+              Each tier fills a % of the remaining gap. Fee is added on top of the fill amount.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {dirty && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full" style={{background:'rgba(245,158,11,0.12)',color:'var(--gold)'}}>Unsaved</span>}
+          <button onClick={addTier} disabled={tiers.length>=10||adminBusy}
+            className="text-[10px] font-bold px-2.5 py-1 rounded-lg disabled:opacity-40"
+            style={{background:'rgba(99,102,241,0.1)',color:'var(--accent)',border:'1px solid rgba(99,102,241,0.2)'}}>
+            + Add tier
+          </button>
+        </div>
+      </div>
+
+      <div className="p-5 space-y-3">
+        {/* Column headers */}
+        <div className="grid gap-2 text-[9px] font-bold uppercase tracking-widest px-1" style={{gridTemplateColumns:'28px 1fr 1fr 1fr 32px',color:'var(--text3)'}}>
+          <span/>
+          <span>Boost % of gap</span>
+          <span>Platform fee %</span>
+          <span>Display label</span>
+          <span/>
+        </div>
+
+        {tiers.length === 0 && (
+          <p className="text-xs text-center py-4" style={{color:'var(--text2)'}}>
+            No tiers. Click "+ Add tier" to create boost options.
+          </p>
+        )}
+
+        {tiers.map((tier, i) => {
+          const color    = COLORS[i % COLORS.length]
+          const boostNum = parseFloat(tier.boostBps||'0')
+          const feeNum   = parseFloat(tier.feeBps||'0')
+          return (
+            <div key={i} className="grid items-center gap-2 p-2.5 rounded-xl"
+              style={{gridTemplateColumns:'28px 1fr 1fr 1fr 32px',background:'var(--surface2)',border:`1px solid ${color}20`}}>
+
+              {/* Colour dot + index */}
+              <div className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-black text-white"
+                style={{background:color}}>{i+1}</div>
+
+              {/* Boost % */}
+              <div className="relative">
+                <input type="number" min={0.1} max={100} step={1}
+                  value={tier.boostBps} onChange={e=>handleBoostChange(i,e.target.value)}
+                  className="w-full px-2.5 py-2 rounded-lg text-sm font-bold outline-none pr-7"
+                  style={{background:'var(--surface3)',border:'1px solid var(--border)',color:'var(--text1)'}}/>
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold" style={{color:'var(--text3)'}}>%</span>
+              </div>
+
+              {/* Fee % */}
+              <div className="relative">
+                <input type="number" min={0} max={50} step={0.1}
+                  value={tier.feeBps} onChange={e=>update(i,'feeBps',e.target.value)}
+                  className="w-full px-2.5 py-2 rounded-lg text-sm outline-none pr-7"
+                  style={{background:'var(--surface3)',border:'1px solid var(--border)',color:'var(--text1)'}}/>
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold" style={{color:'var(--text3)'}}>%</span>
+              </div>
+
+              {/* Label */}
+              <input value={tier.label} onChange={e=>update(i,'label',e.target.value)}
+                placeholder={`${boostNum}%`}
+                className="w-full px-2.5 py-2 rounded-lg text-sm outline-none"
+                style={{background:'var(--surface3)',border:'1px solid var(--border)',color:'var(--text1)'}}/>
+
+              {/* Remove */}
+              <button onClick={()=>removeTier(i)} disabled={adminBusy}
+                className="w-7 h-7 rounded-lg flex items-center justify-center"
+                style={{background:'rgba(239,68,68,0.08)',color:'var(--red)',border:'none',cursor:'pointer'}}>
+                ×
+              </button>
+            </div>
+          )
+        })}
+
+        {/* Preview row */}
+        {tiers.length > 0 && (
+          <div className="rounded-xl p-3 space-y-1.5" style={{background:'var(--surface3)',border:'1px solid var(--border)'}}>
+            <p className="text-[9px] font-bold uppercase tracking-widest mb-2" style={{color:'var(--text3)'}}>Preview (on $10,000 gap)</p>
+            <div className="grid grid-cols-4 gap-1.5">
+              {tiers.map((tier,i)=>{
+                const boost = parseFloat(tier.boostBps||'0')
+                const fee   = parseFloat(tier.feeBps||'0')
+                const fill  = 10000 * boost / 100
+                const feeAmt= fill * fee / 100
+                const color = COLORS[i % COLORS.length]
+                return (
+                  <div key={i} className="rounded-lg p-2 text-center" style={{background:`${color}10`,border:`1px solid ${color}25`}}>
+                    <div className="text-sm font-black" style={{color}}>{tier.label||`${boost}%`}</div>
+                    <div className="text-[8px] mt-0.5" style={{color:'var(--text2)'}}>Fill ${fill.toFixed(0)}</div>
+                    <div className="text-[8px]" style={{color:'var(--red)'}}>+fee ${feeAmt.toFixed(0)}</div>
+                    <div className="text-[9px] font-bold mt-0.5" style={{color:'var(--text1)'}}>=${(fill+feeAmt).toFixed(0)}</div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Save button */}
+        <button onClick={saveTiers} disabled={adminBusy||!dirty||tiers.length===0}
+          className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40"
+          style={{background:dirty?'linear-gradient(135deg,#6366f1,#8b5cf6)':'var(--surface3)',color:dirty?'#fff':'var(--text2)'}}>
+          {adminBusy?<><span className="animate-spin">⟳</span> Saving…</>:<><Save size={13}/>Save {tiers.length} tier{tiers.length!==1?'s':''} on-chain</>}
+        </button>
+
+        <p className="text-[9px] text-center" style={{color:'var(--text3)'}}>
+          Tiers are stored on-chain. Users see live data when boosting.
+          Max 10 tiers. Boost% = portion of gap filled. Fee% added on top.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 export function AdminPage() {
   const [authed, setAuthed] = useState(false)
   const [pw, setPw]         = useState('')
@@ -319,7 +509,7 @@ export function AdminPage() {
 
   // Onchain reads
   const q = { enabled: !!FACTORY_ADDRESS }
-  const args = (fn: string) => ({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: fn as any, chainId: CHAIN_ID as any, query: q })
+  const args = (fn: string) => ({ address: FACTORY_ADDRESS, abi: FACTORY_ABI as any, functionName: fn as any, chainId: CHAIN_ID as any, query: q })
   const { data: feeBps }           = useReadContract(args('protocolFeeBps'))
   const { data: creationFee }      = useReadContract(args('creationFee'))
   const { data: gradThresh }       = useReadContract(args('graduationThreshold'))
@@ -583,8 +773,8 @@ export function AdminPage() {
                   <div className="space-y-2 text-sm">
                     {[
                       ['Factory', FACTORY_ADDRESS ? formatAddress(FACTORY_ADDRESS) : 'Not set'],
-                      ['Fee Recipient', feeRecipient ? formatAddress(feeRecipient as string) : '—'],
-                      ['Graduation Recipient', gradRecipient ? formatAddress(gradRecipient as string) : '—'],
+                      ['Fee Recipient', feeRecipient ? formatAddress(feeRecipient as any) : '—'],
+                      ['Graduation Recipient', gradRecipient ? formatAddress(gradRecipient as any) : '—'],
                       ['Graduation Threshold', gradThresh !== undefined ? `$${(n(gradThresh) / 1e6).toLocaleString()} USDC` : '—'],
                       ['Creator Grad Bonus', creatorGradBps !== undefined ? `${n(creatorGradBps) / 100}%` : '—'],
                       ['Referral Fee', referralBps !== undefined ? `${n(referralBps) / 100}% of trade fee` : '—'],
@@ -602,7 +792,7 @@ export function AdminPage() {
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style={{ background: 'rgba(245,158,11,0.12)' }}>👑</div>
                       <div>
-                        <div className="text-sm font-mono font-medium" style={{ color: 'var(--text1)' }}>{formatAddress(kingToken as string)}</div>
+                        <div className="text-sm font-mono font-medium" style={{ color: 'var(--text1)' }}>{formatAddress(kingToken as any)}</div>
                         <div className="text-xs mt-0.5" style={{ color: 'var(--text2)' }}>${(n(kingRaised ?? 0) / 1e6).toFixed(2)} USDC raised</div>
                       </div>
                       {EXPLORER_BASE && (
@@ -738,8 +928,8 @@ export function AdminPage() {
 
                     <SectionCard title="Recipients (Two-Step)" icon={Users} accent="#34d399">
                       <p className="text-xs mb-4" style={{ color: 'var(--text2)' }}>Propose a new address — the new address must call <code className="text-xs px-1 py-0.5 rounded" style={{ background: 'var(--surface3)', color: 'var(--text1)' }}>acceptFeeRecipient()</code> or <code className="text-xs px-1 py-0.5 rounded" style={{ background: 'var(--surface3)', color: 'var(--text1)' }}>acceptGraduationRecipient()</code> to confirm.</p>
-                      <OnchainInput label="Propose Fee Recipient" note={feeRecipient ? `Current: ${formatAddress(feeRecipient as string)}` : ''} value={i('feeRecip')} onChange={si('feeRecip')} disabled={adminBusy} placeholder="0x..." onSet={() => adminCall('proposeFeeRecipient', [i('feeRecip') as `0x${string}`])} />
-                      <OnchainInput label="Propose Graduation Recipient" note={gradRecipient ? `Current: ${formatAddress(gradRecipient as string)}` : ''} value={i('gradRecip')} onChange={si('gradRecip')} disabled={adminBusy} placeholder="0x..." onSet={() => adminCall('proposeGraduationRecipient', [i('gradRecip') as `0x${string}`])} />
+                      <OnchainInput label="Propose Fee Recipient" note={feeRecipient ? `Current: ${formatAddress(feeRecipient as any)}` : ''} value={i('feeRecip')} onChange={si('feeRecip')} disabled={adminBusy} placeholder="0x..." onSet={() => adminCall('proposeFeeRecipient', [i('feeRecip') as `0x${string}`])} />
+                      <OnchainInput label="Propose Graduation Recipient" note={gradRecipient ? `Current: ${formatAddress(gradRecipient as any)}` : ''} value={i('gradRecip')} onChange={si('gradRecip')} disabled={adminBusy} placeholder="0x..." onSet={() => adminCall('proposeGraduationRecipient', [i('gradRecip') as `0x${string}`])} />
                     </SectionCard>
 
                     <SectionCard title="Blacklists" icon={Ban} accent="#f87171">
@@ -764,18 +954,7 @@ export function AdminPage() {
                     </SectionCard>
 
                     {/* ── V3: Boost Fee ── */}
-                    <SectionCard title="Boost Graduation Fee" icon={Zap} accent="#f59e0b">
-                      <p className="text-xs mb-3" style={{ color: 'var(--text2)' }}>
-                        Users can boost any token toward graduation by contributing USDC. Set the platform cut from boosts. 0 = free boosts.
-                      </p>
-                      <OnchainInput
-                        label="Boost Fee (bps — e.g. 200 = 2% taken from each boost)"
-                        note="0 = free boosts. 200 = 2% fee. 500 = 5% fee."
-                        value={i('boostFee')} onChange={si('boostFee')} disabled={adminBusy}
-                        placeholder="200"
-                        onSet={() => adminCall('setBoostFeeBps', [BigInt(i('boostFee') || '0')])}
-                      />
-                    </SectionCard>
+                    <BoostTierEditor chainId={CHAIN_ID} factoryAddress={FACTORY_ADDRESS} adminBusy={adminBusy} adminCall={adminCall} wrong={wrong} switchChain={switchChain} />
 
                     {/* ── V3: Force Graduate ── */}
                     <SectionCard title="Force Graduate Token" icon={Trophy} accent="#f59e0b">

@@ -261,9 +261,6 @@ export const FACTORY_ABI = [
     outputs: [] },
 
   // ── V3 new functions ──────────────────────────────────────────────────
-  { name: 'boostGraduation',           type: 'function', stateMutability: 'nonpayable',
-    inputs: [{ name: 'token', type: 'address' }, { name: 'usdcAmount', type: 'uint256' }],
-    outputs: [] },
   { name: 'setTokenGraduationThreshold', type: 'function', stateMutability: 'nonpayable',
     inputs: [{ name: 'token', type: 'address' }, { name: 'threshold', type: 'uint256' }], outputs: [] },
   { name: 'transferCreatorRole',        type: 'function', stateMutability: 'nonpayable',
@@ -274,7 +271,6 @@ export const FACTORY_ABI = [
   { name: 'setInitialVirtualUsdcReserves', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'value', type: 'uint256' }], outputs: [] },
   { name: 'setInitialVirtualTokenReserves', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'value', type: 'uint256' }], outputs: [] },
   // V3 views
-  { name: 'boostFeeBps',               type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
   { name: 'totalBoostedUsdc',          type: 'function', stateMutability: 'view', inputs: [{ name: 'token', type: 'address' }], outputs: [{ type: 'uint256' }] },
   { name: 'getUserBoost',              type: 'function', stateMutability: 'view', inputs: [{ name: 'token', type: 'address' }, { name: 'user', type: 'address' }], outputs: [{ type: 'uint256' }] },
   { name: 'getGraduationGap',          type: 'function', stateMutability: 'view',
@@ -286,4 +282,37 @@ export const FACTORY_ABI = [
   { name: 'GraduationBoosted',   type: 'event', inputs: [{ name: 'token', type: 'address', indexed: true }, { name: 'booster', type: 'address', indexed: true }, { name: 'usdcSent', type: 'uint256', indexed: false }, { name: 'usdcAdded', type: 'uint256', indexed: false }, { name: 'feeTaken', type: 'uint256', indexed: false }] },
   { name: 'TokenThresholdUpdated', type: 'event', inputs: [{ name: 'token', type: 'address', indexed: true }, { name: 'oldThreshold', type: 'uint256', indexed: false }, { name: 'newThreshold', type: 'uint256', indexed: false }] },
   { name: 'CreatorTransferred',   type: 'event', inputs: [{ name: 'token', type: 'address', indexed: true }, { name: 'oldCreator', type: 'address', indexed: true }, { name: 'newCreator', type: 'address', indexed: true }] },
+
+  // ── V3 boost tiers ──────────────────────────────────────────────────
+  { name: 'boostByTier', type: 'function', stateMutability: 'nonpayable',
+    inputs: [{ name: 'token', type: 'address' }, { name: 'tierIndex', type: 'uint256' }], outputs: [] },
+  { name: 'setBoostTiers', type: 'function', stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'boostBpsArr', type: 'uint256[]' },
+      { name: 'feeBpsArr',   type: 'uint256[]' },
+      { name: 'labels',      type: 'string[]'  },
+    ], outputs: [] },
+  { name: 'setBoostTier', type: 'function', stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'index',    type: 'uint256' },
+      { name: 'boostBps', type: 'uint256' },
+      { name: 'feeBps',   type: 'uint256' },
+      { name: 'label',    type: 'string'  },
+    ], outputs: [] },
+  { name: 'addBoostTier', type: 'function', stateMutability: 'nonpayable',
+    inputs: [{ name: 'boostBps', type: 'uint256' }, { name: 'feeBps', type: 'uint256' }, { name: 'label', type: 'string' }], outputs: [] },
+  { name: 'removeLastBoostTier', type: 'function', stateMutability: 'nonpayable', inputs: [], outputs: [] },
+  { name: 'getBoostTiers', type: 'function', stateMutability: 'view', inputs: [],
+    outputs: [{ name: '', type: 'tuple[]', components: [{ name: 'boostBps', type: 'uint256' }, { name: 'feeBps', type: 'uint256' }, { name: 'label', type: 'string' }] }] },
+  { name: 'getBoostTierCost', type: 'function', stateMutability: 'view',
+    inputs: [{ name: 'token', type: 'address' }, { name: 'tierIndex', type: 'uint256' }],
+    outputs: [
+      { name: 'fillAmount',   type: 'uint256' },
+      { name: 'fee',          type: 'uint256' },
+      { name: 'totalCost',    type: 'uint256' },
+      { name: 'willGraduate', type: 'bool'    },
+    ] },
+  { name: 'boostTiers', type: 'function', stateMutability: 'view',
+    inputs: [{ name: 'index', type: 'uint256' }],
+    outputs: [{ name: 'boostBps', type: 'uint256' }, { name: 'feeBps', type: 'uint256' }, { name: 'label', type: 'string' }] },
 ] as const

@@ -243,7 +243,13 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
     uint256 public buyCooldown;               // seconds between buys per wallet (0 = off)
     uint256 public creatorLockDuration;       // seconds creator tokens are locked (0 = no lock)
     uint256 public perTokenGraduationFeeBps;  // platform fee taken from pooled USDC on graduation
-    uint256 public boostFeeBps;               // fee taken when users boost graduation (0 = free boosts)
+    /// @dev Each tier: user fills boostBps% of the graduation gap, paying feeBps% on top as platform fee.
+    struct BoostTier {
+        uint256 boostBps;  // % of remaining gap to fill (e.g. 2500 = 25%)
+        uint256 feeBps;    // platform fee % of fill amount (e.g. 200 = 2%)
+        string  label;     // display label e.g. "25%"
+    }
+    BoostTier[] public boostTiers;  // up to 10 tiers, set by admin
     uint256 public initialVirtualUsdcReserves;  // seed USDC reserves for price discovery (default 30K)
     uint256 public initialVirtualTokenReserves; // seed token reserves (default ~1.073B)
 
@@ -287,7 +293,8 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
     event FeeRecipientUpdated(address indexed newRecipient);
     event GraduationRecipientProposed(address indexed proposed);
     event GraduationRecipientUpdated(address indexed newRecipient);
-    event GraduationBoosted(address indexed token, address indexed booster, uint256 usdcSent, uint256 usdcAdded, uint256 feeTaken);
+    event GraduationBoosted(address indexed token, address indexed booster, uint256 usdcSent, uint256 usdcAdded, uint256 feeTaken, uint256 tierIndex, uint256 boostBps);
+    event BoostTiersUpdated();
     event TokenThresholdUpdated(address indexed token, uint256 oldThreshold, uint256 newThreshold);
     event CreatorTransferred(address indexed token, address indexed oldCreator, address indexed newCreator);
     event EmergencyWithdraw(address indexed token, address indexed to, uint256 amount);
@@ -325,7 +332,11 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         buyCooldown              = 30;          // 30-second cooldown
         creatorLockDuration      = 7 days;      // 7-day creator lock
         perTokenGraduationFeeBps = 100;         // 1% platform fee on graduation
-        boostFeeBps              = 0;           // boosts are free by default
+        // Default boost tiers: 10% (1% fee), 25% (2%), 50% (3%), 100% (5%)
+        boostTiers.push(BoostTier(1000, 100,  "10%"));
+        boostTiers.push(BoostTier(2500, 200,  "25%"));
+        boostTiers.push(BoostTier(5000, 300,  "50%"));
+        boostTiers.push(BoostTier(10000, 500, "100%"));
         initialVirtualUsdcReserves  = INITIAL_VIRTUAL_USDC_RESERVES;
         initialVirtualTokenReserves = INITIAL_VIRTUAL_TOKEN_RESERVES;
     }
@@ -569,42 +580,50 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
     }
 
 
-    /// @notice Anyone can boost a token toward graduation by contributing USDC.
-    ///         A platform boost fee (boostFeeBps) is taken. The rest goes to
-    ///         the bonding curve's raised amount, pushing it closer to graduation.
-    ///         Booster gets NO tokens — this is a community/investment contribution.
-    ///         Token graduates automatically if boost pushes it over the threshold.
-    /// @param token     The bonding-curve token to boost
-    /// @param usdcAmount  Total USDC the booster is sending (fee included)
-    function boostGraduation(address token, uint256 usdcAmount) external nonReentrant whenNotPaused {
+    /// @notice Boost a token toward graduation by selecting a percentage tier.
+    ///         Each tier fills a fixed % of the remaining graduation gap.
+    ///         A tier-specific fee is charged on top of the fill amount.
+    ///
+    ///         Example (gap = $10,000, 25% tier with 2% fee):
+    ///           fillAmount = $10,000 × 25% = $2,500  → goes to bonding curve
+    ///           fee        = $2,500  × 2%  = $50     → goes to feeRecipient
+    ///           totalCost  = $2,550                    → user pays this
+    ///
+    /// @param token      Bonding-curve token to boost
+    /// @param tierIndex  Index into boostTiers[] (0 = smallest, last = 100%)
+    function boostByTier(address token, uint256 tierIndex) external nonReentrant whenNotPaused {
         if (!isLaunchedToken[token]) revert NotLaunched();
+        if (tierIndex >= boostTiers.length) revert InvalidAmount();
+
         TokenState storage state = tokenStates[token];
         if (state.graduated) revert TokenAlreadyGraduated();
-        if (usdcAmount == 0) revert InvalidAmount();
 
-        uint256 fee       = (usdcAmount * boostFeeBps) / BPS_DENOMINATOR;
-        uint256 netAmount = usdcAmount - fee;
-        if (netAmount == 0) revert InvalidAmount();
+        uint256 threshold = state.tokenGraduationThreshold;
+        if (threshold == 0) revert InvalidAmount(); // instant-mode token, no gap
 
-        usdc.safeTransferFrom(msg.sender, address(this), usdcAmount);
+        uint256 raised = state.realUsdcRaised;
+        if (raised >= threshold) revert TokenAlreadyGraduated();
+
+        uint256 gap = threshold - raised;
+        BoostTier memory tier = boostTiers[tierIndex];
+
+        uint256 fillAmount = (gap * tier.boostBps) / BPS_DENOMINATOR; // to curve
+        if (fillAmount == 0) revert InvalidAmount();
+        uint256 fee        = (fillAmount * tier.feeBps) / BPS_DENOMINATOR; // platform cut
+        uint256 totalCost  = fillAmount + fee;
+
+        usdc.safeTransferFrom(msg.sender, address(this), totalCost);
         if (fee > 0) usdc.safeTransfer(feeRecipient, fee);
 
-        // Add net USDC to curve — raises price AND graduation progress
-        state.virtualUsdcReserves += netAmount;
-        state.realUsdcRaised      += netAmount;
+        state.virtualUsdcReserves += fillAmount;
+        state.realUsdcRaised      += fillAmount;
+        totalBoostedUsdc[token]         += fillAmount;
+        userBoosts[token][msg.sender]   += fillAmount;
 
-        // Track booster contributions
-        totalBoostedUsdc[token]        += netAmount;
-        userBoosts[token][msg.sender]  += netAmount;
-
-        emit GraduationBoosted(token, msg.sender, usdcAmount, netAmount, fee);
+        emit GraduationBoosted(token, msg.sender, totalCost, fillAmount, fee, tierIndex, tier.boostBps);
         _updateKingOfHill(token, state.realUsdcRaised);
         _emitMilestones(token, state.realUsdcRaised);
-
-        // Auto-graduate if threshold hit
-        if (state.tokenGraduationThreshold > 0 &&
-            state.realUsdcRaised >= state.tokenGraduationThreshold)
-            _graduateToken(token);
+        if (state.realUsdcRaised >= threshold) _graduateToken(token);
     }
 
     /// @notice Admin can lower (or raise) a specific token's graduation threshold after launch.
@@ -715,9 +734,46 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
     }
 
     /// @notice Set platform fee taken from pooled USDC at graduation. 100 = 1%.
-    function setBoostFeeBps(uint256 value) external onlyOwner {
-        boostFeeBps = value;
-        emit ConfigUpdated("boostFeeBps", value);
+    /// @notice Set all boost tiers at once. Up to 10 tiers. Any existing tiers are replaced.
+    /// @param boostBpsArr  % of gap to fill per tier (e.g. [1000,2500,5000,10000] for 10/25/50/100%)
+    /// @param feeBpsArr    Platform fee % per tier on top of fill amount (e.g. [100,200,300,500] = 1/2/3/5%)
+    /// @param labels       Display labels (e.g. ["10%","25%","50%","100%"])
+    function setBoostTiers(
+        uint256[] calldata boostBpsArr,
+        uint256[] calldata feeBpsArr,
+        string[]  calldata labels
+    ) external onlyOwner {
+        if (boostBpsArr.length != feeBpsArr.length || boostBpsArr.length != labels.length) revert InvalidAmount();
+        if (boostBpsArr.length > 10) revert InvalidAmount();
+        delete boostTiers;
+        for (uint256 i = 0; i < boostBpsArr.length; i++) {
+            if (boostBpsArr[i] == 0 || boostBpsArr[i] > BPS_DENOMINATOR) revert InvalidAmount();
+            boostTiers.push(BoostTier(boostBpsArr[i], feeBpsArr[i], labels[i]));
+        }
+        emit BoostTiersUpdated();
+    }
+
+    /// @notice Update a single boost tier
+    function setBoostTier(uint256 index, uint256 boostBps, uint256 feeBps, string calldata label) external onlyOwner {
+        if (index >= boostTiers.length) revert InvalidAmount();
+        if (boostBps == 0 || boostBps > BPS_DENOMINATOR) revert InvalidAmount();
+        boostTiers[index] = BoostTier(boostBps, feeBps, label);
+        emit BoostTiersUpdated();
+    }
+
+    /// @notice Add a new boost tier (max 10 total)
+    function addBoostTier(uint256 boostBps, uint256 feeBps, string calldata label) external onlyOwner {
+        if (boostTiers.length >= 10) revert InvalidAmount();
+        if (boostBps == 0 || boostBps > BPS_DENOMINATOR) revert InvalidAmount();
+        boostTiers.push(BoostTier(boostBps, feeBps, label));
+        emit BoostTiersUpdated();
+    }
+
+    /// @notice Remove last boost tier
+    function removeLastBoostTier() external onlyOwner {
+        if (boostTiers.length == 0) revert InvalidAmount();
+        boostTiers.pop();
+        emit BoostTiersUpdated();
     }
 
     /// @notice Set initial virtual USDC reserves for new launches (affects starting price).
@@ -753,8 +809,7 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         uint256 _maxBuyBps,
         uint256 _buyCooldown,
         uint256 _creatorLockDuration,
-        uint256 _perTokenGraduationFeeBps,
-        uint256 _boostFeeBps
+        uint256 _perTokenGraduationFeeBps
     ) external onlyOwner {
         graduationThreshold      = _graduationThreshold;
         protocolFeeBps           = _protocolFeeBps;
@@ -767,7 +822,6 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         buyCooldown              = _buyCooldown;
         creatorLockDuration      = _creatorLockDuration;
         perTokenGraduationFeeBps = _perTokenGraduationFeeBps;
-        boostFeeBps              = _boostFeeBps;
         emit ConfigUpdated("all", 0);
     }
 
@@ -858,6 +912,34 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         if (thresh == 0) return BPS_DENOMINATOR;
         uint256 p = (tokenStates[token].realUsdcRaised * BPS_DENOMINATOR) / thresh;
         return p > BPS_DENOMINATOR ? BPS_DENOMINATOR : p;
+    }
+
+    /// @notice Get all boost tiers
+    function getBoostTiers() external view returns (BoostTier[] memory) {
+        return boostTiers;
+    }
+
+    /// @notice Preview the exact cost and outcome for a boost tier on a specific token
+    /// @return fillAmount  USDC that goes into the bonding curve (raises price + progress)
+    /// @return fee         Platform fee paid on top
+    /// @return totalCost   Total USDC the user must send
+    /// @return willGraduate  True if this boost would trigger graduation
+    function getBoostTierCost(address token, uint256 tierIndex) external view returns (
+        uint256 fillAmount, uint256 fee, uint256 totalCost, bool willGraduate
+    ) {
+        if (!isLaunchedToken[token] || tierIndex >= boostTiers.length) return (0, 0, 0, false);
+        TokenState storage state = tokenStates[token];
+        if (state.graduated) return (0, 0, 0, true);
+        uint256 threshold = state.tokenGraduationThreshold;
+        if (threshold == 0) return (0, 0, 0, true);
+        uint256 raised    = state.realUsdcRaised;
+        if (raised >= threshold) return (0, 0, 0, true);
+        uint256 gap = threshold - raised;
+        BoostTier memory tier = boostTiers[tierIndex];
+        fillAmount   = (gap * tier.boostBps) / BPS_DENOMINATOR;
+        fee          = (fillAmount * tier.feeBps) / BPS_DENOMINATOR;
+        totalCost    = fillAmount + fee;
+        willGraduate = (raised + fillAmount) >= threshold;
     }
 
     /// @notice Get how much USDC is still needed to graduate a token
