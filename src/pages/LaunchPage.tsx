@@ -18,7 +18,7 @@ import {
   Rocket, Twitter, Send, Globe, ChevronDown, Zap,
   Loader2, ShieldCheck, ArrowRight,
   AlertTriangle, Info, RotateCcw, Check,
-  Lock, TrendingUp, Star, Trophy,
+  Lock, TrendingUp, Star, Trophy, PlusCircle, Flame,
   MessageCircle, Hash, Image, Settings2,
 } from 'lucide-react'
 
@@ -190,7 +190,6 @@ export function LaunchPage() {
   // V3 Feature toggles
   const [mintable,    setMintable]    = useState(false)
   const [burnable,    setBurnable]    = useState(false)
-  const [pausable,    setPausable]    = useState(false)
   const [hasBlacklist,setBlacklist]   = useState(false)
   const [pairToken,   setPairToken]   = useState<string>('')  // '' = default (USDC)
   const [vestingDays, setVestingDays] = useState('')   // vesting duration in days
@@ -328,7 +327,7 @@ export function LaunchPage() {
         graduationThresholdUsdc: grad,
         initialLiquidityUsdc:    instantMode ? initLiqUsdc : 0n,
         pairToken:  (pairToken && pairToken !== '' && pairToken !== 'EURC') ? pairToken as `0x${string}` : ZERO_ADDR,
-        mintable,   burnable,   pausable,   hasBlacklist,
+        mintable,   burnable,   pausable: false,   hasBlacklist,
         maxSupply:  mintable ? supply * 2n : 0n,   // allow up to 2x if mintable
         vestingDuration: vestingDays ? BigInt(Math.round(parseFloat(vestingDays) * 86400)) : 0n,
         vestingCliff:    vestingCliffDays ? BigInt(Math.round(parseFloat(vestingCliffDays) * 86400)) : 0n,
@@ -775,59 +774,117 @@ export function LaunchPage() {
           {/* ─── 3. Token Features ─── */}
           <Section title="Token Features" icon={Zap} iconColor="#818cf8" step={3}
             subtitle="Optional capabilities baked into your token's bytecode at deploy time">
-            <div className="space-y-4">
-              {/* Feature toggles */}
-              <div className="grid grid-cols-2 gap-2.5">
+            <div className="space-y-5">
+
+              {/* Feature toggles — 2 col, no Pausable */}
+              <div className="grid grid-cols-2 gap-3">
                 {([
-                  { key:'mintable',    label:'Mintable',    icon:'🪙', desc:'Owner can mint more tokens in the future', val:mintable,    set:setMintable,    risk:'med' },
-                  { key:'burnable',    label:'Burnable',    icon:'🔥', desc:'Anyone can burn their own tokens to reduce supply', val:burnable,    set:setBurnable,    risk:'low' },
-                  { key:'pausable',    label:'Pausable',    icon:'⏸️', desc:'Creator can pause all transfers in an emergency', val:pausable,    set:setPausable,    risk:'low' },
-                  { key:'hasBlacklist',label:'Blacklist',   icon:'🚫', desc:'Creator can block wallets (compliance)', val:hasBlacklist, set:setBlacklist,   risk:'med' },
-                ] as const).map(({label,icon,desc,val,set,risk})=>(
-                  <button key={label} type="button" onClick={()=>set((v:boolean)=>!v)}
-                    className="p-3 rounded-xl text-left transition-all"
+                  {
+                    key: 'mintable', label: 'Mintable',
+                    Icon: PlusCircle, color: '#6366f1',
+                    desc: 'Owner can increase total supply after launch',
+                    val: mintable, set: setMintable,
+                  },
+                  {
+                    key: 'burnable', label: 'Burnable',
+                    Icon: Flame, color: '#ef4444',
+                    desc: 'Token holders can permanently destroy their tokens',
+                    val: burnable, set: setBurnable,
+                  },
+                  {
+                    key: 'hasBlacklist', label: 'Compliance',
+                    Icon: ShieldCheck, color: '#22c55e',
+                    desc: 'Creator can restrict specific wallets — aligns with Arc institutional standards',
+                    val: hasBlacklist, set: setBlacklist,
+                  },
+                ] as const).map(({ key, label, Icon, color, desc, val, set }) => (
+                  <button key={key} type="button" onClick={() => set((v: boolean) => !v)}
+                    className="p-4 rounded-2xl text-left transition-all"
                     style={{
-                      background:val?'rgba(99,102,241,0.1)':'var(--surface2)',
-                      border:`1px solid ${val?'rgba(99,102,241,0.3)':'var(--border)'}`,
+                      background: val ? `${color}0d` : 'var(--surface2)',
+                      border: `1px solid ${val ? `${color}35` : 'var(--border)'}`,
                     }}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <span>{icon}</span>
-                        <span className="text-sm font-bold" style={{color:val?'#818cf8':'var(--text1)'}}>{label}</span>
+                    {/* Header row */}
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                        style={{ background: val ? `${color}18` : 'var(--surface3)' }}>
+                        <Icon size={15} style={{ color: val ? color : 'var(--text3)' }} />
                       </div>
-                      <div className="w-8 h-4 rounded-full transition-all relative" style={{background:val?'#6366f1':'var(--surface3)'}}>
-                        <div className="w-3 h-3 rounded-full bg-white absolute top-0.5 transition-all" style={{left:val?'17px':'3px'}}/>
+                      {/* Toggle pill */}
+                      <div className="w-9 h-5 rounded-full relative transition-colors flex-shrink-0"
+                        style={{ background: val ? color : 'var(--surface3)' }}>
+                        <div className="w-3.5 h-3.5 rounded-full bg-white absolute top-[3px] shadow-sm transition-all"
+                          style={{ left: val ? '19px' : '3px' }} />
                       </div>
                     </div>
-                    <p className="text-[9px] leading-relaxed" style={{color:'var(--text2)'}}>{desc}</p>
-                    {val&&risk==='med'&&<p className="text-[8px] mt-1 font-bold" style={{color:'var(--gold)'}}>⚠ Shown as warning badge on token page</p>}
+                    <p className="text-[13px] font-bold mb-1" style={{ color: val ? color : 'var(--text1)' }}>{label}</p>
+                    <p className="text-[10px] leading-relaxed" style={{ color: 'var(--text2)' }}>{desc}</p>
                   </button>
                 ))}
+
+                {/* Mintable cap notice — only shown when mintable is on */}
+                {mintable && (
+                  <div className="col-span-2 flex items-start gap-2.5 px-4 py-3 rounded-xl"
+                    style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)' }}>
+                    <Info size={12} style={{ color: '#818cf8', flexShrink: 0, marginTop: 1 }} />
+                    <p className="text-[10px] leading-relaxed" style={{ color: 'var(--text2)' }}>
+                      Mintable tokens allow the owner to increase supply after launch. The max supply cap is set to 2× total supply at deploy. Future mints require an on-chain transaction.
+                    </p>
+                  </div>
+                )}
               </div>
+
+              {/* Divider */}
+              <div style={{ height: 1, background: 'var(--border)' }} />
 
               {/* Pair token selector */}
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest block mb-2" style={{color:'var(--text2)'}}>Pair Token</label>
-                <div className="flex gap-2">
-                  {[
-                    {label:'USDC', addr:'', icon:'💵', note:'Default · Circle USD on Arc'},
-                    {label:'EURC', addr:'EURC', icon:'💶', note:'Circle EUR on Arc'},
-                  ].map(({label,addr,icon,note})=>(
-                    <button key={label} type="button" onClick={()=>setPairToken(addr as any)}
-                      className="flex-1 p-3 rounded-xl text-left transition-all"
-                      style={{
-                        background:pairToken===addr?'rgba(99,102,241,0.1)':'var(--surface2)',
-                        border:`1px solid ${pairToken===addr?'rgba(99,102,241,0.3)':'var(--border)'}`,
-                      }}>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-lg">{icon}</span>
-                        <span className="font-bold" style={{color:pairToken===addr?'#818cf8':'var(--text1)'}}>{label}</span>
-                      </div>
-                      <p className="text-[9px]" style={{color:'var(--text2)'}}>{note}</p>
-                    </button>
-                  ))}
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] mb-3" style={{ color: 'var(--text2)' }}>
+                  Pair Token
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  {([
+                    {
+                      addr: '',
+                      name: 'USDC',
+                      sub: 'USD Coin · Circle',
+                      logo: 'https://assets.coingecko.com/coins/images/6319/small/usdc.png',
+                    },
+                    {
+                      addr: 'EURC',
+                      name: 'EURC',
+                      sub: 'Euro Coin · Circle',
+                      logo: 'https://assets.coingecko.com/coins/images/26045/small/euro-coin.png',
+                    },
+                  ] as const).map(({ addr, name, sub, logo }) => {
+                    const active = pairToken === addr
+                    return (
+                      <button key={addr} type="button" onClick={() => setPairToken(addr)}
+                        className="flex items-center gap-3 p-3.5 rounded-2xl text-left transition-all"
+                        style={{
+                          background: active ? 'rgba(99,102,241,0.08)' : 'var(--surface2)',
+                          border: `1.5px solid ${active ? 'rgba(99,102,241,0.35)' : 'var(--border)'}`,
+                        }}>
+                        <img
+                          src={logo} alt={name}
+                          className="w-9 h-9 rounded-full flex-shrink-0"
+                          style={{ border: '1.5px solid var(--border)' }}
+                          onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                        />
+                        <div>
+                          <p className="text-sm font-black" style={{ color: active ? '#818cf8' : 'var(--text1)', letterSpacing: '-0.02em' }}>{name}</p>
+                          <p className="text-[9px] font-medium mt-0.5" style={{ color: 'var(--text2)' }}>{sub}</p>
+                        </div>
+                        {active && (
+                          <div className="ml-auto w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0"
+                            style={{ background: '#6366f1' }}>
+                            <Check size={9} style={{ color: '#fff' }} />
+                          </div>
+                        )}
+                      </button>
+                    )
+                  })}
                 </div>
-                {pairToken==='EURC'&&<p className="text-[9px] mt-1.5 px-1" style={{color:'var(--gold)'}}>⚠ Ensure EURC address is configured in Admin → add accepted pair token before launching</p>}
               </div>
 
               {/* Vesting for creator tokens */}
