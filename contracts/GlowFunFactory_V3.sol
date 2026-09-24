@@ -3,34 +3,119 @@ pragma solidity ^0.8.24;
 
 /**
  * ██████  ██       ██████  ██     ██ ███████ ██    ██ ███    ██
- * ██       ██      ██    ██ ██     ██ ██      ██    ██ ████   ██
- * ██   ███ ██      ██    ██ ██  █  ██ █████   ██    ██ ██ ██  ██
- * ██    ██ ██      ██    ██ ██ ███ ██ ██      ██    ██ ██  ██ ██
+ * ██       ██       ██    ██ ██     ██ ██       ██    ██ ████   ██
+ * ██   ███ ██       ██    ██ ██  █  ██ █████   ██    ██ ██ ██  ██
+ * ██    ██ ██       ██    ██ ██ ███ ██ ██       ██    ██ ██  ██ ██
  *  ██████  ███████  ██████   ███ ███  ██       ██████  ██   ████
  *
  * GlowFun Factory V3 — Arc Mainnet (Chain 5042)
  * USDC-powered bonding curve token launchpad
- *
- * Changes from V2:
- *  ✓ No hardcoded limits — owner sets any value, any time
- *  ✓ Individual setters — change one thing without touching the rest
- *  ✓ graduationThreshold = 0  → instant Uniswap listing on launch
- *  ✓ updateConfig still works as a batch setter
- *  ✓ protocolFeeBps used consistently in both buy AND sell
- *  ✓ All V2 functionality preserved
  */
 
 import {ERC20}         from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20}        from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata}from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {UniswapPoolLib} from "./UniswapPoolLib.sol";
 import {SafeERC20}     from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable}       from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Pausable}      from "@openzeppelin/contracts/utils/Pausable.sol";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GlowToken  (unchanged from V2 — fully compatible)
+// Uniswap Interfaces & Library
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface IUniswapV3PoolInit {
+    function initialize(uint160 sqrtPriceX96) external;
+}
+
+interface IPositionManager {
+    struct MintParams {
+        address token0; address token1; uint24 fee;
+        int24 tickLower; int24 tickUpper;
+        uint256 amount0Desired; uint256 amount1Desired;
+        uint256 amount0Min; uint256 amount1Min;
+        address recipient; uint256 deadline;
+    }
+    function mint(MintParams calldata params) external
+        returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1);
+    function createAndInitializePoolIfNecessary(
+        address token0, address token1, uint24 fee, uint160 sqrtPriceX96
+    ) external payable returns (address pool);
+}
+
+library UniswapPoolLib {
+    using SafeERC20 for IERC20;
+
+    int24 internal constant TICK_LOWER = -887200;
+    int24 internal constant TICK_UPPER =  887200;
+
+    struct PoolResult {
+        bool    success;
+        uint256 tokenId;   // LP NFT id (0 if failed)
+    }
+
+    function createAndSeed(
+        address positionMgr,
+        address token,
+        address pairToken,
+        uint256 tokenAmount,
+        uint256 pairAmount,
+        uint24  fee,
+        address recipient
+    ) internal returns (PoolResult memory result) {
+        if (positionMgr == address(0) || tokenAmount == 0 || pairAmount == 0)
+            return result;
+
+        (address t0, address t1, uint256 a0, uint256 a1) = token < pairToken
+            ? (token, pairToken, tokenAmount, pairAmount)
+            : (pairToken, token, pairAmount, tokenAmount);
+
+        uint160 sqrtPrice = computeSqrtPriceX96(a0, a1);
+
+        IERC20(token).approve(positionMgr, tokenAmount);
+        IERC20(pairToken).approve(positionMgr, pairAmount);
+
+        try IPositionManager(positionMgr).createAndInitializePoolIfNecessary(
+            t0, t1, fee, sqrtPrice
+        ) returns (address) {
+            try IPositionManager(positionMgr).mint(
+                IPositionManager.MintParams({
+                    token0: t0, token1: t1, fee: fee,
+                    tickLower: TICK_LOWER, tickUpper: TICK_UPPER,
+                    amount0Desired: a0, amount1Desired: a1,
+                    amount0Min: 0, amount1Min: 0,
+                    recipient: recipient,
+                    deadline: block.timestamp + 300
+                })
+            ) returns (uint256 nftId, uint128, uint256, uint256) {
+                result.success = true;
+                result.tokenId = nftId;
+            } catch {}
+        } catch {}
+
+        IERC20(token).approve(positionMgr, 0);
+        IERC20(pairToken).approve(positionMgr, 0);
+    }
+
+    function computeSqrtPriceX96(uint256 amount0, uint256 amount1)
+        internal pure returns (uint160)
+    {
+        if (amount0 == 0 || amount1 == 0) return 0;
+        uint256 step1 = (amount1 << 128) / amount0;
+        uint256 ratioX192 = step1 << 64;
+        return uint160(sqrt(ratioX192));
+    }
+
+    function sqrt(uint256 x) internal pure returns (uint256 y) {
+        if (x == 0) return 0;
+        uint256 z = (x + 1) >> 1;
+        y = x;
+        while (z < y) { y = z; z = (x / z + z) >> 1; }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GlowToken
 // ─────────────────────────────────────────────────────────────────────────────
 struct TokenMetadata {
     string name;
@@ -50,15 +135,14 @@ contract GlowToken is ERC20 {
     error BurnDisabled();
     error Blacklisted();
     error PauseDisabled();
-    error InvalidAmount();   // used by mint() cap check
-    error Unauthorized();    // used by vesting + blacklist callers
+    error InvalidAmount();    // used by mint() cap check
+    error Unauthorized();     // used by vesting + blacklist callers
 
     address public immutable factory;
     address public immutable creator;
     uint256 public immutable createdAt;
-    uint256 public immutable maxSupply;       // 0 = uncapped (if mintable)
+    uint256 public immutable maxSupply;        // 0 = uncapped (if mintable)
 
-    // Feature flags — set once at deployment, immutable
     bool public immutable mintable;
     bool public immutable burnable;
     bool public immutable pausable;
@@ -70,12 +154,10 @@ contract GlowToken is ERC20 {
     string public telegram;
     string public website;
     bool   public locked;          // factory transfer lock during bonding
-    bool   public tokenPaused;     // creator-controlled pause (if pausable)
+    bool   public tokenPaused;      // creator-controlled pause (if pausable)
 
-    // Blacklist (if hasBlacklist)
     mapping(address => bool) public blacklisted;
 
-    // Vesting for creator tokens
     uint256 public vestingStart;
     uint256 public vestingDuration;   // 0 = no vesting (locked binary)
     uint256 public vestingCliff;      // seconds before any tokens release
@@ -87,9 +169,9 @@ contract GlowToken is ERC20 {
         bool burnable;
         bool pausable;
         bool hasBlacklist;
-        uint256 maxSupply;       // 0 = totalSupply (fixed), >0 = cap for future mints
-        uint256 vestingDuration; // creator token vesting duration in seconds (0 = binary lock)
-        uint256 vestingCliff;    // seconds before any vesting release
+        uint256 maxSupply;       
+        uint256 vestingDuration; 
+        uint256 vestingCliff;    
     }
 
     constructor(
@@ -110,14 +192,12 @@ contract GlowToken is ERC20 {
         telegram     = meta.telegram;
         website      = meta.website;
 
-        // Feature flags
         mintable     = features.mintable;
         burnable     = features.burnable;
         pausable     = features.pausable;
         hasBlacklist = features.hasBlacklist;
         maxSupply    = features.maxSupply > 0 ? features.maxSupply : totalSupply_;
 
-        // Vesting for creator tokens
         if (vestingAmount_ > 0 && features.vestingDuration > 0) {
             vestingTotal    = vestingAmount_;
             vestingDuration = features.vestingDuration;
@@ -128,14 +208,14 @@ contract GlowToken is ERC20 {
         _mint(factory_, totalSupply_);
     }
 
-    // ── Events ──────────────────────────────────────────────────────────────
     event TokenMinted(address indexed to, uint256 amount, uint256 newSupply);
     event TokenBurned(address indexed from, uint256 amount, uint256 newSupply);
     event TokenPauseSet(bool paused);
     event AddressBlacklisted(address indexed account, bool status);
     event VestingReleased(address indexed to, uint256 amount);
+    event MetadataUpdated(address indexed token, string imageUri, string description);
+    event URIUpdated(string contractURI);
 
-    // ── Mint (owner/factory only, if mintable) ───────────────────────────────
     function mint(address to, uint256 amount) external {
         if (!mintable) revert MintDisabled();
         if (msg.sender != creator && msg.sender != factory) revert NotFactory();
@@ -144,12 +224,12 @@ contract GlowToken is ERC20 {
         emit TokenMinted(to, amount, totalSupply());
     }
 
-    // ── Burn (self or approved, if burnable) ─────────────────────────────────
     function burn(uint256 amount) external {
         if (!burnable) revert BurnDisabled();
         _burn(msg.sender, amount);
         emit TokenBurned(msg.sender, amount, totalSupply());
     }
+    
     function burnFrom(address account, uint256 amount) external {
         if (!burnable) revert BurnDisabled();
         _spendAllowance(account, msg.sender, amount);
@@ -157,7 +237,6 @@ contract GlowToken is ERC20 {
         emit TokenBurned(account, amount, totalSupply());
     }
 
-    // ── Pause (creator only, if pausable) ────────────────────────────────────
     function setTokenPaused(bool _paused) external {
         if (!pausable) revert PauseDisabled();
         if (msg.sender != creator && msg.sender != factory) revert NotFactory();
@@ -165,7 +244,6 @@ contract GlowToken is ERC20 {
         emit TokenPauseSet(_paused);
     }
 
-    // ── Blacklist (creator only, if hasBlacklist) ────────────────────────────
     function setBlacklisted(address account, bool status) external {
         if (!hasBlacklist) revert BurnDisabled();
         if (msg.sender != creator && msg.sender != factory) revert NotFactory();
@@ -173,13 +251,12 @@ contract GlowToken is ERC20 {
         emit AddressBlacklisted(account, status);
     }
 
-    // ── Vesting release (creator claims unlocked portion) ────────────────────
     function releaseVested() external {
         if (msg.sender != creator) revert NotFactory();
         uint256 releasable = vestedAmount() - vestingReleased;
         if (releasable == 0) return;
         vestingReleased += releasable;
-        _transfer(factory, creator, releasable); // factory holds vested tokens
+        _transfer(factory, creator, releasable);
         emit VestingReleased(creator, releasable);
     }
 
@@ -195,15 +272,11 @@ contract GlowToken is ERC20 {
         return vestedAmount() - vestingReleased;
     }
 
-        event MetadataUpdated(address indexed token, string imageUri, string description);
-    event URIUpdated(string contractURI);
-
     function setLocked(bool _locked) external {
         if (msg.sender != factory) revert NotFactory();
         locked = _locked;
     }
 
-    /// @notice ERC-7572 on-chain metadata — wallets read this for the logo
     function contractURI() external view returns (string memory) {
         return string(abi.encodePacked(
             'data:application/json;utf8,{"name":"', name(),
@@ -238,7 +311,6 @@ contract GlowToken is ERC20 {
     }
 
     function _update(address from, address to, uint256 value) internal override {
-        // Factory transfer lock during bonding curve phase
         if (locked
             && from != address(0)
             && to   != address(0)
@@ -247,9 +319,7 @@ contract GlowToken is ERC20 {
             && from != creator
             && to   != creator
         ) revert TransferLocked();
-        // Creator pause (if feature enabled)
         if (tokenPaused && from != address(0) && to != address(0)) revert TransferLocked();
-        // Compliance blacklist (if feature enabled)
         if (hasBlacklist) {
             if (blacklisted[from] || blacklisted[to]) revert Blacklisted();
         }
@@ -272,7 +342,32 @@ contract GlowToken is ERC20 {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// EXTERNAL DEPLOYER PATTERN (Strips bytecode from Factory to avoid 24KB limit)
+// ─────────────────────────────────────────────────────────────────────────────
+interface IGlowTokenDeployer {
+    function deployToken(
+        TokenMetadata calldata meta,
+        GlowToken.TokenFeatures calldata features,
+        address creator,
+        address factory,
+        uint256 totalSupply,
+        uint256 vestingAmount
+    ) external returns (address);
+}
 
+contract GlowTokenDeployer is IGlowTokenDeployer {
+    function deployToken(
+        TokenMetadata calldata meta,
+        GlowToken.TokenFeatures calldata features,
+        address creator,
+        address factory,
+        uint256 totalSupply,
+        uint256 vestingAmount
+    ) external override returns (address) {
+        return address(new GlowToken(meta, features, creator, factory, totalSupply, vestingAmount));
+    }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GlowFunFactory_V3
@@ -334,14 +429,9 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         uint256 totalSupply;            // 0 → default 1B
         uint256 curveAllocationBps;     // 0 → default 8000 (80%)
         uint256 creatorAllocationBps;   // 0 → no creator allocation
-        /// @dev 0 = instant graduation (uses global graduationThreshold).
-        ///      If global is also 0, caller must provide initialLiquidityUsdc.
         uint256 graduationThresholdUsdc;
-        /// @dev USDC sent by creator at launch to seed Uniswap instantly (only when threshold==0).
         uint256 initialLiquidityUsdc;
-        /// @dev Pair token: address(0) = use factory default (USDC). Can set EURC address.
         address pairToken;
-        /// @dev Feature flags for the GlowToken
         bool mintable;
         bool burnable;
         bool pausable;
@@ -366,11 +456,12 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         uint256 feeToRecipient;
     }
 
-    // ── Config (all settable by owner, NO hardcoded limits) ──────────────────
+    // ── Config ───────────────────────────────────────────────────────────────
     IERC20  public immutable usdc;
 
     address public feeRecipient;
     address public graduationRecipient;
+    address public tokenDeployer;             // Address of GlowTokenDeployer contract
 
     uint256 public graduationThreshold;       // 0 = instant graduation globally
     uint256 public protocolFeeBps;            // buy + sell fee
@@ -383,13 +474,14 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
     uint256 public buyCooldown;               // seconds between buys per wallet (0 = off)
     uint256 public creatorLockDuration;       // seconds creator tokens are locked (0 = no lock)
     uint256 public perTokenGraduationFeeBps;  // platform fee taken from pooled USDC on graduation
-    /// @dev Each tier: user fills boostBps% of the graduation gap, paying feeBps% on top as platform fee.
+
     struct BoostTier {
         uint256 boostBps;  // % of remaining gap to fill (e.g. 2500 = 25%)
         uint256 feeBps;    // platform fee % of fill amount (e.g. 200 = 2%)
         string  label;     // display label e.g. "25%"
     }
     BoostTier[] public boostTiers;  // up to 10 tiers, set by admin
+    
     // ── IDO / Auto-pool config ──────────────────────────────────────────────
     address public uniswapV3Factory;         // 0x1F98431c8aD98523631AE4a59f267346ea31F984 on Arc
     address public nonfungiblePositionMgr;   // Uniswap V3 NonfungiblePositionManager on Arc
@@ -415,15 +507,15 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
     mapping(address => uint256)            public pendingGraduationUsdc;
     mapping(address => uint256)            public pendingGraduationTokens;
     mapping(address => address)            public pendingGraduationCreator;
-    // LP NFT lock (Uniswap V3 position NFT held by factory after auto-pool creation)
+    
     mapping(address => uint256)            public pendingLpNftId;
     mapping(address => address)            public pendingLpNftOwner;
     mapping(address => uint256)            public pendingLpUnlockTime;
-    uint256 public lpLockDuration;  // seconds LP is locked (default 30 days)
+    uint256 public lpLockDuration;
+    
     mapping(address => uint256)            public pendingCreatorGraduationUsdc;
-    // Boost graduation tracking
-    mapping(address => uint256)            public totalBoostedUsdc;  // per token
-    mapping(address => mapping(address => uint256)) public userBoosts; // token → user → total boosted
+    mapping(address => uint256)            public totalBoostedUsdc;  
+    mapping(address => mapping(address => uint256)) public userBoosts; 
     address                                public kingOfHill;
     uint256                                public kingOfHillRaised;
     mapping(address => uint8)  private    _milestoneMask;
@@ -464,7 +556,6 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
             _graduationRecipient == address(0) || _owner == address(0))
             revert InvalidAddress();
 
-        // Enforce USDC (6 decimals) — only check, not a limit
         try IERC20Metadata(_usdc).decimals() returns (uint8 d) {
             if (d != 6) revert InvalidToken();
         } catch { revert InvalidToken(); }
@@ -473,28 +564,25 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         feeRecipient             = _feeRecipient;
         graduationRecipient      = _graduationRecipient;
 
-        // Sensible defaults — owner can change any of these freely
-        graduationThreshold      = 69_000e6;   // $69,000 USDC
-        protocolFeeBps           = 100;         // 1%
-        creationFee              = 10e6;        // $10 USDC
-        creatorGraduationFeeBps  = 500;         // 5% of raised USDC on graduation
-        referralFeeBps           = 2500;        // 25% of protocol fee to referrer
-        antiSnipeDuration        = 60;          // 60-second snipe window
-        antiSnipeTaxBps          = 500;         // 5% extra snipe tax
-        maxBuyBps                = 500;         // max 5% of curve per buy
-        buyCooldown              = 30;          // 30-second cooldown
-        creatorLockDuration      = 7 days;      // 7-day creator lock
-        perTokenGraduationFeeBps = 100;         // 1% platform fee on graduation
-        lpLockDuration = 30 days;  // LP NFT locked 30 days by default
-        // Uniswap V3 on Arc Mainnet
+        graduationThreshold      = 69_000e6;   
+        protocolFeeBps           = 100;         
+        creationFee              = 10e6;        
+        creatorGraduationFeeBps  = 500;         
+        referralFeeBps           = 2500;        
+        antiSnipeDuration        = 60;          
+        antiSnipeTaxBps          = 500;         
+        maxBuyBps                = 500;         
+        buyCooldown              = 30;          
+        creatorLockDuration      = 7 days;      
+        perTokenGraduationFeeBps = 100;         
+        lpLockDuration = 30 days;  
+        
         uniswapV3Factory       = 0x1F98431c8aD98523631AE4a59f267346ea31F984;
         nonfungiblePositionMgr = 0xC36442b4a4522E871399CD717aBDD847Ab11FE88;
-        defaultPoolFee         = 3000; // 0.3% fee tier
+        defaultPoolFee         = 3000; 
 
-        // Accept USDC as pair token by default
         acceptedPairTokens[_usdc] = true;
 
-        // Default boost tiers: 10% (1% fee), 25% (2%), 50% (3%), 100% (5%)
         boostTiers.push(BoostTier(1000, 100,  "10%"));
         boostTiers.push(BoostTier(2500, 200,  "25%"));
         boostTiers.push(BoostTier(5000, 300,  "50%"));
@@ -507,7 +595,6 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
     // CORE FUNCTIONS
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// @notice Launch a new bonding-curve token
     function launchToken(LaunchParams calldata p)
         external nonReentrant whenNotPaused
         returns (address token)
@@ -515,7 +602,6 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         if (bytes(p.name).length   == 0 || bytes(p.symbol).length == 0) revert InvalidToken();
         if (bytes(p.name).length   > 64 || bytes(p.symbol).length > 16) revert InvalidToken();
 
-        // Resolve threshold: per-token override → global → 0 (instant)
         uint256 resolvedThreshold = p.graduationThresholdUsdc > 0
             ? p.graduationThresholdUsdc
             : graduationThreshold;
@@ -525,7 +611,6 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
 
         LaunchAllocations memory a = _validateAndCompute(p);
 
-        // Collect fees upfront
         if (creationFee > 0) usdc.safeTransferFrom(msg.sender, feeRecipient, creationFee);
         if (instantMode)     usdc.safeTransferFrom(msg.sender, address(this), p.initialLiquidityUsdc);
 
@@ -547,11 +632,8 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         state.totalSupply              = a.supply;
         state.tokenGraduationThreshold = resolvedThreshold;
 
-        // Creator allocation: vesting or binary lock
         if (a.creatorTokens > 0) {
             if (p.vestingDuration > 0) {
-                // Tokens stay in factory; creator calls releaseVested() over time
-                // (GlowToken tracks vesting internally)
                 state.creatorTokensLocked = true;
                 GlowToken(token).setLocked(true);
             } else {
@@ -573,7 +655,6 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         }
     }
 
-    /// @notice Buy tokens from bonding curve. Contract reads USDC allowance automatically.
     function buyTokens(address token, uint256 minTokensOut, address referrer)
         external nonReentrant whenNotPaused
         returns (uint256 usdcIn, uint256 tokensOut)
@@ -617,13 +698,11 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         _updateKingOfHill(token, state.realUsdcRaised);
         _emitMilestones(token, state.realUsdcRaised);
 
-        // Graduate if threshold hit (also handles threshold=0 edge case: won't fire because instantMode used)
         if (state.tokenGraduationThreshold > 0 &&
             state.realUsdcRaised >= state.tokenGraduationThreshold)
             _graduateToken(token);
     }
 
-    /// @notice Sell tokens back to bonding curve for USDC
     function sellTokens(address token, uint256 tokensIn, uint256 minUsdcOut)
         external nonReentrant whenNotPaused
         returns (uint256 usdcOut)
@@ -657,7 +736,6 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
     // CLAIMS
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// @notice graduationRecipient claims USDC + tokens after graduation to seed Uniswap
     function claimGraduation(address token) external nonReentrant {
         if (msg.sender != graduationRecipient) revert Unauthorized();
         uint256 u = pendingGraduationUsdc[token];
@@ -671,7 +749,6 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         emit GraduationClaimed(token, graduationRecipient, u, t);
     }
 
-    /// @notice Token creator claims their USDC bonus after graduation
     function claimCreatorGraduation(address token) external nonReentrant {
         if (msg.sender != pendingGraduationCreator[token]) revert Unauthorized();
         uint256 amount = pendingCreatorGraduationUsdc[token];
@@ -681,7 +758,6 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         emit CreatorGraduationClaimed(token, msg.sender, amount);
     }
 
-    /// @notice Referrers claim accumulated USDC earnings
     function claimReferral() external nonReentrant {
         uint256 amount = referralEarnings[msg.sender];
         if (amount == 0) revert NothingToClaim();
@@ -693,7 +769,6 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
     // TOKEN MANAGEMENT
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// @notice Creator or owner can update token's image, description, and social links
     function updateTokenMetadata(
         address token,
         string calldata _imageUri,
@@ -707,7 +782,6 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         GlowToken(token).updateMetadata(_imageUri, _description, _twitter, _telegram, _website);
     }
 
-    /// @notice Creator unlocks their allocation after the lock period expires
     function unlockCreatorTokens(address token) external {
         if (!isLaunchedToken[token]) revert NotLaunched();
         TokenState storage state = tokenStates[token];
@@ -722,7 +796,6 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
     // GRADUATION HELPERS
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// @notice Owner force-graduates any token (pays USDC gap from their wallet)
     function forceGraduate(address token) external onlyOwner nonReentrant {
         if (!isLaunchedToken[token]) revert NotLaunched();
         TokenState storage state = tokenStates[token];
@@ -737,7 +810,6 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         _graduateToken(token);
     }
 
-    /// @notice Token creator force-graduates their own token (pays USDC gap)
     function creatorForceGraduate(address token) external nonReentrant {
         if (!isLaunchedToken[token]) revert NotLaunched();
         TokenState storage state = tokenStates[token];
@@ -753,18 +825,6 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         _graduateToken(token);
     }
 
-
-    /// @notice Boost a token toward graduation by selecting a percentage tier.
-    ///         Each tier fills a fixed % of the remaining graduation gap.
-    ///         A tier-specific fee is charged on top of the fill amount.
-    ///
-    ///         Example (gap = $10,000, 25% tier with 2% fee):
-    ///           fillAmount = $10,000 × 25% = $2,500  → goes to bonding curve
-    ///           fee        = $2,500  × 2%  = $50     → goes to feeRecipient
-    ///           totalCost  = $2,550                    → user pays this
-    ///
-    /// @param token      Bonding-curve token to boost
-    /// @param tierIndex  Index into boostTiers[] (0 = smallest, last = 100%)
     function boostByTier(address token, uint256 tierIndex) external nonReentrant whenNotPaused {
         if (!isLaunchedToken[token]) revert NotLaunched();
         if (tierIndex >= boostTiers.length) revert InvalidAmount();
@@ -773,7 +833,7 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         if (state.graduated) revert TokenAlreadyGraduated();
 
         uint256 threshold = state.tokenGraduationThreshold;
-        if (threshold == 0) revert InvalidAmount(); // instant-mode token, no gap
+        if (threshold == 0) revert InvalidAmount(); 
 
         uint256 raised = state.realUsdcRaised;
         if (raised >= threshold) revert TokenAlreadyGraduated();
@@ -781,9 +841,9 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         uint256 gap = threshold - raised;
         BoostTier memory tier = boostTiers[tierIndex];
 
-        uint256 fillAmount = (gap * tier.boostBps) / BPS_DENOMINATOR; // to curve
+        uint256 fillAmount = (gap * tier.boostBps) / BPS_DENOMINATOR; 
         if (fillAmount == 0) revert InvalidAmount();
-        uint256 fee        = (fillAmount * tier.feeBps) / BPS_DENOMINATOR; // platform cut
+        uint256 fee        = (fillAmount * tier.feeBps) / BPS_DENOMINATOR; 
         uint256 totalCost  = fillAmount + fee;
 
         usdc.safeTransferFrom(msg.sender, address(this), totalCost);
@@ -800,10 +860,6 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         if (state.realUsdcRaised >= threshold) _graduateToken(token);
     }
 
-    /// @notice Admin can lower (or raise) a specific token's graduation threshold after launch.
-    ///         Use this to reward a token's community or respond to market conditions.
-    /// @param token      The launched token address
-    /// @param threshold  New threshold in USDC 6-decimal. 0 = graduate immediately.
     function setTokenGraduationThreshold(address token, uint256 threshold) external onlyOwner {
         if (!isLaunchedToken[token]) revert NotLaunched();
         TokenState storage state = tokenStates[token];
@@ -811,14 +867,11 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         uint256 old = state.tokenGraduationThreshold;
         state.tokenGraduationThreshold = threshold;
         emit TokenThresholdUpdated(token, old, threshold);
-        // If threshold is now met or 0, graduate immediately
         if (threshold == 0 || state.realUsdcRaised >= threshold) {
             _graduateToken(token);
         }
     }
 
-    /// @notice Creator can hand off their creator role to another address.
-    ///         The new creator can update metadata, claim graduation bonus, unlock tokens.
     function transferCreatorRole(address token, address newCreator) external {
         if (!isLaunchedToken[token]) revert NotLaunched();
         if (newCreator == address(0)) revert InvalidAddress();
@@ -826,16 +879,12 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         if (msg.sender != state.creator) revert Unauthorized();
         address old = state.creator;
         state.creator = newCreator;
-        // Update pending graduation creator if it hasn't been claimed yet
         if (pendingGraduationCreator[token] == old) {
             pendingGraduationCreator[token] = newCreator;
         }
         emit CreatorTransferred(token, old, newCreator);
     }
 
-    /// @notice Emergency: owner can withdraw any ERC-20 token held by the factory.
-    ///         Use ONLY for genuinely stuck funds — not for graduated tokens pending claim.
-    ///         Protected: cannot withdraw USDC that belongs to active bonding curves.
     function emergencyWithdraw(address tokenAddr, address to, uint256 amount) external onlyOwner nonReentrant {
         if (to == address(0)) revert InvalidAddress();
         if (amount == 0) revert InvalidAmount();
@@ -844,74 +893,70 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // ADMIN — INDIVIDUAL SETTERS (no limits, no validation — owner controls all)
+    // ADMIN — INDIVIDUAL SETTERS
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// @notice Set graduation threshold. 0 = instant Uniswap listing on every launch.
+    function setTokenDeployer(address _deployer) external onlyOwner {
+        if (_deployer == address(0)) revert InvalidAddress();
+        tokenDeployer = _deployer;
+        emit ConfigUpdated("tokenDeployer", 0);
+    }
+
     function setGraduationThreshold(uint256 value) external onlyOwner {
         graduationThreshold = value;
         emit ConfigUpdated("graduationThreshold", value);
     }
 
-    /// @notice Set protocol fee for buys and sells. 100 = 1%.
     function setProtocolFeeBps(uint256 value) external onlyOwner {
         protocolFeeBps = value;
         emit ConfigUpdated("protocolFeeBps", value);
     }
 
-    /// @notice Set USDC creation fee per token launch. 10e6 = $10.
     function setCreationFee(uint256 value) external onlyOwner {
         creationFee = value;
         emit ConfigUpdated("creationFee", value);
     }
 
-    /// @notice Set % of raised USDC sent to creator on graduation. 500 = 5%.
     function setCreatorGraduationFeeBps(uint256 value) external onlyOwner {
         creatorGraduationFeeBps = value;
         emit ConfigUpdated("creatorGraduationFeeBps", value);
     }
 
-    /// @notice Set referral fee as % of protocol fee. 2500 = 25%.
     function setReferralFeeBps(uint256 value) external onlyOwner {
         referralFeeBps = value;
         emit ConfigUpdated("referralFeeBps", value);
     }
 
-    /// @notice Set anti-snipe window duration in seconds. 0 = disabled.
     function setAntiSnipeDuration(uint256 value) external onlyOwner {
         antiSnipeDuration = value;
         emit ConfigUpdated("antiSnipeDuration", value);
     }
 
-    /// @notice Set anti-snipe tax in BPS. 500 = 5%.
     function setAntiSnipeTaxBps(uint256 value) external onlyOwner {
         antiSnipeTaxBps = value;
         emit ConfigUpdated("antiSnipeTaxBps", value);
     }
 
-    /// @notice Set max buy size as % of curve supply. 0 = no limit.
     function setMaxBuyBps(uint256 value) external onlyOwner {
         maxBuyBps = value;
         emit ConfigUpdated("maxBuyBps", value);
     }
 
-    /// @notice Set cooldown between buys per wallet in seconds. 0 = no cooldown.
     function setBuyCooldown(uint256 value) external onlyOwner {
         buyCooldown = value;
         emit ConfigUpdated("buyCooldown", value);
     }
 
-    /// @notice Set how long creator tokens are locked after launch. 0 = no lock.
     function setCreatorLockDuration(uint256 value) external onlyOwner {
         creatorLockDuration = value;
         emit ConfigUpdated("creatorLockDuration", value);
     }
 
-    /// @notice Set platform fee taken from pooled USDC at graduation. 100 = 1%.
-    /// @notice Set all boost tiers at once. Up to 10 tiers. Any existing tiers are replaced.
-    /// @param boostBpsArr  % of gap to fill per tier (e.g. [1000,2500,5000,10000] for 10/25/50/100%)
-    /// @param feeBpsArr    Platform fee % per tier on top of fill amount (e.g. [100,200,300,500] = 1/2/3/5%)
-    /// @param labels       Display labels (e.g. ["10%","25%","50%","100%"])
+    function setPerTokenGraduationFeeBps(uint256 value) external onlyOwner {
+        perTokenGraduationFeeBps = value;
+        emit ConfigUpdated("perTokenGraduationFeeBps", value);
+    }
+
     function setBoostTiers(
         uint256[] calldata boostBpsArr,
         uint256[] calldata feeBpsArr,
@@ -927,7 +972,6 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         emit BoostTiersUpdated();
     }
 
-    /// @notice Update a single boost tier
     function setBoostTier(uint256 index, uint256 boostBps, uint256 feeBps, string calldata label) external onlyOwner {
         if (index >= boostTiers.length) revert InvalidAmount();
         if (boostBps == 0 || boostBps > BPS_DENOMINATOR) revert InvalidAmount();
@@ -935,7 +979,6 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         emit BoostTiersUpdated();
     }
 
-    /// @notice Add a new boost tier (max 10 total)
     function addBoostTier(uint256 boostBps, uint256 feeBps, string calldata label) external onlyOwner {
         if (boostTiers.length >= 10) revert InvalidAmount();
         if (boostBps == 0 || boostBps > BPS_DENOMINATOR) revert InvalidAmount();
@@ -943,16 +986,12 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         emit BoostTiersUpdated();
     }
 
-    /// @notice Remove last boost tier
     function removeLastBoostTier() external onlyOwner {
         if (boostTiers.length == 0) revert InvalidAmount();
         boostTiers.pop();
         emit BoostTiersUpdated();
     }
 
-    /// @notice Set initial virtual USDC reserves for new launches (affects starting price).
-    ///         Default 30,000e6 = $30,000 virtual USDC seed.
-    /// @notice Creator claims their locked LP NFT after lpLockDuration expires
     function claimLpPosition(address token) external nonReentrant {
         if (!isLaunchedToken[token]) revert NotLaunched();
         if (msg.sender != pendingLpNftOwner[token]) revert Unauthorized();
@@ -960,7 +999,7 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         uint256 nftId = pendingLpNftId[token];
         if (nftId == 0) revert NothingToClaim();
         pendingLpNftId[token] = 0;
-        // Transfer LP NFT to creator
+        
         (bool ok,) = nonfungiblePositionMgr.call(
             abi.encodeWithSignature("transferFrom(address,address,uint256)", address(this), msg.sender, nftId)
         );
@@ -986,20 +1025,12 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         emit ConfigUpdated("initialVirtualUsdcReserves", value);
     }
 
-    /// @notice Set initial virtual token reserves for new launches (affects starting price).
-    ///         Lower = higher starting price. Default 1,073,000,191e18.
     function setInitialVirtualTokenReserves(uint256 value) external onlyOwner {
         if (value == 0) revert InvalidAmount();
         initialVirtualTokenReserves = value;
         emit ConfigUpdated("initialVirtualTokenReserves", value);
     }
 
-    function setPerTokenGraduationFeeBps(uint256 value) external onlyOwner {
-        perTokenGraduationFeeBps = value;
-        emit ConfigUpdated("perTokenGraduationFeeBps", value);
-    }
-
-    /// @notice Batch update all config in one transaction (no restrictions)
     function updateConfig(
         uint256 _graduationThreshold,
         uint256 _protocolFeeBps,
@@ -1027,7 +1058,6 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         emit ConfigUpdated("all", 0);
     }
 
-    // ── Fee recipients (2-step for safety) ───────────────────────────────────
     function proposeFeeRecipient(address proposed) external onlyOwner {
         if (proposed == address(0)) revert InvalidAddress();
         pendingFeeRecipient = proposed;
@@ -1051,7 +1081,6 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         emit GraduationRecipientUpdated(graduationRecipient);
     }
 
-    // ── Blacklist ─────────────────────────────────────────────────────────────
     function blacklistToken(address token, bool bl) external onlyOwner {
         if (!isLaunchedToken[token]) revert NotLaunched();
         blacklistedTokens[token] = bl;
@@ -1063,7 +1092,6 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         emit WalletBlacklisted(wallet, bl);
     }
 
-    // ── Pause ─────────────────────────────────────────────────────────────────
     function pause()   external onlyOwner { pausedAt = block.timestamp; _pause(); }
     function unpause() external onlyOwner { pausedAt = 0; _unpause(); }
     function emergencyUnpause() external {
@@ -1116,16 +1144,10 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         return p > BPS_DENOMINATOR ? BPS_DENOMINATOR : p;
     }
 
-    /// @notice Get all boost tiers
     function getBoostTiers() external view returns (BoostTier[] memory) {
         return boostTiers;
     }
 
-    /// @notice Preview the exact cost and outcome for a boost tier on a specific token
-    /// @return fillAmount  USDC that goes into the bonding curve (raises price + progress)
-    /// @return fee         Platform fee paid on top
-    /// @return totalCost   Total USDC the user must send
-    /// @return willGraduate  True if this boost would trigger graduation
     function getBoostTierCost(address token, uint256 tierIndex) external view returns (
         uint256 fillAmount, uint256 fee, uint256 totalCost, bool willGraduate
     ) {
@@ -1144,7 +1166,6 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         willGraduate = (raised + fillAmount) >= threshold;
     }
 
-    /// @notice Get how much USDC is still needed to graduate a token
     function getGraduationGap(address token) external view returns (uint256 gap, uint256 threshold, uint256 raised) {
         if (!isLaunchedToken[token]) revert NotLaunched();
         TokenState storage state = tokenStates[token];
@@ -1153,7 +1174,6 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         gap       = (threshold > 0 && raised < threshold) ? threshold - raised : 0;
     }
 
-    /// @notice How much USDC a user has boosted toward a token's graduation
     function getUserBoost(address token, address user) external view returns (uint256) {
         return userBoosts[token][user];
     }
@@ -1188,11 +1208,9 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
 
         emit TokenGraduated(token, state.creator, pooled, dexTokens, block.timestamp);
 
-        // Attempt auto-creation of Uniswap V3 pool
         if (uniswapV3Factory != address(0) && nonfungiblePositionMgr != address(0) && dexUsdc > 0 && dexTokens > 0) {
             _createUniswapPool(token, state.pairToken, dexTokens, dexUsdc);
         } else {
-            // Fallback: put into pending for manual claim
             pendingGraduationUsdc[token]   = dexUsdc;
             pendingGraduationTokens[token] = dexTokens;
         }
@@ -1204,8 +1222,6 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         }
     }
 
-
-    /// @notice Creates Uniswap V3 pool via UniswapPoolLib (keeps factory bytecode small)
     function _createUniswapPool(
         address token,
         address pairToken,
@@ -1232,9 +1248,8 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         }
     }
 
-
     function _resolvePairToken(address requested) internal view returns (address) {
-        if (requested == address(0)) return address(usdc); // default = USDC
+        if (requested == address(0)) return address(usdc); 
         if (!acceptedPairTokens[requested]) revert InvalidToken();
         return requested;
     }
@@ -1244,7 +1259,6 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
         if (a.supply < 1_000_000e18 || a.supply > 100_000_000_000e18) revert InvalidSupply();
         uint256 curveBps   = p.curveAllocationBps == 0 ? 8000 : p.curveAllocationBps;
         uint256 creatorBps = p.creatorAllocationBps;
-        // Only hard limit: total can't exceed 100%
         if (curveBps < 5000 || curveBps > 9500 || creatorBps > 1000 || curveBps + creatorBps > 9500)
             revert InvalidAllocation();
         a.curveTokens      = (a.supply * curveBps)   / BPS_DENOMINATOR;
@@ -1253,6 +1267,8 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
     }
 
     function _deployToken(LaunchParams calldata p, uint256 supply, address /*pair*/) internal returns (address) {
+        if (tokenDeployer == address(0)) revert InvalidAddress();
+
         GlowToken.TokenFeatures memory f = GlowToken.TokenFeatures({
             mintable:     p.mintable,
             burnable:     p.burnable,
@@ -1262,14 +1278,17 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
             vestingDuration: p.vestingDuration,
             vestingCliff: p.vestingCliff
         });
-        // Vesting amount = creator allocation
-        uint256 vestAmt = (supply * p.creatorAllocationBps) / 10000;
-        return address(new GlowToken(
+        
+        uint256 vestAmt = (supply * p.creatorAllocationBps) / BPS_DENOMINATOR;
+        
+        return IGlowTokenDeployer(tokenDeployer).deployToken(
             TokenMetadata(p.name, p.symbol, p.description, p.imageUri, p.twitter, p.telegram, p.website),
             f,
-            msg.sender, address(this), supply,
+            msg.sender, 
+            address(this), 
+            supply,
             vestAmt
-        ));
+        );
     }
 
     function _emitMilestones(address token, uint256 raised) internal {
