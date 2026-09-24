@@ -1,12 +1,13 @@
-// GET  /api/config          — returns all public config keys from KV
-// POST /api/config  { key, value } — writes one key to KV (admin-authed)
+// GET  /api/config            — returns all public config keys from KV
+// POST /api/config { key, value }               — write one key
+// POST /api/config { updates: JSON.stringify({}) } — write multiple keys at once
 
-interface Env {
-  CONFIG: KVNamespace
-}
+interface Env { CONFIG: KVNamespace }
 
 const PUBLIC_KEYS = [
-  'FACTORY_ADDRESS', 'USDC_ADDRESS', 'FEE_RECIPIENT', 'GRADUATION_RECIPIENT',
+  'FACTORY_ADDRESS',
+  'FACTORY_ADDRESSES',   // JSON array [{address,label,version}] — multi-factory
+  'USDC_ADDRESS', 'FEE_RECIPIENT', 'GRADUATION_RECIPIENT',
   'RPC_URL',
   'WALLETCONNECT_PROJECT_ID', 'CIRCLE_APP_ID', 'R2_PUBLIC_URL',
   'SITE_TITLE', 'SITE_LOGO', 'SITE_DESCRIPTION', 'TWITTER_HANDLE',
@@ -32,32 +33,58 @@ export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   try {
-    const { key, value } = await request.json() as { key: string; value: string }
+    const body = await request.json() as Record<string, string>
 
-    if (!key || !ALL_KEYS.includes(key)) {
-      return Response.json({ ok: false, error: 'Unknown key' }, { status: 400 })
-    }
-
-    // Validate admin secret for write operations
+    // Auth check
     const adminSecret = await env.CONFIG.get('ADMIN_SECRET')
-    const reqSecret = request.headers.get('X-Admin-Token')
+    const reqSecret   = request.headers.get('X-Admin-Token')
+    const authed      = !adminSecret || reqSecret === adminSecret
 
-    // Allow writes if no secret is set yet (bootstrapping) or secret matches
-    if (adminSecret && reqSecret !== adminSecret) {
-      // For bootstrap: allow setting ADMIN_SECRET with no auth
-      if (key !== 'ADMIN_SECRET') {
+    // ── Batch write: { updates: JSON.stringify({ KEY: val, ... }) } ──────────
+    if (body['updates']) {
+      if (!authed) {
         return Response.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
       }
+      let updates: Record<string, string>
+      try { updates = JSON.parse(body['updates']) }
+      catch { return Response.json({ ok: false, error: 'Invalid updates JSON' }, { status: 400 }) }
+
+      const written: string[] = []
+      const skipped: string[] = []
+      await Promise.all(Object.entries(updates).map(async ([k, v]) => {
+        if (!ALL_KEYS.includes(k)) { skipped.push(k); return }
+        if (v === '' || v === null || v === undefined) {
+          await env.CONFIG.delete(k)
+        } else {
+          await env.CONFIG.put(k, String(v))
+        }
+        written.push(k)
+      }))
+      return Response.json({ ok: true, written, skipped })
     }
 
+    // ── Single write: { key, value } ─────────────────────────────────────────
+    const { key, value } = body
+    if (!key || !ALL_KEYS.includes(key)) {
+      return Response.json({ ok: false, error: `Unknown key: ${key}` }, { status: 400 })
+    }
+    // Allow setting ADMIN_SECRET even without auth (bootstrap)
+    if (!authed && key !== 'ADMIN_SECRET') {
+      return Response.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
+    }
     if (value === '' || value === null || value === undefined) {
       await env.CONFIG.delete(key)
     } else {
       await env.CONFIG.put(key, String(value))
     }
-
     return Response.json({ ok: true, key })
+
   } catch (e: any) {
-    return Response.json({ ok: false, error: e?.message ?? 'Failed' }, { status: 500 })
+    return Response.json({ ok: false, error: e.message }, { status: 500 })
   }
 }
+
+export const onRequestOptions: PagesFunction = async () =>
+  new Response(null, {
+    headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type,X-Admin-Token' }
+  })
