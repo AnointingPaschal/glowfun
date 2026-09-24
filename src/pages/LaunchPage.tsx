@@ -794,8 +794,8 @@ export function LaunchPage() {
             subtitle="Optional capabilities baked into your token's bytecode at deploy time">
             <div className="space-y-5">
 
-              {/* Feature toggles — 2 col, no Pausable */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* Feature toggles — 2 col, compact */}
+              <div className="grid grid-cols-2 gap-2">
                 {([
                   {
                     key: 'mintable', label: 'Mintable',
@@ -806,37 +806,35 @@ export function LaunchPage() {
                   {
                     key: 'burnable', label: 'Burnable',
                     Icon: Flame, color: '#ef4444',
-                    desc: 'Token holders can permanently destroy their tokens',
+                    desc: 'Holders can permanently destroy their tokens',
                     val: burnable, set: setBurnable,
                   },
                   {
                     key: 'hasBlacklist', label: 'Compliance',
                     Icon: ShieldCheck, color: '#22c55e',
-                    desc: 'Creator can restrict specific wallets — aligns with Arc institutional standards',
+                    desc: 'Restrict specific wallets — aligns with Arc institutional standards',
                     val: hasBlacklist, set: setBlacklist,
                   },
                 ] as const).map(({ key, label, Icon, color, desc, val, set }) => (
                   <button key={key} type="button" onClick={() => set((v: boolean) => !v)}
-                    className="p-4 rounded-2xl text-left transition-all"
+                    className="p-3 rounded-xl text-left transition-all"
                     style={{
                       background: val ? `${color}0d` : 'var(--surface2)',
                       border: `1px solid ${val ? `${color}35` : 'var(--border)'}`,
                     }}>
-                    {/* Header row */}
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0"
                         style={{ background: val ? `${color}18` : 'var(--surface3)' }}>
-                        <Icon size={15} style={{ color: val ? color : 'var(--text3)' }} />
+                        <Icon size={12} style={{ color: val ? color : 'var(--text3)' }} />
                       </div>
-                      {/* Toggle pill */}
-                      <div className="w-9 h-5 rounded-full relative transition-colors flex-shrink-0"
+                      <div className="w-8 h-4 rounded-full relative transition-colors flex-shrink-0"
                         style={{ background: val ? color : 'var(--surface3)' }}>
-                        <div className="w-3.5 h-3.5 rounded-full bg-white absolute top-[3px] shadow-sm transition-all"
-                          style={{ left: val ? '19px' : '3px' }} />
+                        <div className="w-3 h-3 rounded-full bg-white absolute top-[2px] shadow-sm transition-all"
+                          style={{ left: val ? '17px' : '2px' }} />
                       </div>
                     </div>
-                    <p className="text-[13px] font-bold mb-1" style={{ color: val ? color : 'var(--text1)' }}>{label}</p>
-                    <p className="text-[10px] leading-relaxed" style={{ color: 'var(--text2)' }}>{desc}</p>
+                    <p className="text-[11px] font-bold mb-0.5" style={{ color: val ? color : 'var(--text1)' }}>{label}</p>
+                    <p className="text-[9.5px] leading-relaxed" style={{ color: 'var(--text2)' }}>{desc}</p>
                   </button>
                 ))}
 
@@ -860,42 +858,28 @@ export function LaunchPage() {
                 <p className="text-[10px] font-bold uppercase tracking-[0.18em] mb-3" style={{ color: 'var(--text2)' }}>
                   Pair Token
                 </p>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-2">
                   {([
-                    {
-                      addr: '',
-                      name: 'USDC',
-                      sub: 'USD Coin · Circle',
-                      logo: 'https://assets.coingecko.com/coins/images/6319/small/usdc.png',
-                    },
-                    {
-                      addr: 'EURC',
-                      name: 'EURC',
-                      sub: 'Euro Coin · Circle',
-                      logo: 'https://assets.coingecko.com/coins/images/26045/small/euro-coin.png',
-                    },
+                    { addr: '', name: 'USDC', sub: 'USD Coin · Circle', logo: 'https://assets.coingecko.com/coins/images/6319/small/usdc.png' },
+                    { addr: 'EURC', name: 'EURC', sub: 'Euro Coin · Circle', logo: 'https://assets.coingecko.com/coins/images/26045/small/euro-coin.png' },
                   ] as const).map(({ addr, name, sub, logo }) => {
                     const active = pairToken === addr
                     return (
                       <button key={addr} type="button" onClick={() => setPairToken(addr)}
-                        className="flex items-center gap-3 p-3.5 rounded-2xl text-left transition-all"
+                        className="flex items-center gap-2.5 p-2.5 rounded-xl text-left transition-all"
                         style={{
                           background: active ? 'rgba(99,102,241,0.08)' : 'var(--surface2)',
                           border: `1.5px solid ${active ? 'rgba(99,102,241,0.35)' : 'var(--border)'}`,
                         }}>
-                        <img
-                          src={logo} alt={name}
-                          className="w-9 h-9 rounded-full flex-shrink-0"
-                          style={{ border: '1.5px solid var(--border)' }}
-                          onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                        />
+                        <img src={logo} alt={name} className="w-7 h-7 rounded-full flex-shrink-0"
+                          style={{ border: '1px solid var(--border)' }}
+                          onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
                         <div>
-                          <p className="text-sm font-black" style={{ color: active ? '#818cf8' : 'var(--text1)', letterSpacing: '-0.02em' }}>{name}</p>
-                          <p className="text-[9px] font-medium mt-0.5" style={{ color: 'var(--text2)' }}>{sub}</p>
+                          <p className="text-[12px] font-black" style={{ color: active ? '#818cf8' : 'var(--text1)' }}>{name}</p>
+                          <p className="text-[9px] mt-0.5" style={{ color: 'var(--text2)' }}>{sub}</p>
                         </div>
                         {active && (
-                          <div className="ml-auto w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0"
-                            style={{ background: '#6366f1' }}>
+                          <div className="ml-auto w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#6366f1' }}>
                             <Check size={9} style={{ color: '#fff' }} />
                           </div>
                         )}
@@ -905,33 +889,83 @@ export function LaunchPage() {
                 </div>
               </div>
 
-              {/* Vesting for creator tokens */}
+              {/* Vesting for creator tokens — optional, only if creator allocation > 0 */}
               {creatorBps > 0 && (
-                <div className="p-3 rounded-xl space-y-3" style={{background:'var(--surface2)',border:'1px solid var(--border)'}}>
-                  <p className="text-[10px] font-bold uppercase tracking-widest" style={{color:'var(--text2)'}}>Creator Token Vesting</p>
-                  <p className="text-[10px]" style={{color:'var(--text2)'}}>
-                    You have {(creatorBps/100).toFixed(0)}% creator allocation ({(Number(supply)*creatorBps/1000000/1e18).toLocaleString()} tokens).
-                    Set a linear vesting schedule instead of a binary lock.
-                  </p>
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div>
-                      <label className="text-[9px] font-bold uppercase tracking-widest block mb-1.5" style={{color:'var(--text2)'}}>Vesting Duration (days)</label>
-                      <input type="number" min={0} step={1} placeholder="e.g. 365 (1 year)"
-                        value={vestingDays} onChange={e=>setVestingDays(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                        style={{background:'var(--surface3)',border:'1px solid var(--border)',color:'var(--text1)'}}/>
+                <div className="rounded-xl overflow-hidden" style={{border:'1px solid var(--border)'}}>
+                  {/* Header row with toggle */}
+                  <button type="button"
+                    onClick={()=>{ if(vestingDays) { setVestingDays(''); setVCliff('') } else setVestingDays('365') }}
+                    className="w-full flex items-center justify-between p-3"
+                    style={{background:'var(--surface2)'}}>
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0"
+                        style={{background: vestingDays ? 'rgba(99,102,241,0.15)' : 'var(--surface3)'}}>
+                        <Lock size={12} style={{color: vestingDays ? '#818cf8' : 'var(--text3)'}}/>
+                      </div>
+                      <div className="text-left">
+                        <p className="text-[11px] font-bold" style={{color: vestingDays ? '#818cf8' : 'var(--text1)'}}>Creator Token Vesting</p>
+                        <p className="text-[9px]" style={{color:'var(--text2)'}}>Optional — lock your tokens to build buyer trust</p>
+                      </div>
                     </div>
-                    <div>
-                      <label className="text-[9px] font-bold uppercase tracking-widest block mb-1.5" style={{color:'var(--text2)'}}>Cliff (days)</label>
-                      <input type="number" min={0} step={1} placeholder="e.g. 90 (3 months)"
-                        value={vestingCliffDays} onChange={e=>setVCliff(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                        style={{background:'var(--surface3)',border:'1px solid var(--border)',color:'var(--text1)'}}/>
+                    <div className="w-8 h-4 rounded-full relative transition-colors flex-shrink-0"
+                      style={{background: vestingDays ? '#6366f1' : 'var(--surface3)'}}>
+                      <div className="w-3 h-3 rounded-full bg-white absolute top-[2px] shadow-sm transition-all"
+                        style={{left: vestingDays ? '17px' : '2px'}}/>
                     </div>
-                  </div>
-                  {vestingDays&&<p className="text-[9px] flex items-center gap-1.5" style={{color:'var(--green)'}}>
-                    <Check size={10}/>{vestingCliffDays?`${vestingCliffDays}-day cliff, then `:''}linear release over {vestingDays} days. Call releaseVested() to claim unlocked tokens.
-                  </p>}
+                  </button>
+
+                  {/* Expanded content */}
+                  {vestingDays && (
+                    <div className="p-3 space-y-3" style={{background:'rgba(99,102,241,0.04)', borderTop:'1px solid var(--border)'}}>
+
+                      {/* Explanation */}
+                      <div className="flex items-start gap-2 p-2.5 rounded-lg"
+                        style={{background:'rgba(99,102,241,0.06)',border:'1px solid rgba(99,102,241,0.12)'}}>
+                        <Info size={11} style={{color:'#818cf8',flexShrink:0,marginTop:1}}/>
+                        <div className="space-y-1.5">
+                          <p className="text-[10px] font-semibold" style={{color:'#818cf8'}}>What is vesting?</p>
+                          <p className="text-[9.5px] leading-relaxed" style={{color:'var(--text2)'}}>
+                            You have a <strong style={{color:'var(--text1)'}}>{(creatorBps/100).toFixed(0)}% creator allocation</strong> — {Math.round(Number(supply)/1e18 * creatorBps / 10000).toLocaleString()} tokens sent to your wallet at launch.
+                          </p>
+                          <p className="text-[9.5px] leading-relaxed" style={{color:'var(--text2)'}}>
+                            Without vesting, you could sell all of them instantly — which buyers see as a risk. With vesting, your tokens are locked on-chain and released gradually over time. This signals long-term commitment and increases buyer confidence.
+                          </p>
+                          <p className="text-[9.5px] leading-relaxed" style={{color:'var(--text2)'}}>
+                            <strong style={{color:'var(--text1)'}}>Duration</strong> — how many days until all your tokens are fully unlocked.<br/>
+                            <strong style={{color:'var(--text1)'}}>Cliff</strong> — a waiting period before any tokens unlock at all. During the cliff, nothing is released even if the vesting has started.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Inputs */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[9px] font-bold uppercase tracking-widest block mb-1" style={{color:'var(--text2)'}}>Duration (days)</label>
+                          <input type="number" min={1} step={1} placeholder="e.g. 365"
+                            value={vestingDays} onChange={e=>setVestingDays(e.target.value)}
+                            className="w-full px-2.5 py-1.5 rounded-lg text-[12px] outline-none"
+                            style={{background:'var(--surface3)',border:'1px solid var(--border)',color:'var(--text1)'}}/>
+                          <p className="text-[8.5px] mt-1" style={{color:'var(--text3)'}}>How long until fully unlocked</p>
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-bold uppercase tracking-widest block mb-1" style={{color:'var(--text2)'}}>Cliff (days)</label>
+                          <input type="number" min={0} step={1} placeholder="e.g. 90"
+                            value={vestingCliffDays} onChange={e=>setVCliff(e.target.value)}
+                            className="w-full px-2.5 py-1.5 rounded-lg text-[12px] outline-none"
+                            style={{background:'var(--surface3)',border:'1px solid var(--border)',color:'var(--text1)'}}/>
+                          <p className="text-[8.5px] mt-1" style={{color:'var(--text3)'}}>Wait before any tokens unlock</p>
+                        </div>
+                      </div>
+
+                      {/* Summary line */}
+                      {vestingDays && (
+                        <p className="text-[9px] flex items-center gap-1.5 font-medium" style={{color:'var(--green)'}}>
+                          <Check size={10}/>
+                          {vestingCliffDays ? `${vestingCliffDays}-day cliff, then ` : ''}linear release over {vestingDays} days
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
