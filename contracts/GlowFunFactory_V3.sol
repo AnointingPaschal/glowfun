@@ -23,6 +23,7 @@ pragma solidity ^0.8.24;
 import {ERC20}         from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20}        from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata}from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {UniswapPoolLib} from "./UniswapPoolLib.sol";
 import {SafeERC20}     from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable}       from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -272,30 +273,6 @@ contract GlowToken is ERC20 {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Interfaces for Uniswap V3 auto-pool creation
-// ─────────────────────────────────────────────────────────────────────────────
-interface IUniswapV3Factory {
-    function createPool(address tokenA, address tokenB, uint24 fee) external returns (address pool);
-    function getPool(address tokenA, address tokenB, uint24 fee) external view returns (address pool);
-}
-
-interface IUniswapV3Pool {
-    function initialize(uint160 sqrtPriceX96) external;
-    function token0() external view returns (address);
-}
-
-interface INonfungiblePositionManager {
-    struct MintParams {
-        address token0; address token1; uint24 fee;
-        int24 tickLower; int24 tickUpper;
-        uint256 amount0Desired; uint256 amount1Desired;
-        uint256 amount0Min; uint256 amount1Min;
-        address recipient; uint256 deadline;
-    }
-    function mint(MintParams calldata params) external returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1);
-    function createAndInitializePoolIfNecessary(address token0, address token1, uint24 fee, uint160 sqrtPriceX96) external payable returns (address pool);
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GlowFunFactory_V3
@@ -1336,13 +1313,8 @@ contract GlowFunFactory_V3 is Ownable, ReentrancyGuard, Pausable {
             vestingDuration: p.vestingDuration,
             vestingCliff: p.vestingCliff
         });
-        uint256 vestAmt = (p.vestingDuration > 0)
-            ? ((supply * (p.curveAllocationBps == 0 ? 8000 : p.curveAllocationBps)) / 10000 == 0 ? 0 : supply - (supply * (p.curveAllocationBps == 0 ? 8000 : p.curveAllocationBps)) / 10000)
-            : 0; // rough — factory recomputes precisely
-        // Recalculate creatorTokens for vesting
-        uint256 curveBps   = p.curveAllocationBps == 0 ? 8000 : p.curveAllocationBps;
-        uint256 creatorBps = p.creatorAllocationBps;
-        vestAmt = (supply * creatorBps) / 10000;
+        // Vesting amount = creator allocation
+        uint256 vestAmt = (supply * p.creatorAllocationBps) / 10000;
         return address(new GlowToken(
             TokenMetadata(p.name, p.symbol, p.description, p.imageUri, p.twitter, p.telegram, p.website),
             f,
