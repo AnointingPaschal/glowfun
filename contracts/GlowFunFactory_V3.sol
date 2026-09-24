@@ -49,6 +49,8 @@ contract GlowToken is ERC20 {
     error BurnDisabled();
     error Blacklisted();
     error PauseDisabled();
+    error InvalidAmount();   // used by mint() cap check
+    error Unauthorized();    // used by vesting + blacklist callers
 
     address public immutable factory;
     address public immutable creator;
