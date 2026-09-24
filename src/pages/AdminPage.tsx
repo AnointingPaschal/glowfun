@@ -578,15 +578,7 @@ export function AdminPage() {
       perTokenGraduationFeeBps: overrides.perTokenGraduationFeeBps ?? BigInt(n(perGradBps)),
     }
 
-    // ── Local validation (mirrors DEPLOYED GlowFunFactory_V2 on Arc Mainnet) ─
-    // Deployed contract: graduationThreshold < 1000e6 → InvalidAmount()
-    // This means minimum is $1,000 USDC (1_000_000_000 in 6-decimal form).
-    // Note: instant graduation (0) requires redeploying the updated contract.
-    const gt = Number(params.graduationThreshold)
-    if (gt < 1_000_000_000) {   // strictly less than $1,000 USDC — includes 0
-      toast.error('Minimum graduation threshold is $1,000 USDC on the deployed contract. Enter at least 1000.')
-      return
-    }
+    // V3 contract allows 0 for instant graduation — no minimum enforced
     if (Number(params.protocolFeeBps)           > 1000) { toast.error('Protocol fee max 10% (1000 bps)'); return }
     if (Number(params.creatorGraduationFeeBps)  > 1000) { toast.error('Creator graduation fee max 10% (1000 bps)'); return }
     if (Number(params.referralFeeBps)           > 5000) { toast.error('Referral fee max 50% of protocol fee (5000 bps)'); return }
@@ -900,17 +892,16 @@ export function AdminPage() {
                       <OnchainInput label="Protocol Fee (bps, max 1000 = 10%)" note={feeBps !== undefined ? `Current: ${n(feeBps)} bps = ${n(feeBps) / 100}%` : ''} value={i('feeBps')} onChange={si('feeBps')} disabled={adminBusy} placeholder="100" onSet={() => updateConfigWith({ protocolFeeBps: BigInt(i('feeBps') || '0') })} />
                       <OnchainInput label="Creator Graduation Bonus (bps, max 1000 = 10%)" note={creatorGradBps !== undefined ? `Current: ${n(creatorGradBps)} bps = ${n(creatorGradBps) / 100}%` : ''} value={i('creatorGradBps')} onChange={si('creatorGradBps')} disabled={adminBusy} placeholder="500" onSet={() => updateConfigWith({ creatorGraduationFeeBps: BigInt(i('creatorGradBps') || '0') })} />
                       <OnchainInput
-                        label="Graduation Threshold (USDC) — min $1,000"
+                        label="Graduation Threshold (USDC) — set 0 for instant graduation"
                         note={gradThresh !== undefined
-                          ? `On-chain: $${(n(gradThresh) / 1e6).toLocaleString()} USDC · Enter the dollar amount (e.g. 1000 = $1K, 10000 = $10K, 69000 = $69K)`
-                          : 'Min $1,000 · enter dollar amount'}
+                          ? `On-chain: $${(n(gradThresh) / 1e6).toLocaleString()} USDC · Enter dollar amount (0 = instant, 69000 = $69K)`
+                          : 'Enter dollar amount · 0 = instant graduation'}
                         value={i('gradThresh')}
                         onChange={si('gradThresh')}
                         disabled={adminBusy}
-                        placeholder="e.g. 1000 (min) or 69000 (default)"
+                        placeholder="0 (instant) or 69000 (default)"
                         onSet={() => {
                           const usd = parseFloat(i('gradThresh') || '0')
-                          if (usd < 1000) { toast.error('Minimum is $1,000 USDC. Enter at least 1000.'); return }
                           updateConfigWith({ graduationThreshold: BigInt(Math.round(usd * 1_000_000)) })
                         }}
                       />
