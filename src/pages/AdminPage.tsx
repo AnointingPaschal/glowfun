@@ -309,18 +309,18 @@ function FactoryAddressEditor({ onSave }: { onSave?: (f: FactoryEntry[]) => void
     if (FACTORY_ADDRESSES.length > 0) {
       setEntries(FACTORY_ADDRESSES.map(e => ({ ...e })))
     } else if (FACTORY_ADDRESS) {
-      setEntries([{ address: FACTORY_ADDRESS, label: 'V1', version: 1 }])
+      setEntries([{ address: FACTORY_ADDRESS, label: 'V1', version: 1, enabled: true }])
     }
   }, [FACTORY_ADDRESSES, FACTORY_ADDRESS, dirty])
 
-  const update = (i: number, field: keyof FactoryEntry, val: string | number) => {
+  const update = (i: number, field: keyof FactoryEntry, val: string | number | boolean) => {
     setEntries(prev => prev.map((e, j) => j === i ? { ...e, [field]: val } : e))
     setDirty(true)
   }
 
   const add = () => {
     const nextV = (entries[entries.length - 1]?.version ?? 0) + 1
-    setEntries(prev => [...prev, { address: '' as `0x${string}`, label: `V${nextV}`, version: nextV }])
+    setEntries(prev => [...prev, { address: '' as `0x${string}`, label: `V${nextV}`, version: nextV, enabled: true }])
     setDirty(true)
   }
 
@@ -399,14 +399,14 @@ function FactoryAddressEditor({ onSave }: { onSave?: (f: FactoryEntry[]) => void
               style={{ border:`1px solid ${primary ? color+'35' : 'var(--border)'}`, background:'var(--surface2)' }}>
               {/* Label row */}
               <div className="flex items-center gap-2.5 px-3 pt-3 pb-2">
-                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background:color }}/>
+                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: entry.enabled !== false ? color : 'var(--text3)' }}/>
                 <input
                   value={entry.label}
                   onChange={e => update(i, 'label', e.target.value)}
                   placeholder={`Version ${i + 1}`}
                   maxLength={30}
                   className="flex-1 bg-transparent outline-none text-xs font-bold truncate min-w-0"
-                  style={{ color }}
+                  style={{ color: entry.enabled !== false ? color : 'var(--text3)' }}
                 />
                 {primary && (
                   <span className="text-[8px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
@@ -414,6 +414,15 @@ function FactoryAddressEditor({ onSave }: { onSave?: (f: FactoryEntry[]) => void
                     PRIMARY
                   </span>
                 )}
+                {/* Active toggle */}
+                <button
+                  onClick={() => update(i, 'enabled', entry.enabled !== false ? false : true)}
+                  title={entry.enabled !== false ? 'Disable this factory' : 'Enable this factory'}
+                  className="relative flex-shrink-0 w-8 h-4 rounded-full transition-colors duration-200 focus:outline-none"
+                  style={{ background: entry.enabled !== false ? '#22c55e' : 'var(--surface3)', border:'1px solid var(--border)' }}>
+                  <span className="absolute top-0.5 transition-transform duration-200 w-3 h-3 rounded-full bg-white shadow"
+                    style={{ left: entry.enabled !== false ? '17px' : '1px' }}/>
+                </button>
                 <button onClick={() => remove(i)} disabled={entries.length <= 1}
                   className="w-6 h-6 flex items-center justify-center rounded-lg flex-shrink-0 disabled:opacity-20"
                   style={{ background:'rgba(239,68,68,0.08)', color:'var(--red)', border:'none', cursor:'pointer' }}>
@@ -426,13 +435,19 @@ function FactoryAddressEditor({ onSave }: { onSave?: (f: FactoryEntry[]) => void
                   value={entry.address}
                   onChange={e => update(i, 'address', e.target.value as `0x${string}`)}
                   placeholder="0x contract address"
-                  className="w-full px-3 py-2.5 rounded-lg text-[11px] font-mono outline-none"
+                  className="w-full px-3 py-2.5 rounded-lg text-[11px] font-mono outline-none transition-opacity"
                   style={{
                     background:'var(--surface3)',
-                    border:`1px solid ${entry.address?.startsWith('0x') ? color+'25' : 'var(--border)'}`,
-                    color:'var(--text1)',
+                    border:`1px solid ${entry.address?.startsWith('0x') && entry.enabled !== false ? color+'25' : 'var(--border)'}`,
+                    color: entry.enabled !== false ? 'var(--text1)' : 'var(--text3)',
+                    opacity: entry.enabled !== false ? 1 : 0.5,
                   }}
                 />
+                {entry.enabled === false && (
+                  <p className="text-[9px] mt-1 pl-1" style={{ color:'var(--text3)' }}>
+                    Disabled — tokens from this factory are hidden from the feed
+                  </p>
+                )}
               </div>
             </div>
           )

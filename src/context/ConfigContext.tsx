@@ -17,6 +17,7 @@ export interface FactoryEntry {
   address: `0x${string}`
   label:   string   // "V1", "V2", "V3" or custom
   version: number
+  enabled: boolean  // when false, tokens from this factory are hidden from the feed
 }
 
 export interface AppConfig {
@@ -77,12 +78,12 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
       let factories: FactoryEntry[] = []
       try {
         const raw = data['FACTORY_ADDRESSES']
-        if (raw) factories = JSON.parse(raw) as FactoryEntry[]
+        if (raw) factories = (JSON.parse(raw) as FactoryEntry[]).map(f => ({ ...f, enabled: f.enabled !== false }))
       } catch {}
       // Backward compat: if only single FACTORY_ADDRESS set, wrap it
       const singleAddr = (data['FACTORY_ADDRESS'] || '') as `0x${string}`
       if (!factories.length && singleAddr) {
-        factories = [{ address: singleAddr, label: 'V1', version: 1 }]
+        factories = [{ address: singleAddr, label: 'V1', version: 1, enabled: true }]
       }
       const primaryAddr = (factories[0]?.address ?? singleAddr) as `0x${string}`
 

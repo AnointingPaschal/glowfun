@@ -28,11 +28,14 @@ export function useTokenList() {
   const { FACTORY_ADDRESSES, FACTORY_ADDRESS, CHAIN_ID } = useConfig()
 
   // Use all factories, falling back to single primary if list is empty
-  const factories: FactoryEntry[] = FACTORY_ADDRESSES.length > 0
+  const allFactories: FactoryEntry[] = FACTORY_ADDRESSES.length > 0
     ? FACTORY_ADDRESSES
     : FACTORY_ADDRESS
-      ? [{ address: FACTORY_ADDRESS, label: 'Primary', version: 3 }]
+      ? [{ address: FACTORY_ADDRESS, label: 'Primary', version: 3, enabled: true }]
       : []
+
+  // Only query factories that are enabled
+  const factories = allFactories.filter(f => f.enabled !== false)
 
   // We support up to 3 factories — read counts for each
   const f0 = factories[0]
