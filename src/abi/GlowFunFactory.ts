@@ -5,6 +5,8 @@ export const FACTORY_ABI = [
   { name: 'launchedTokensCount', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
   { name: 'launchedTokens',     type: 'function', stateMutability: 'view', inputs: [{ name: 'index', type: 'uint256' }], outputs: [{ type: 'address' }] },
   // getTokensPaginated does NOT exist in the deployed bytecode — use launchedTokens(index) loop instead
+  // V1 only — GlowFunFactory (V1) has no launchedTokensCount/launchedTokens; it exposes allTokens() instead
+  { name: 'allTokens',          type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'address[]' }] },
   { name: 'isLaunchedToken',    type: 'function', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'bool' }] },
   { name: 'getTokenState',      type: 'function', stateMutability: 'view',
     inputs: [{ name: 'token', type: 'address' }],

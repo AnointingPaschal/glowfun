@@ -65,14 +65,14 @@ async function ethCall(to: string, data: string): Promise<string> {
 
 async function getTokenCount(factory: string): Promise<number> {
   try {
-    const res = await ethCall(factory, '0x4b35026c') // launchedTokensCount()
+    const res = await ethCall(factory, '0xfa9e0e92') // launchedTokensCount()
     return Number(decodeUint(res))
   } catch { return 0 }
 }
 
 async function getTokenAt(factory: string, index: number): Promise<string> {
   try {
-    const res = await ethCall(factory, '0x8a3b4a11' + toHex32(index)) // launchedTokens(uint256)
+    const res = await ethCall(factory, '0x10f2b141' + toHex32(index)) // launchedTokens(uint256)
     return decodeAddress(res)
   } catch { return '' }
 }
@@ -80,7 +80,7 @@ async function getTokenAt(factory: string, index: number): Promise<string> {
 // V1 only — returns all token addresses in a single call via allTokens()
 async function getAllTokensV1(factory: string): Promise<string[]> {
   try {
-    const res = await ethCall(factory, '0x2b8d777c') // allTokens()
+    const res = await ethCall(factory, '0x6ff97f1d') // allTokens()
     if (!res || res === '0x') return []
     const hex = stripHex(res)
     // ABI: offset (32 bytes) + length (32 bytes) + addresses (32 bytes each)
@@ -101,37 +101,18 @@ function resolveIpfs(uri: string): string {
   return uri
 }
 
-async function getTokenInfo(tokenAddr: string, factory: string): Promise<{
+async function getTokenInfo(tokenAddr: string): Promise<{
   name: string; symbol: string; decimals: number; logoURI: string
 }> {
-  // Try factory getTokenMetadata (V2/V3): returns (string,string,string,string,string,string,string)
-  try {
-    const addrPadded = tokenAddr.slice(2).toLowerCase().padStart(64, '0')
-    const metaRes = await ethCall(factory, '0x3b89e3c3' + addrPadded)
-    if (metaRes && metaRes !== '0x' && metaRes.length > 130) {
-      const hex = stripHex(metaRes)
-      const readStr = (slotIdx: number) => {
-        const offset = Number(decodeUint(metaRes, slotIdx)) * 2
-        const len = Number(BigInt('0x' + hex.slice(offset, offset + 64)))
-        const raw = hex.slice(offset + 64, offset + 64 + len * 2)
-        try { return decodeURIComponent(raw.replace(/../g, '%$&')) } catch { return '' }
-      }
-      const name    = readStr(0)
-      const symbol  = readStr(1)
-      const logoRaw = readStr(3) // imageUri is index 3
-      if (name && symbol) {
-        return { name, symbol, decimals: 18, logoURI: resolveIpfs(logoRaw) }
-      }
-    }
-  } catch { /* fall through */ }
-
-  // Fallback: direct ERC-20 + token contract fields (works for V1 too)
+  // Read directly from the token contract's own ERC-20 + metadata fields.
+  // No factory has a getTokenMetadata() function — name/symbol/decimals/imageUri
+  // are public state on the GlowToken contract itself (V1, V2, V3 all share this).
   try {
     const [nameRes, symbolRes, decimalsRes, imageRes] = await Promise.all([
       ethCall(tokenAddr, '0x06fdde03'), // name()
       ethCall(tokenAddr, '0x95d89b41'), // symbol()
       ethCall(tokenAddr, '0x313ce567'), // decimals()
-      ethCall(tokenAddr, '0x3a7c1c78'), // imageUri() — present on V1 GlowToken
+      ethCall(tokenAddr, '0x0bf82da4'), // imageUri()
     ])
     const logoRaw = imageRes && imageRes !== '0x' ? decodeString(imageRes) : ''
     return {
@@ -189,9 +170,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request }) => {
     // Fetch metadata for every token
     const tokenEntries = await Promise.all(
       unique.map(async ({ addr, factory }) => {
-        // For V1, pass empty string so getTokenInfo skips factory metadata call
-        const factoryForMeta = FACTORIES.find(f => f.address === factory)?.version === 1 ? '' : factory
-        const info = await getTokenInfo(addr, factoryForMeta)
+        const info = await getTokenInfo(addr)
         if (!info.name || !info.symbol) return null
         return {
           chainId:  CHAIN_ID,
