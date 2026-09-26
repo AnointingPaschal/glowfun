@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { usePublicClient } from 'wagmi'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
 import { useConfig } from '@/context/ConfigContext'
@@ -77,7 +77,10 @@ export function useTokenTrades(token: string | undefined, createdAt: number | un
     enabled: !!client && !!token && !!FACTORY_ADDRESS && createdAt !== undefined,
     refetchInterval: 15_000,
     staleTime: 5_000,
+    retry: 1,
+    placeholderData: keepPreviousData,
     queryFn: async (): Promise<Cached> => {
+     try {
       const factory = FACTORY_ADDRESS as `0x${string}`, tk = token as `0x${string}`
       const latest = await client!.getBlockNumber()
       const prev = cache.get(key)
@@ -95,6 +98,10 @@ export function useTokenTrades(token: string | undefined, createdAt: number | un
       const fresh: Cached = { trades: sortTrades(trades), lastBlock: latest, partial }
       cache.set(key, fresh)
       return fresh
+     } catch (e) {
+      // RPC hiccup: keep showing what we have instead of flipping the chart back to "loading"
+      return cache.get(key) ?? { trades: [], lastBlock: 0n, partial: true }
+     }
     },
   })
   return { trades: q.data?.trades ?? [], partial: q.data?.partial ?? false, isLoading: q.isLoading, error: q.error as Error | null }

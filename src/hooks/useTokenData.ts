@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { useReadContracts } from 'wagmi'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
 import { GLOW_TOKEN_ABI } from '@/abi/GlowToken'
@@ -86,8 +87,11 @@ export function useTokenData(tokenAddress: `0x${string}` | undefined) {
     market: market ?? undefined,
   } : null
 
-  const isLoading = multiLoading || curveQ.isLoading
-  const refetch = async () => { await Promise.all([refetchMulti(), curveQ.refetch()]) }
+  // Page-level loading = the main multicall only. The curve state is an overlay that fills in when
+  // it arrives; it must never put the page back into its loading skeleton.
+  const isLoading = multiLoading
+  const refetchCurve = curveQ.refetch
+  const refetch = useCallback(async () => { await Promise.all([refetchMulti(), refetchCurve()]) }, [refetchMulti, refetchCurve])
   return { token: tokenWithMarket, isLoading, refetch }
 }
 

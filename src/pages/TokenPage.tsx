@@ -217,6 +217,7 @@ function BannerEditor({ token, current, onSaved }: { token:string; current:strin
         {current && <button onClick={()=>{setUri(''); void save('')}} disabled={busy} className="px-3 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50" style={{background:'var(--surface2)',color:'var(--red)',border:'1px solid var(--border)'}}>Remove</button>}
       </div>
       <p className="text-[9px]" style={{color:'var(--text3)'}}>Free signature, no gas. Only the token creator can change the banner.</p>
+      {!current && <p className="text-[9px]" style={{color:'var(--gold)'}}>Banners chosen at launch on older tokens were never stored — add it once here and it shows for everyone.</p>}
     </div>
   )
 }

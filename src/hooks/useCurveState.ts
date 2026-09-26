@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { usePublicClient } from 'wagmi'
 import { encodeFunctionData } from 'viem'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
@@ -65,10 +65,18 @@ export function useCurveState(token: string | undefined, factoryOverride?: strin
     enabled: !!client && !!token && !!FACTORY_ADDRESS,
     refetchInterval: 15_000,
     staleTime: 5_000,
+    retry: 1,
+    placeholderData: keepPreviousData,
     queryFn: async () => {
-      const data = encodeFunctionData({ abi: FACTORY_ABI as any, functionName: 'getTokenState', args: [token as `0x${string}`] })
-      const res = await client!.call({ to: FACTORY_ADDRESS as `0x${string}`, data })
-      return decodeCurveState(res.data ?? '0x')
+      // A failed/reverted read must NOT throw: a query that has never succeeded goes back to
+      // "pending" on every retry/poll, which used to blank the whole page (skeleton loop).
+      try {
+        const data = encodeFunctionData({ abi: FACTORY_ABI as any, functionName: 'getTokenState', args: [token as `0x${string}`] })
+        const res = await client!.call({ to: FACTORY_ADDRESS as `0x${string}`, data })
+        return decodeCurveState(res.data ?? '0x')
+      } catch {
+        return null
+      }
     },
   })
 }

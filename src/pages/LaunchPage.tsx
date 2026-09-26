@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -15,6 +15,7 @@ import { GRADUATION_THRESHOLD } from '@/constants'
 import { useFactoryConfig } from '@/hooks/useFactoryConfig'
 import { parseOnchainError } from '@/utils/errors'
 import { saveBanner } from '@/utils/banner'
+import { ipfsToHttp } from '@/utils/format'
 import { ConnectKitButton } from 'connectkit'
 import {
   Rocket, Twitter, Send, Globe, ChevronDown, Zap,
@@ -203,6 +204,7 @@ export function LaunchPage() {
   const [launchedAddr, setLaunched] = useState<string>('')
   const { signMessageAsync } = useSignMessage()
   const [bannerState, setBannerState] = useState<'idle'|'saving'|'done'|'error'>('idle')
+  const handledLaunch = useRef<string>('')
 
   const doSaveBanner = async () => {
     if (!launchedAddr || !form.bannerUri) return
@@ -286,25 +288,29 @@ export function LaunchPage() {
       : ''
     if (tokenAddr) setLaunched(tokenAddr)
 
-    // wallet_watchAsset — adds token to MetaMask/Coinbase/Rainbow with logo instantly
-    const logoUrl = form.imageUri
-      ? (form.imageUri.startsWith('ipfs://')
-          ? `https://gateway.pinata.cloud/ipfs/${form.imageUri.slice(7)}`
-          : form.imageUri)
-      : ''
-    if (tokenAddr && (window as any).ethereum) {
+    // wallet_watchAsset — adds the token to MetaMask/Coinbase/Rainbow with its logo (via our cached image route)
+    const watchAsset = () => {
+      if (!tokenAddr || !(window as any).ethereum) return
+      const logoUrl = form.imageUri
+        ? (form.imageUri.startsWith('ipfs://') ? `${window.location.origin}${ipfsToHttp(form.imageUri)}` : form.imageUri)
+        : ''
       ;(window as any).ethereum.request({
         method: 'wallet_watchAsset',
-        params: {
-          type: 'ERC20',
-          options: {
-            address: tokenAddr,
-            symbol:  form.symbol.toUpperCase().slice(0, 11),
-            decimals: 18,
-            image:   logoUrl,
-          },
-        },
+        params: { type: 'ERC20', options: { address: tokenAddr, symbol: form.symbol.toUpperCase().slice(0, 11), decimals: 18, image: logoUrl } },
       }).catch(() => {}) // silent — user may dismiss
+    }
+
+    // The banner is not stored on-chain, so save it now: one free wallet signature, prompted right after
+    // the launch confirms (no extra click). Runs once per launch; the button on the success screen retries.
+    if (tokenAddr && form.bannerUri && !form.bannerUri.startsWith('blob:') && handledLaunch.current !== launchTx) {
+      handledLaunch.current = launchTx as string
+      setBannerState('saving')
+      saveBanner(tokenAddr, form.bannerUri, a => signMessageAsync(a as any))
+        .then(() => { setBannerState('done'); toast.success('Banner saved') })
+        .catch((e: any) => { setBannerState('error'); toast.error(e?.shortMessage ?? e?.message ?? 'Banner not saved — tap the button to retry') })
+        .finally(watchAsset)
+    } else {
+      watchAsset()
     }
   }, [lnchDone, lnchReceipt])
 
