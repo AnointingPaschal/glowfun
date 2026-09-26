@@ -1279,6 +1279,18 @@ export function AdminPage() {
 function AdminTokenRow({ addr, index, factoryAddress, chainId, explorerBase }: { addr: string; index: number; factoryAddress: string; chainId: number; explorerBase: string }) {
   const { writeContract, data: claimHash, isPending } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: claimHash })
+  const [showGradSet, setShowGradSet] = useState(false)
+  const [gradInput, setGradInput] = useState('')
+  const { writeContract: writeGrad, isPending: gradPending } = useWriteContract()
+
+  const handleSetGrad = () => {
+    const val = parseFloat(gradInput)
+    if (isNaN(val) || val < 0) return toast.error('Enter a valid dollar amount (0 = instant)')
+    writeGrad(
+      { address: factoryAddress as `0x${string}`, abi: FACTORY_ABI, functionName: 'setTokenGraduationThreshold', args: [addr as `0x${string}`, BigInt(Math.round(val * 1_000_000))], chainId: chainId as any } as any,
+      { onSuccess: () => { toast.success(`Graduation target set to $${val.toLocaleString()}`); setShowGradSet(false); setGradInput('') }, onError: (e) => toast.error(parseOnchainError(e)) }
+    )
+  }
   const { data: results } = useReadContracts({ contracts: [
     { address: factoryAddress as `0x${string}`, abi: FACTORY_ABI, functionName: 'getTokenState', args: [addr as `0x${string}`], chainId: chainId as any },
     { address: factoryAddress as `0x${string}`, abi: FACTORY_ABI, functionName: 'pendingGraduationUsdc', args: [addr as `0x${string}`], chainId: chainId as any },
@@ -1338,6 +1350,41 @@ function AdminTokenRow({ addr, index, factoryAddress, chainId, explorerBase }: {
       {graduated && !hasPending && (
         <p className="text-[10px]" style={{ color: 'var(--text3)' }}>Graduation funds already claimed.</p>
       )}
+      {/* Set graduation target */}
+      <div>
+        <button
+          onClick={() => setShowGradSet(v => !v)}
+          className="flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-lg transition-all"
+          style={{ background: showGradSet ? 'rgba(99,102,241,0.15)' : 'var(--surface)', color: showGradSet ? '#818cf8' : 'var(--text2)', border: '1px solid var(--border)' }}
+        >
+          <Sliders size={10} />Set Grad Target
+        </button>
+        {showGradSet && (
+          <div className="mt-2 p-2 rounded-lg space-y-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+            <p className="text-[10px]" style={{ color: 'var(--text2)' }}>Override this token's graduation target. Enter dollar amount (0 = instant).</p>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                min="0"
+                placeholder="e.g. 1000"
+                value={gradInput}
+                onChange={e => setGradInput(e.target.value)}
+                className="flex-1 px-2 py-1.5 rounded-lg text-xs"
+                style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text1)' }}
+              />
+              <button
+                onClick={handleSetGrad}
+                disabled={gradPending || !gradInput}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+                style={{ background: gradPending ? 'var(--surface2)' : 'rgba(99,102,241,0.2)', color: gradPending ? 'var(--text2)' : '#818cf8', border: '1px solid rgba(99,102,241,0.3)' }}
+              >
+                {gradPending ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />}
+                {gradPending ? 'Setting…' : 'Set'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
