@@ -7,7 +7,7 @@ import {
 } from 'wagmi'
 import { erc20Abi, toEventSelector } from 'viem'
 import { toast } from 'sonner'
-import ImageUpload from '@/components/ImageUpload'
+import ImageUpload, { SmartImg } from '@/components/ImageUpload'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
 import { useConfig } from '@/context/ConfigContext'
 import { parseUsdc } from '@/utils/format'
@@ -353,6 +353,10 @@ export function LaunchPage() {
     if (!isConnected) { toast.error('Connect wallet first'); return }
     if (chainId !== CHAIN_ID) { switchChain({chainId:CHAIN_ID as any}); return }
     if (!form.name.trim()||!form.symbol.trim()) { toast.error('Name and symbol required'); return }
+    // A blob: URL is a browser-local preview from a failed upload — it would be written on-chain and never load for anyone else
+    if (form.imageUri.startsWith('blob:') || form.bannerUri.startsWith('blob:')) {
+      toast.error('Logo/banner was not uploaded (preview only). Re-upload it or paste an https:// / ipfs:// URL.'); return
+    }
     if (userChoseInstant && initLiqUsdc === 0n) { toast.error('Enter initial liquidity USDC to seed Uniswap'); return }
     if (!canAfford) { toast.error(`Need ${fmtUsdc(totalUsdcNeeded)} USDC to launch`); return }
     if (curveBps < 5000) { toast.error('Curve allocation must be at least 50%'); return }
@@ -1170,8 +1174,7 @@ export function LaunchPage() {
               style={{background: form.bannerUri ? 'black' : `linear-gradient(135deg,hsl(${hue},55%,25%),hsl(${(hue+120)%360},50%,20%))`}}>
               {/* Banner fills background; logo is NOT used as background */}
               {form.bannerUri && (
-                <img src={form.bannerUri} className="w-full h-full object-cover opacity-80"
-                  onError={e=>(e.currentTarget.style.display='none')}/>
+                <SmartImg src={form.bannerUri} alt="" className="w-full h-full object-cover opacity-80"/>
               )}
               {!form.bannerUri && (
                 <div className="absolute inset-0 flex items-center justify-center">
@@ -1184,9 +1187,8 @@ export function LaunchPage() {
               {/* Name overlay */}
               <div className="absolute bottom-3 left-4 flex items-end gap-2.5">
                 {form.imageUri
-                  ? <img src={form.imageUri} className="w-10 h-10 rounded-xl object-cover border-2 flex-shrink-0"
-                      style={{borderColor:'rgba(255,255,255,0.2)'}}
-                      onError={e=>(e.currentTarget.style.display='none')}/>
+                  ? <SmartImg src={form.imageUri} alt="" className="w-10 h-10 rounded-xl object-cover border-2 flex-shrink-0"
+                      style={{borderColor:'rgba(255,255,255,0.2)'}}/>
                   : <div className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black text-white flex-shrink-0"
                       style={{background:`linear-gradient(135deg,hsl(${hue},60%,50%),hsl(${(hue+120)%360},55%,40%))`}}>{initials}</div>
                 }

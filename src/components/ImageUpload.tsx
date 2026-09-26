@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from 'react'
+import { useRef, useState, useCallback, useEffect } from 'react'
 import { Upload, Link, X, CheckCircle, Loader2, Globe } from 'lucide-react'
 import { clsx } from 'clsx'
 
@@ -20,10 +20,32 @@ const IPFS_GATEWAYS = [
 export function resolveImageUrl(url: string): string {
   if (!url) return ''
   if (url.startsWith('ipfs://')) {
-    const hash = url.slice(7)
+    const hash = url.slice(7).replace(/^ipfs\//, '')
     return `${IPFS_GATEWAYS[0]}${hash}`
   }
   return url
+}
+
+/** All URLs worth trying for an image, in order (ipfs:// expands to every gateway). */
+export function imageCandidates(url: string): string[] {
+  if (!url) return []
+  if (url.startsWith('ipfs://')) {
+    const hash = url.slice(7).replace(/^ipfs\//, '')
+    return IPFS_GATEWAYS.map(g => `${g}${hash}`)
+  }
+  return [url]
+}
+
+/**
+ * <img> that understands ipfs:// and falls through gateways on error.
+ * Renders nothing once every candidate has failed (or when src is empty).
+ */
+export function SmartImg({ src, ...rest }: { src: string } & Omit<React.ImgHTMLAttributes<HTMLImageElement>, 'src' | 'onError'>) {
+  const [idx, setIdx] = useState(0)
+  useEffect(() => setIdx(0), [src])
+  const urls = imageCandidates(src)
+  if (!urls.length || idx >= urls.length) return null
+  return <img {...rest} src={urls[idx]} onError={() => setIdx(i => i + 1)} />
 }
 
 export default function ImageUpload({ value, onChange, label = 'Token Logo' }: ImageUploadProps) {
@@ -35,7 +57,13 @@ export default function ImageUpload({ value, onChange, label = 'Token Logo' }: I
   const [dragOver, setDragOver] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const displayUrl = resolveImageUrl(value)
+  const displayUrl = value
+
+  // Pull a human-readable reason out of a failed API response
+  const reason = async (res: Response) => {
+    try { const j = await res.json() as { error?: string }; return j.error ?? `HTTP ${res.status}` }
+    catch { return `HTTP ${res.status}` }
+  }
 
   const uploadFile = useCallback(async (file: File) => {
     setError('')
@@ -54,6 +82,7 @@ export default function ImageUpload({ value, onChange, label = 'Token Logo' }: I
         onChange(ipfsUrl) // store ipfs:// URL — permanent
         return
       }
+      const ipfsWhy = await reason(ipfsRes)
 
       // Fallback to R2
       const r2Form = new FormData()
@@ -66,15 +95,16 @@ export default function ImageUpload({ value, onChange, label = 'Token Logo' }: I
         onChange(url)
         return
       }
+      const r2Why = await reason(r2Res)
 
-      // Last resort: local object URL (preview only)
+      // Last resort: local object URL (preview only — LaunchPage refuses to launch with it)
       const localUrl = URL.createObjectURL(file)
       setUploadState('idle')
       onChange(localUrl)
-      setError('Stored locally for preview. Set PINATA_JWT in admin for permanent IPFS storage.')
-    } catch (e) {
+      setError(`Preview only — not uploaded. IPFS: ${ipfsWhy}. CDN: ${r2Why}. Fix in Admin → Keys & APIs (PINATA_JWT / R2_PUBLIC_URL).`)
+    } catch (e: any) {
       setUploadState('error')
-      setError('Upload failed. Check your PINATA_JWT in Admin → Keys & APIs.')
+      setError(`Upload failed: ${e?.message ?? 'network error'}`)
     }
   }, [onChange])
 
@@ -150,7 +180,7 @@ export default function ImageUpload({ value, onChange, label = 'Token Logo' }: I
         <div className="relative flex-shrink-0">
           <div className="w-20 h-20 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center">
             {displayUrl ? (
-              <img src={displayUrl} alt="logo" className="w-full h-full object-cover" />
+              <SmartImg src={displayUrl} alt="preview" className="w-full h-full object-cover" />
             ) : (
               <div className="text-white/20 text-3xl font-bold">?</div>
             )}
