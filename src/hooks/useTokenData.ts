@@ -3,13 +3,15 @@ import { FACTORY_ABI } from '@/abi/GlowFunFactory'
 import { GLOW_TOKEN_ABI } from '@/abi/GlowToken'
 import { useConfig } from '@/context/ConfigContext'
 import { useMarketPrice } from '@/hooks/useMarketPrice'
+import { useCurveState } from '@/hooks/useCurveState'
 import type { TokenInfo, TokenState } from '@/types'
 
 export function useTokenData(tokenAddress: `0x${string}` | undefined) {
   const { FACTORY_ADDRESS, CHAIN_ID } = useConfig()
   const enabled = !!tokenAddress && !!FACTORY_ADDRESS
 
-  const { data, isLoading, refetch } = useReadContracts({
+  const curveQ = useCurveState(tokenAddress)
+  const { data, isLoading: multiLoading, refetch: refetchMulti } = useReadContracts({
     contracts: tokenAddress && FACTORY_ADDRESS ? [
       { address: tokenAddress, abi: GLOW_TOKEN_ABI, functionName: 'name', chainId: CHAIN_ID as any },
       { address: tokenAddress, abi: GLOW_TOKEN_ABI, functionName: 'symbol', chainId: CHAIN_ID as any },
@@ -21,7 +23,7 @@ export function useTokenData(tokenAddress: `0x${string}` | undefined) {
       { address: tokenAddress, abi: GLOW_TOKEN_ABI, functionName: 'totalSupply', chainId: CHAIN_ID as any },
       { address: tokenAddress, abi: GLOW_TOKEN_ABI, functionName: 'creator', chainId: CHAIN_ID as any },
       { address: tokenAddress, abi: GLOW_TOKEN_ABI, functionName: 'createdAt', chainId: CHAIN_ID as any },
-      { address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'getTokenState', args: [tokenAddress], chainId: CHAIN_ID as any },
+      { address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'isLaunchedToken', args: [tokenAddress], chainId: CHAIN_ID as any }, // placeholder slot: state comes from useCurveState
       { address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'getTokenPrice', args: [tokenAddress], chainId: CHAIN_ID as any },
       { address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'getMarketCap', args: [tokenAddress], chainId: CHAIN_ID as any },
       { address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'getProgress', args: [tokenAddress], chainId: CHAIN_ID as any },
@@ -32,7 +34,7 @@ export function useTokenData(tokenAddress: `0x${string}` | undefined) {
   const token: TokenInfo | null = (data && tokenAddress) ? (() => {
     const [name, symbol, description, imageUri, twitter, telegram, website, totalSupply, creator, createdAt, state, price, marketCap, progress] = data
     if (name?.status !== 'success') return null
-    const s = state?.result as any
+    const s = curveQ.data
     return {
       address: tokenAddress,
       name: name.result as string,
@@ -47,12 +49,19 @@ export function useTokenData(tokenAddress: `0x${string}` | undefined) {
       createdAt: Number(createdAt?.result ?? 0),
       state: s ? {
         creator: s.creator,
-        virtualUsdcReserves: s.virtualUsdcReserves,
-        virtualTokenReserves: s.virtualTokenReserves,
+        virtualUsdcReserves: s.virtualUsdc,
+        virtualTokenReserves: s.virtualTokens,
         realUsdcRaised: s.realUsdcRaised,
         realTokensSold: s.realTokensSold,
         graduated: s.graduated,
-        createdAt: s.createdAt,
+        createdAt: BigInt(s.createdAt),
+        curveTokens: s.curveTokens,
+        graduationTokens: s.graduationTokens,
+        creatorTokens: s.creatorTokens,
+        totalSupply: s.totalSupply,
+        tokenGraduationThreshold: s.threshold,
+        creatorTokensLocked: s.creatorLocked,
+        creatorLockExpiry: BigInt(s.lockExpiry),
       } as TokenState : { creator: '0x' as `0x${string}`, virtualUsdcReserves: 0n, virtualTokenReserves: 0n, realUsdcRaised: 0n, realTokensSold: 0n, graduated: false, createdAt: 0n },
       price: price?.result as bigint ?? 0n,
       marketCap: marketCap?.result as bigint ?? 0n,
@@ -77,6 +86,8 @@ export function useTokenData(tokenAddress: `0x${string}` | undefined) {
     market: market ?? undefined,
   } : null
 
+  const isLoading = multiLoading || curveQ.isLoading
+  const refetch = async () => { await Promise.all([refetchMulti(), curveQ.refetch()]) }
   return { token: tokenWithMarket, isLoading, refetch }
 }
 

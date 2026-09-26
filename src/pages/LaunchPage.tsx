@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   useAccount, useWriteContract, useWaitForTransactionReceipt,
-  useSwitchChain, useReadContract,
+  useSwitchChain, useReadContract, useSignMessage,
 } from 'wagmi'
 import { erc20Abi, toEventSelector } from 'viem'
 import { toast } from 'sonner'
@@ -14,6 +14,7 @@ import { parseUsdc } from '@/utils/format'
 import { GRADUATION_THRESHOLD } from '@/constants'
 import { useFactoryConfig } from '@/hooks/useFactoryConfig'
 import { parseOnchainError } from '@/utils/errors'
+import { saveBanner } from '@/utils/banner'
 import { ConnectKitButton } from 'connectkit'
 import {
   Rocket, Twitter, Send, Globe, ChevronDown, Zap,
@@ -200,6 +201,15 @@ export function LaunchPage() {
   const [approveTx, setAppTx] = useState<`0x${string}`|undefined>()
   const [launchTx,  setLTx]         = useState<`0x${string}`|undefined>()
   const [launchedAddr, setLaunched] = useState<string>('')
+  const { signMessageAsync } = useSignMessage()
+  const [bannerState, setBannerState] = useState<'idle'|'saving'|'done'|'error'>('idle')
+
+  const doSaveBanner = async () => {
+    if (!launchedAddr || !form.bannerUri) return
+    setBannerState('saving')
+    try { await saveBanner(launchedAddr, form.bannerUri, a => signMessageAsync(a as any)); setBannerState('done'); toast.success('Banner saved') }
+    catch (e: any) { setBannerState('error'); toast.error(e?.shortMessage ?? e?.message ?? 'Could not save banner') }
+  }
 
   /* computed supply */
   const supply: bigint = (() => {
@@ -412,6 +422,24 @@ export function LaunchPage() {
           <div className="rounded-xl px-3 py-2.5 text-left" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
             <p className="text-[9px] font-bold uppercase tracking-widest mb-1" style={{color:'var(--text2)'}}>Token Address</p>
             <p className="text-[10px] font-mono break-all" style={{color:'var(--accent)'}}>{launchedAddr}</p>
+          </div>
+        )}
+
+        {/* Banner: not stored on-chain, so the creator signs to attach it to the token page */}
+        {launchedAddr && form.bannerUri && !form.bannerUri.startsWith('blob:') && (
+          <div className="rounded-xl p-3 text-left space-y-2" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
+            <p className="text-[9px] font-bold uppercase tracking-widest" style={{color:'var(--text2)'}}>Token banner</p>
+            <div className="h-16 rounded-lg overflow-hidden" style={{background:'var(--surface2)'}}>
+              <SmartImg src={form.bannerUri} alt="" className="w-full h-full object-cover"/>
+            </div>
+            <button onClick={doSaveBanner} disabled={bannerState==='saving'||bannerState==='done'}
+              className="w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-60"
+              style={{background:bannerState==='done'?'rgba(34,197,94,0.12)':'rgba(99,102,241,0.12)',color:bannerState==='done'?'var(--green)':'#818cf8',border:'1px solid rgba(99,102,241,0.25)'}}>
+              {bannerState==='saving'?<><Loader2 size={12} className="animate-spin"/>Waiting for signature…</>
+                :bannerState==='done'?<><Check size={12}/>Banner saved</>
+                :<><Image size={12}/>{bannerState==='error'?'Retry — sign to save banner':'Sign to save banner'}</>}
+            </button>
+            <p className="text-[9px]" style={{color:'var(--text3)'}}>Free signature (no gas). You can change it later from the token page.</p>
           </div>
         )}
 

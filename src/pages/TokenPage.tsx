@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchChain, useReadContract, useReadContracts } from 'wagmi'
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchChain, useReadContract, useReadContracts, useSignMessage } from 'wagmi'
 import { erc20Abi } from 'viem'
 import { toast } from 'sonner'
 import {
@@ -10,9 +10,16 @@ import {
   Star, Zap, ChevronDown, ChevronUp, TrendingUp, TrendingDown,
   Activity, BarChart3, MessageCircle, Info, Flame, Sprout,
   List, Users, BookOpen, ArrowUpRight, ArrowDownLeft,
+  Pencil, Target, Lock, GraduationCap, PieChart, Image as ImageIcon,
 } from 'lucide-react'
 import { Comments } from '@/components/Comments'
-import { TVChart } from '@/components/TVChart'
+import { CurveChart, type ChartKind } from '@/components/CurveChart'
+import ImageUpload, { SmartImg } from '@/components/ImageUpload'
+import { useCurveState, type CurveState } from '@/hooks/useCurveState'
+import { useTokenTrades, type Trade } from '@/hooks/useTokenTrades'
+import { useTokenBanner } from '@/hooks/useTokenBanner'
+import { buildCandles, computeStats, TIMEFRAMES, fmtPrice, type Timeframe } from '@/utils/candles'
+import { saveBanner } from '@/utils/banner'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
 import { GLOW_TOKEN_ABI } from '@/abi/GlowToken'
 import { useConfig } from '@/context/ConfigContext'
@@ -73,11 +80,12 @@ async function fetchOHLCV(pool: string, tf: string): Promise<any[]> {
 
 
 /* ── Stat cell ──────────────────────────────────────────────────── */
-function Stat({ label, value, accent }: { label:string; value:string; accent?:string }) {
+function Stat({ label, value, accent, sub }: { label:string; value:string; accent?:string; sub?:string }) {
   return (
     <div className="flex flex-col gap-1 p-3 rounded-xl" style={{ background:'var(--surface2)', border:'1px solid var(--border)' }}>
       <span className="text-[8.5px] uppercase tracking-widest font-semibold" style={{ color:'var(--text2)' }}>{label}</span>
       <span className="text-sm font-bold tabular-nums" style={{ color:accent??'var(--text1)', fontFamily:'Space Grotesk,sans-serif' }}>{value}</span>
+      {sub && <span className="text-[8.5px] leading-tight" style={{ color:'var(--text3)' }}>{sub}</span>}
     </div>
   )
 }
@@ -153,49 +161,157 @@ function OrderBook({ price, state }: { price:number; state:any }) {
   )
 }
 
-/* ── Txns tab ────────────────────────────────────────────────────── */
-function TxnsTab({ tokenAddr, factoryAddr, explorer }: { tokenAddr:string; factoryAddr:string; explorer:string }) {
-  const [txns, setTxns] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    if (!tokenAddr) return
-    ;(async () => {
-      try {
-        // Use DexScreener for transactions
-        const r = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddr}`, {signal:AbortSignal.timeout(8000)})
-        if (r.ok) {
-          // Real transaction data would come from an indexer; DexScreener only provides
-          // pair-level stats, not individual txns. Show empty until we have a real source.
-          void r.json()
-        }
-      } catch {}
-      setLoading(false)
-    })()
-  }, [tokenAddr])
-
-  if (loading) return <div className="flex items-center justify-center py-8 gap-2" style={{color:'var(--text2)'}}><Loader2 size={14} className="animate-spin"/><span className="text-xs">Loading…</span></div>
-
+/* ── Trades tab (real on-chain TokensBought / TokensSold events) ───── */
+function TradesTab({ trades, explorer, partial, loading }: { trades:Trade[]; explorer:string; partial:boolean; loading:boolean }) {
+  const [rows, setRows] = useState(25)
+  const list = useMemo(() => [...trades].reverse(), [trades])
+  if (loading && !trades.length) return <div className="flex items-center justify-center py-10 gap-2" style={{color:'var(--text2)'}}><Loader2 size={14} className="animate-spin"/><span className="text-xs">Loading trades from chain…</span></div>
   return (
     <div>
       <div className="flex text-[8.5px] font-bold px-3 py-2 mb-2 rounded-lg" style={{color:'var(--text2)', background:'var(--surface3)'}}>
-        <span className="flex-1">Type</span><span className="w-20 text-right">USDC</span><span className="w-20 text-right">Tokens</span><span className="w-16 text-right">Wallet</span><span className="w-12 text-right">Age</span>
+        <span className="w-14">Type</span><span className="flex-1 text-right">USDC</span><span className="flex-1 text-right hidden sm:block">Tokens</span><span className="flex-1 text-right">Price</span><span className="w-16 text-right">Wallet</span><span className="w-12 text-right">Age</span>
       </div>
       <div className="space-y-1">
-        {txns.length===0 ? <div className="py-6 text-center text-xs" style={{color:'var(--text2)'}}>No transactions yet</div>
-          : txns.map((t,i)=>(
-          <div key={i} className="flex items-center text-[9px] px-3 py-2 rounded-lg" style={{background:'var(--surface3)'}}>
-            <div className="flex-1 flex items-center gap-1.5">
-              {t.type==='buy'
+        {list.length===0 ? <div className="py-8 text-center text-xs" style={{color:'var(--text2)'}}>No trades yet — be the first to buy</div>
+          : list.slice(0, rows).map(t=>(
+          <a key={`${t.tx}-${t.idx}`} href={`${explorer}/tx/${t.tx}`} target="_blank" rel="noopener" className="flex items-center text-[10px] px-3 py-2 rounded-lg no-underline transition-colors hover:brightness-125" style={{background:'var(--surface3)'}}>
+            <div className="w-14 flex items-center gap-1">
+              {t.kind==='buy'
                 ? <><ArrowUpRight size={10} style={{color:'var(--green)'}}/><span style={{color:'var(--green)',fontWeight:700}}>BUY</span></>
                 : <><ArrowDownLeft size={10} style={{color:'var(--red)'}}/><span style={{color:'var(--red)',fontWeight:700}}>SELL</span></>}
             </div>
-            <span className="w-20 text-right font-mono" style={{color:'var(--text1)'}}>${t.usd}</span>
-            <span className="w-20 text-right font-mono" style={{color:'var(--text2)'}}>{(Number(t.tokens)/1e3).toFixed(1)}K</span>
-            <a href={`${explorer}/address/${t.addr}`} target="_blank" rel="noopener" className="w-16 text-right no-underline" style={{color:'var(--accent)'}}>{t.addr}…</a>
-            <span className="w-12 text-right" style={{color:'var(--text2)'}}>{timeAgo(t.time)}</span>
-          </div>
+            <span className="flex-1 text-right font-mono" style={{color:'var(--text1)'}}>${t.usdc.toLocaleString('en',{maximumFractionDigits:2})}</span>
+            <span className="flex-1 text-right font-mono hidden sm:block" style={{color:'var(--text2)'}}>{t.tokens>=1e6?`${(t.tokens/1e6).toFixed(2)}M`:`${(t.tokens/1e3).toFixed(1)}K`}</span>
+            <span className="flex-1 text-right font-mono" style={{color:'var(--text2)'}}>${fmtPrice(t.price)}</span>
+            <span className="w-16 text-right font-mono" style={{color:'var(--accent)'}}>{t.trader.slice(0,4)}…{t.trader.slice(-3)}</span>
+            <span className="w-12 text-right" style={{color:'var(--text2)'}}>{timeAgo(t.ts)}</span>
+          </a>
         ))}
+      </div>
+      {list.length>rows && <button onClick={()=>setRows(r=>r+50)} className="w-full mt-2 py-2 rounded-lg text-[10px] font-bold" style={{background:'var(--surface3)',color:'var(--accent)'}}>Show more ({list.length-rows} older)</button>}
+      {partial && <p className="text-[9px] mt-2 text-center" style={{color:'var(--text3)'}}>Showing recent history only — older trades are beyond the scan window.</p>}
+    </div>
+  )
+}
+
+/* ── Banner editor (creator only) ─────────────────────────────────────── */
+function BannerEditor({ token, current, onSaved }: { token:string; current:string; onSaved:(uri:string)=>void }) {
+  const [uri, setUri] = useState(current)
+  const [busy, setBusy] = useState(false)
+  const { signMessageAsync } = useSignMessage()
+  const save = async (value: string) => {
+    if (value.startsWith('blob:')) return toast.error('Upload did not finish — re-upload or paste an https:// / ipfs:// URL')
+    setBusy(true)
+    try { await saveBanner(token, value, a => signMessageAsync(a as any)); onSaved(value); toast.success(value ? 'Banner saved' : 'Banner removed') }
+    catch (e:any) { toast.error(e?.shortMessage ?? e?.message ?? 'Could not save banner') }
+    finally { setBusy(false) }
+  }
+  return (
+    <div className="px-4 py-4 lg:px-6 space-y-3" style={{borderBottom:'1px solid var(--border)',background:'rgba(99,102,241,0.04)'}}>
+      <div className="flex items-center gap-1.5"><ImageIcon size={12} style={{color:'var(--accent)'}}/><span className="text-[10px] font-bold uppercase tracking-widest" style={{color:'var(--text2)'}}>Token banner</span></div>
+      <ImageUpload value={uri} onChange={setUri} label=""/>
+      <div className="flex gap-2">
+        <button onClick={()=>save(uri)} disabled={busy||uri===current} className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white disabled:opacity-50 flex items-center justify-center gap-1.5" style={{background:'linear-gradient(135deg,#6366f1,#8b5cf6)'}}>
+          {busy?<><Loader2 size={12} className="animate-spin"/>Waiting for signature…</>:<><Check size={12}/>Sign &amp; save</>}
+        </button>
+        {current && <button onClick={()=>{setUri(''); void save('')}} disabled={busy} className="px-3 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50" style={{background:'var(--surface2)',color:'var(--red)',border:'1px solid var(--border)'}}>Remove</button>}
+      </div>
+      <p className="text-[9px]" style={{color:'var(--text3)'}}>Free signature, no gas. Only the token creator can change the banner.</p>
+    </div>
+  )
+}
+
+/* ── Bonding-curve progress ───────────────────────────────────────────── */
+function BondingCurveCard({ curve, threshold, raisedUsd, price, symbol }: { curve:CurveState|null|undefined; threshold:number; raisedUsd:number; price:number; symbol:string }) {
+  if (!curve) return null
+  const pct = threshold > 0 ? Math.min(100, (raisedUsd / threshold) * 100) : 100
+  const sold = Number(curve.realTokensSold) / 1e18
+  const curveTok = Number(curve.curveTokens) / 1e18
+  const soldPct = curveTok > 0 ? Math.min(100, (sold / curveTok) * 100) : 0
+  const supply = Number(curve.totalSupply) / 1e18
+  // Constant-product estimate of the price once the remaining gap is filled
+  const vU = Number(curve.virtualUsdc), vT = Number(curve.virtualTokens)
+  const gapUsdc = Math.max(0, threshold - raisedUsd) * 1e6
+  const uG = vU + gapUsdc, tG = vU && vT ? (vU * vT) / uG : 0
+  const gradPrice = tG > 0 ? (uG * 1e12) / tG : 0
+  const gradMcap = gradPrice * supply
+  const fmtTok = (n:number) => n >= 1e9 ? `${(n/1e9).toFixed(2)}B` : n >= 1e6 ? `${(n/1e6).toFixed(2)}M` : `${(n/1e3).toFixed(1)}K`
+  return (
+    <div className="rounded-2xl p-4" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-1.5"><Target size={12} style={{color:'var(--accent)'}}/><span className="text-[9px] font-bold uppercase tracking-widest" style={{color:'var(--text2)'}}>Bonding curve</span></div>
+        {curve.graduated
+          ? <span className="flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full" style={{background:'rgba(245,158,11,0.12)',color:'var(--gold)'}}><GraduationCap size={9}/>Graduated</span>
+          : <span className="text-[11px] font-black tabular-nums" style={{color:'var(--accent)'}}>{pct.toFixed(pct<10?2:1)}%</span>}
+      </div>
+      <div className="relative h-2.5 rounded-full overflow-hidden mb-1.5" style={{background:'var(--surface3)'}}>
+        <div className="h-full rounded-full transition-all duration-700" style={{width:`${Math.max(pct, pct>0?1.5:0)}%`,background:'linear-gradient(90deg,#6366f1,#8b5cf6,#ec4899)'}}/>
+        {[25,50,75].map(m=><div key={m} className="absolute top-0 bottom-0 w-px" style={{left:`${m}%`,background:'rgba(255,255,255,0.12)'}}/>)}
+      </div>
+      <div className="flex justify-between text-[9px] mb-3 tabular-nums" style={{color:'var(--text2)'}}>
+        <span><b style={{color:'var(--text1)'}}>{fmtC(raisedUsd)}</b> raised</span>
+        <span>Target <b style={{color:'var(--text1)'}}>{threshold>0?fmtC(threshold):'instant'}</b></span>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="p-2.5 rounded-xl" style={{background:'var(--surface2)'}}>
+          <div className="text-[8px] uppercase tracking-widest mb-0.5" style={{color:'var(--text2)'}}>Sold from curve</div>
+          <div className="text-[11px] font-bold tabular-nums" style={{color:'var(--text1)'}}>{fmtTok(sold)} <span style={{color:'var(--text3)'}}>/ {fmtTok(curveTok)}</span></div>
+          <div className="h-1 rounded-full mt-1.5 overflow-hidden" style={{background:'var(--surface3)'}}><div className="h-full rounded-full" style={{width:`${soldPct}%`,background:'var(--green)'}}/></div>
+        </div>
+        <div className="p-2.5 rounded-xl" style={{background:'var(--surface2)'}}>
+          <div className="text-[8px] uppercase tracking-widest mb-0.5" style={{color:'var(--text2)'}}>Est. at graduation</div>
+          <div className="text-[11px] font-bold tabular-nums" style={{color:'var(--text1)'}}>≈ {fmtC(gradMcap)} <span style={{color:'var(--text3)'}}>MC</span></div>
+          <div className="text-[8.5px] mt-1 tabular-nums" style={{color:'var(--text3)'}}>{price>0&&gradPrice>0?`${(gradPrice/price).toFixed(1)}× from now`:'—'}</div>
+        </div>
+      </div>
+      <p className="text-[9px] leading-relaxed mt-3" style={{color:'var(--text3)'}}>
+        Market cap is <b style={{color:'var(--text2)'}}>virtual</b>: the curve starts every token at the same price, so it equals total supply × price.
+        Real liquidity is only the USDC raised above. On reaching the target, {symbol} moves to a Uniswap V3 pool.
+      </p>
+    </div>
+  )
+}
+
+/* ── Tokenomics ───────────────────────────────────────────────────────── */
+function TokenomicsCard({ curve }: { curve:CurveState|null|undefined }) {
+  if (!curve || curve.totalSupply === 0n) return null
+  const tot = Number(curve.totalSupply)
+  const parts = [
+    { label:'Bonding curve', v:Number(curve.curveTokens),      color:'#6366f1' },
+    { label:'DEX liquidity', v:Number(curve.graduationTokens), color:'#22c55e' },
+    { label:'Creator',       v:Number(curve.creatorTokens),    color:'#f59e0b' },
+  ].filter(x => x.v > 0)
+  const R = 46, C = 2*Math.PI*R
+  let off = 0
+  const fmtTok = (n:number) => { const v=n/1e18; return v>=1e9?`${(v/1e9).toFixed(2)}B`:v>=1e6?`${(v/1e6).toFixed(1)}M`:`${(v/1e3).toFixed(0)}K` }
+  const lockText = curve.creatorTokens === 0n ? null
+    : curve.creatorLocked ? (curve.lockExpiry > 0 ? `Locked until ${new Date(curve.lockExpiry*1000).toLocaleDateString()}` : 'Locked (vesting)')
+    : 'Not locked'
+  return (
+    <div className="rounded-2xl p-4 lg:p-5" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
+      <div className="flex items-center gap-1.5 mb-4"><PieChart size={12} style={{color:'var(--accent)'}}/><span className="text-[9px] font-bold uppercase tracking-widest" style={{color:'var(--text2)'}}>Tokenomics</span></div>
+      <div className="flex items-center gap-5">
+        <div className="relative w-28 h-28 flex-shrink-0">
+          <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
+            <circle cx={60} cy={60} r={R} fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth={14}/>
+            {parts.map(p => { const len=(p.v/tot)*C; const el=<circle key={p.label} cx={60} cy={60} r={R} fill="none" stroke={p.color} strokeWidth={14} strokeDasharray={`${len} ${C-len}`} strokeDashoffset={-off}/>; off+=len; return el })}
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-sm font-black tabular-nums" style={{color:'var(--text1)'}}>{fmtTok(tot)}</span>
+            <span className="text-[8px] uppercase tracking-widest" style={{color:'var(--text2)'}}>Supply</span>
+          </div>
+        </div>
+        <div className="flex-1 space-y-2.5 min-w-0">
+          {parts.map(p=>(
+            <div key={p.label} className="flex items-center gap-2 text-[11px]">
+              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{background:p.color}}/>
+              <span style={{color:'var(--text2)'}}>{p.label}</span>
+              <span className="ml-auto font-bold tabular-nums" style={{color:'var(--text1)'}}>{((p.v/tot)*100).toFixed(1)}%</span>
+              <span className="w-14 text-right tabular-nums text-[10px]" style={{color:'var(--text3)'}}>{fmtTok(p.v)}</span>
+            </div>
+          ))}
+          {lockText && <div className="flex items-center gap-1.5 text-[10px] pt-1" style={{color:'var(--text2)'}}><Lock size={10} style={{color:'var(--gold)'}}/>Creator tokens: <b style={{color:'var(--text1)'}}>{lockText}</b></div>}
+        </div>
       </div>
     </div>
   )
@@ -631,14 +747,27 @@ export function TokenPage() {
   const tokenThresholdRaw = gapArr ? gapArr[1] : undefined   // 0n = instant / no target
   const raisedUsd = gapArr ? Number(gapArr[2])/1e6 : (token ? Number(token.state?.realUsdcRaised??0n)/1e6 : 0)
   const isDesktop = useIsDesktop()
+  // On-chain bonding-curve state (layout-adaptive), trade history and chart data
+  const { data: curve } = useCurveState(tokenAddr)
+  const { trades, partial: tradesPartial, isLoading: tradesLoading } = useTokenTrades(tokenAddr, (token?.createdAt || curve?.createdAt) || undefined)
+  const { data: v0Usdc } = useReadContract({ address:FACTORY_ADDRESS, abi:FACTORY_ABI, functionName:'initialVirtualUsdcReserves',  chainId:CHAIN_ID as any, query:{enabled:!!FACTORY_ADDRESS} })
+  const { data: v0Tok  } = useReadContract({ address:FACTORY_ADDRESS, abi:FACTORY_ABI, functionName:'initialVirtualTokenReserves', chainId:CHAIN_ID as any, query:{enabled:!!FACTORY_ADDRESS} })
+  const startPrice = (v0Usdc && v0Tok) ? Number(v0Usdc)*1e12/Number(v0Tok as bigint) : undefined
+  const [tfKey, setTfKey]         = useState<Timeframe>('15m')
+  const [chartKind, setChartKind] = useState<ChartKind>('candle')
+  const [editBanner, setEditBanner] = useState(false)
+  const { bannerUri, setLocal: setBannerLocal } = useTokenBanner(tokenAddr)
+  const tradeStats = useMemo(() => computeStats(trades), [trades])
+  const curvePrice = curve && curve.virtualTokens > 0n ? Number(curve.virtualUsdc)*1e12/Number(curve.virtualTokens) : 0
+  const curveCandles = useMemo(() => buildCandles(trades, TIMEFRAMES[tfKey], { startPrice, nowPrice: curvePrice || undefined }), [trades, tfKey, startPrice, curvePrice])
   const tokenThresholdUsd = tokenThresholdRaw !== undefined ? Number(tokenThresholdRaw)/1e6 : Number(cfg.graduationThreshold)/1e6
   const liqUsd    = dsData?.liquidity?.usd ?? 0
   const progress  = token ? formatProgress(token.progress) : 0
   const graduated = token?.state?.graduated
   const hue       = tokenAddr ? parseInt(tokenAddr.slice(2,6),16)%360 : 200
   const tokenGrad = `linear-gradient(135deg,hsl(${hue},70%,55%),hsl(${(hue+120)%360},65%,45%))`
-  const buys24h   = dsData?.txns?.h24?.buys  ?? 0
-  const sells24h  = dsData?.txns?.h24?.sells ?? 0
+  const buys24h   = dsData?.txns?.h24?.buys  ?? tradeStats.buys24h
+  const sells24h  = dsData?.txns?.h24?.sells ?? tradeStats.sells24h
   const totalTxns = buys24h + sells24h
   const buyPct    = totalTxns > 0 ? (buys24h/totalTxns)*100 : 50
   const signalScore = Math.min(100, Math.round(progress))
@@ -745,7 +874,7 @@ export function TokenPage() {
     { id:'chart'     as TabId, label:'Chart',    icon:BarChart3   },
     { id:'orderbook' as TabId, label:'Book',     icon:BookOpen    },
     { id:'holders'   as TabId, label:'Holders',  icon:Users       },
-    { id:'txns'      as TabId, label:'Txns',     icon:List        },
+    { id:'txns'      as TabId, label:'Trades',   icon:List        },
     { id:'comments'  as TabId, label:'Chat',     icon:MessageCircle },
   ]
 
@@ -753,7 +882,7 @@ export function TokenPage() {
     <div className="flex flex-col gap-3 pb-24 lg:pb-6 lg:grid lg:grid-cols-[minmax(0,1fr)_400px] xl:grid-cols-[minmax(0,1fr)_432px] lg:gap-x-7 lg:gap-y-5 lg:items-start">
 
       {/* ── Header ───────────────────────────────────────────────── */}
-      <div className="order-1 lg:order-first lg:col-span-2 flex items-center justify-between">
+      <div className="order-[10] lg:order-first lg:col-span-2 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-1.5 no-underline" style={{color:'var(--text2)'}}>
           <ArrowLeft size={14}/><span className="text-xs font-medium">Tokens</span>
         </Link>
@@ -773,86 +902,105 @@ export function TokenPage() {
 
       <div className="contents lg:flex lg:flex-col lg:gap-4 lg:min-w-0">
       {/* ── Token hero ────────────────────────────────────────────── */}
-      <div className="order-2 lg:order-1 rounded-2xl p-4" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
-        <div className="flex items-start gap-3 mb-4">
-          <div className="flex-shrink-0">
-            {token.imageUri
-              ?<img src={ipfsToHttp(token.imageUri)} className="w-14 h-14 rounded-2xl object-cover" style={{border:'1.5px solid var(--border2)'}}
-                onError={e=>{const t=e.target as HTMLImageElement;const n=nextIpfsGateway(t.src);if(n){t.src=n}else{t.style.display='none'}}}/>
-              :<div className="w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-black text-white" style={{background:tokenGrad}}>{token.symbol?.slice(0,2)}</div>}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1 flex-wrap">
-              <span className="text-lg font-black" style={{color:'var(--text1)',letterSpacing:'-0.02em'}}>{token.symbol}</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(99,102,241,0.1)',color:'#818cf8',border:'1px solid rgba(99,102,241,0.2)'}}>${token.symbol}</span>
-              {token.createdAt>0 && <span className="text-[9px] flex items-center gap-0.5" style={{color:'var(--green)'}}><Sprout size={8}/>{timeAgo(token.createdAt)}</span>}
-            </div>
-            <div className="text-xs font-medium mb-2" style={{color:'var(--text2)'}}>{token.name}</div>
-            <div className="flex items-center gap-1.5">
-              {/* Add to Wallet — wallet_watchAsset (EIP-747) */}
-              {(window as any).ethereum && (
-                <button title="Add to wallet with logo"
-                  onClick={()=>{
-                    const img = token.imageUri?.startsWith('ipfs://')
-                      ? `https://gateway.pinata.cloud/ipfs/${token.imageUri.slice(7)}`
-                      : (token.imageUri||'')
-                    ;(window as any).ethereum.request({
-                      method:'wallet_watchAsset',
-                      params:{ type:'ERC20', options:{ address:tokenAddr, symbol:token.symbol?.slice(0,11), decimals:18, image:img }}
-                    }).catch(()=>{})
-                  }}
-                  className="p-1.5 rounded-lg flex items-center gap-1 text-[9px] font-bold"
-                  style={{background:'var(--surface3)',border:'1px solid var(--border)',color:'var(--text2)'}}>
-                  🦊 Add
-                </button>
-              )}
-              {token.twitter&&<a href={`https://x.com/${token.twitter.replace('@','')}`} target="_blank" rel="noopener" className="p-1.5 rounded-lg no-underline" style={{background:'var(--surface3)',border:'1px solid var(--border)'}}><Twitter size={11} style={{color:'var(--text2)'}}/></a>}
-              {token.telegram&&<a href={`https://t.me/${token.telegram.replace('@','')}`} target="_blank" rel="noopener" className="p-1.5 rounded-lg no-underline" style={{background:'var(--surface3)',border:'1px solid var(--border)'}}><Send size={11} style={{color:'var(--text2)'}}/></a>}
-              {token.website&&<a href={token.website} target="_blank" rel="noopener" className="p-1.5 rounded-lg no-underline" style={{background:'var(--surface3)',border:'1px solid var(--border)'}}><Globe size={11} style={{color:'var(--text2)'}}/></a>}
-              <a href={`${EXPLORER_BASE}/address/${tokenAddr}`} target="_blank" rel="noopener" className="p-1.5 rounded-lg no-underline" style={{background:'var(--surface3)',border:'1px solid var(--border)'}}><ExternalLink size={11} style={{color:'var(--text2)'}}/></a>
-            </div>
-          </div>
-        </div>
-        {/* Price */}
-        <div className="flex items-end justify-between mb-3">
-          <div>
-            <div className="text-[9px] uppercase tracking-widest mb-0.5" style={{color:'var(--text2)'}}>Price</div>
-            <div className="text-2xl font-black tabular-nums" style={{color:'var(--text1)',fontFamily:'Space Grotesk,monospace',letterSpacing:'-0.03em'}}><PxDisplay p={priceUsd}/></div>
-          </div>
-          {change24h!=null&&(
-            <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl" style={{background:change24h>=0?'rgba(34,197,94,0.08)':'rgba(239,68,68,0.08)',border:`1px solid ${change24h>=0?'rgba(34,197,94,0.2)':'rgba(239,68,68,0.2)'}`}}>
-              {change24h>=0?<TrendingUp size={12} style={{color:'var(--green)'}}/>:<TrendingDown size={12} style={{color:'var(--red)'}}/>}
-              <span className="text-sm font-bold" style={{color:change24h>=0?'var(--green)':'var(--red)'}}>{change24h>=0?'+':''}{change24h.toFixed(2)}%</span>
-            </div>
+      <div className="order-[20] lg:order-1 rounded-2xl overflow-hidden" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
+        {/* Banner */}
+        <div className="relative h-28 sm:h-36 lg:h-52 overflow-hidden" style={{background:tokenGrad}}>
+          {bannerUri
+            ? <SmartImg src={bannerUri} alt="" className="absolute inset-0 w-full h-full object-cover"/>
+            : <div className="absolute inset-0 opacity-40" style={{background:'radial-gradient(ellipse at 20% 0%,rgba(255,255,255,0.28),transparent 60%)'}}/>}
+          <div className="absolute inset-0" style={{background:'linear-gradient(to top,rgba(13,13,26,0.92) 0%,rgba(13,13,26,0.15) 60%,transparent 100%)'}}/>
+          {wallet && token.creator && wallet.toLowerCase() === (token.creator as string).toLowerCase() && (
+            <button onClick={()=>setEditBanner(v=>!v)} className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-bold"
+              style={{background:'rgba(7,7,14,0.65)',backdropFilter:'blur(8px)',color:'#fff',border:'1px solid rgba(255,255,255,0.15)'}}>
+              <Pencil size={10}/>{bannerUri?'Change banner':'Add banner'}
+            </button>
           )}
         </div>
-        {/* Change pills */}
-        <div className="flex gap-1.5 mb-3"><ChangePill label="5M" value={change5m}/><ChangePill label="1H" value={change1h}/><ChangePill label="6H" value={change6h}/><ChangePill label="24H" value={change24h}/></div>
-        {/* Contract */}
-        <button onClick={copyAddr} className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-[10px]" style={{background:'var(--surface3)',border:'1px solid var(--border)',color:'var(--text2)'}}>
-          <span className="font-mono">{tokenAddr?.slice(0,10)}...{tokenAddr?.slice(-8)}</span>
-          {copied?<Check size={11} style={{color:'var(--green)'}}/>:<Copy size={11}/>}
-        </button>
+        {editBanner && wallet && token.creator && wallet.toLowerCase() === (token.creator as string).toLowerCase() && (
+          <BannerEditor token={tokenAddr!} current={bannerUri} onSaved={(u)=>{setBannerLocal(u); setEditBanner(false)}}/>
+        )}
+
+        <div className="px-4 pb-4 lg:px-6 lg:pb-6">
+          <div className="flex items-end gap-3 lg:gap-4 -mt-9 lg:-mt-12 relative">
+            <div className="flex-shrink-0 rounded-2xl overflow-hidden" style={{border:'4px solid var(--surface)',boxShadow:'0 8px 24px -8px rgba(0,0,0,0.6)'}}>
+              {token.imageUri
+                ?<img src={ipfsToHttp(token.imageUri)} className="w-[72px] h-[72px] lg:w-24 lg:h-24 object-cover block" style={{background:tokenGrad}}
+                  onError={e=>{const t=e.target as HTMLImageElement;const n=nextIpfsGateway(t.src);if(n){t.src=n}else{t.style.display='none'}}}/>
+                :<div className="w-[72px] h-[72px] lg:w-24 lg:h-24 flex items-center justify-center text-2xl font-black text-white" style={{background:tokenGrad}}>{token.symbol?.slice(0,2)}</div>}
+            </div>
+            <div className="flex-1 min-w-0 pb-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xl lg:text-2xl font-black" style={{color:'var(--text1)',letterSpacing:'-0.02em'}}>{token.symbol}</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(99,102,241,0.1)',color:'#818cf8',border:'1px solid rgba(99,102,241,0.2)'}}>${token.symbol}</span>
+                {graduated && <span className="flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full" style={{background:'rgba(245,158,11,0.12)',color:'var(--gold)'}}><GraduationCap size={9}/>Graduated</span>}
+              </div>
+              <div className="flex items-center gap-2 text-xs" style={{color:'var(--text2)'}}>
+                <span className="truncate">{token.name}</span>
+                {token.createdAt>0 && <span className="flex items-center gap-0.5 flex-shrink-0 text-[9px]" style={{color:'var(--green)'}}><Sprout size={8}/>{timeAgo(token.createdAt)}</span>}
+              </div>
+            </div>
+          </div>
+
+          {/* Links */}
+          <div className="flex items-center gap-1.5 mt-3 flex-wrap">
+            {(window as any).ethereum && (
+              <button title="Add to wallet with logo"
+                onClick={()=>{
+                  const img = token.imageUri?.startsWith('ipfs://') ? `${window.location.origin}${ipfsToHttp(token.imageUri)}` : (token.imageUri||'')
+                  ;(window as any).ethereum.request({ method:'wallet_watchAsset', params:{ type:'ERC20', options:{ address:tokenAddr, symbol:token.symbol?.slice(0,11), decimals:18, image:img }}}).catch(()=>{})
+                }}
+                className="px-2.5 py-1.5 rounded-lg flex items-center gap-1 text-[10px] font-bold" style={{background:'var(--surface3)',border:'1px solid var(--border)',color:'var(--text2)'}}>🦊 Add to wallet</button>
+            )}
+            {token.twitter&&<a href={`https://x.com/${token.twitter.replace('@','')}`} target="_blank" rel="noopener" className="p-1.5 rounded-lg no-underline" style={{background:'var(--surface3)',border:'1px solid var(--border)'}}><Twitter size={12} style={{color:'var(--text2)'}}/></a>}
+            {token.telegram&&<a href={`https://t.me/${token.telegram.replace('@','')}`} target="_blank" rel="noopener" className="p-1.5 rounded-lg no-underline" style={{background:'var(--surface3)',border:'1px solid var(--border)'}}><Send size={12} style={{color:'var(--text2)'}}/></a>}
+            {token.website&&<a href={token.website} target="_blank" rel="noopener" className="p-1.5 rounded-lg no-underline" style={{background:'var(--surface3)',border:'1px solid var(--border)'}}><Globe size={12} style={{color:'var(--text2)'}}/></a>}
+            <a href={`${EXPLORER_BASE}/address/${tokenAddr}`} target="_blank" rel="noopener" className="p-1.5 rounded-lg no-underline" style={{background:'var(--surface3)',border:'1px solid var(--border)'}}><ExternalLink size={12} style={{color:'var(--text2)'}}/></a>
+          </div>
+
+          {/* Price */}
+          <div className="flex items-end justify-between mt-4 mb-3">
+            <div>
+              <div className="text-[9px] uppercase tracking-widest mb-0.5" style={{color:'var(--text2)'}}>Price</div>
+              <div className="text-3xl font-black tabular-nums" style={{color:'var(--text1)',fontFamily:'Space Grotesk,monospace',letterSpacing:'-0.03em'}}><PxDisplay p={priceUsd}/></div>
+            </div>
+            {(()=>{ const c = change24h ?? (tradeStats.firstPrice>0 && priceUsd>0 ? ((priceUsd-tradeStats.firstPrice)/tradeStats.firstPrice)*100 : null); const lbl = change24h!=null?'24h':'since first trade'
+              return c!=null ? (
+                <div className="flex flex-col items-end gap-0.5">
+                  <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl" style={{background:c>=0?'rgba(34,197,94,0.08)':'rgba(239,68,68,0.08)',border:`1px solid ${c>=0?'rgba(34,197,94,0.2)':'rgba(239,68,68,0.2)'}`}}>
+                    {c>=0?<TrendingUp size={12} style={{color:'var(--green)'}}/>:<TrendingDown size={12} style={{color:'var(--red)'}}/>}
+                    <span className="text-sm font-bold" style={{color:c>=0?'var(--green)':'var(--red)'}}>{c>=0?'+':''}{c.toFixed(2)}%</span>
+                  </div>
+                  <span className="text-[8px]" style={{color:'var(--text3)'}}>{lbl}</span>
+                </div>) : null })()}
+          </div>
+          <div className="flex gap-1.5 mb-3"><ChangePill label="5M" value={change5m}/><ChangePill label="1H" value={change1h}/><ChangePill label="6H" value={change6h}/><ChangePill label="24H" value={change24h}/></div>
+          <button onClick={copyAddr} className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-[10px]" style={{background:'var(--surface3)',border:'1px solid var(--border)',color:'var(--text2)'}}>
+            <span className="font-mono">{tokenAddr?.slice(0,10)}...{tokenAddr?.slice(-8)}</span>
+            {copied?<Check size={11} style={{color:'var(--green)'}}/>:<Copy size={11}/>}
+          </button>
+        </div>
       </div>
 
       {/* ── Stats grid ────────────────────────────────────────────── */}
-      <div className="order-4 lg:order-2 grid grid-cols-2 lg:grid-cols-4 gap-2">
-        <Stat label="Market Cap"  value={fmtC(mcapUsd)}/>
-        <Stat label="USDC Raised" value={fmtC(raisedUsd)} accent="var(--accent)"/>
-        <Stat label="Liquidity"   value={fmtC(liqUsd)}/>
-        <Stat label="Pair Age"    value={token.createdAt>0?timeAgo(token.createdAt):'—'}/>
+      <div className="order-[40] lg:order-2 grid grid-cols-2 md:grid-cols-3 gap-2">
+        <Stat label="Market Cap"     value={fmtC(mcapUsd)} sub="Fully diluted · virtual"/>
+        <Stat label="Real Liquidity" value={fmtC(liqUsd||raisedUsd)} accent="var(--accent)" sub="USDC raised on curve"/>
+        <Stat label="Volume 24h"     value={fmtC(tradeStats.volume24h)} sub={`${fmtC(tradeStats.volumeTotal)} all-time`}/>
+        <Stat label="Trades 24h"     value={String(tradeStats.trades24h)} sub={`${tradeStats.buys24h} buys · ${tradeStats.sells24h} sells`}/>
+        <Stat label="Traders"        value={String(tradeStats.traders)} sub="unique wallets"/>
+        <Stat label="All-time high"  value={tradeStats.ath>0?`$${fmtPrice(tradeStats.ath)}`:'—'} sub={tradeStats.ath>0&&priceUsd>0?`${(((priceUsd/tradeStats.ath)-1)*100).toFixed(1)}% from ATH`:undefined}/>
       </div>
 
       {/* ── Token Info (always visible) ───────────────────────────── */}
       {token.description && (
-        <div className="order-6 lg:order-4 rounded-2xl p-4" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
+        <div className="order-[60] lg:order-5 rounded-2xl p-4" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
           <div className="flex items-center gap-1.5 mb-2"><Info size={11} style={{color:'var(--accent)'}}/><span className="text-[9px] font-bold uppercase tracking-widest" style={{color:'var(--text2)'}}>About</span></div>
           <p className="text-xs leading-relaxed" style={{color:'var(--text2)'}}>{token.description}</p>
         </div>
       )}
 
       {/* ── Chart + Tabs ─────────────────────────────────────────── */}
-      <div className="order-7 lg:order-3 rounded-2xl overflow-hidden" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
+      <div className="order-[70] lg:order-3 rounded-2xl overflow-hidden" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
         <div className="flex border-b overflow-x-auto scrollbar-hide" style={{borderColor:'var(--border)'}}>
           {TABS.map(t=>{
             const active=tab===t.id; const Icon=t.icon
@@ -867,34 +1015,44 @@ export function TokenPage() {
         <div className="p-3">
           {tab==='chart' && (
             <div>
-              <div className="flex gap-1.5 mb-3">
-                {['5m','1h','4h','1d'].map(t=>(
-                  <button key={t} onClick={()=>setTf(t)} className="px-2.5 py-1 rounded-lg text-[9px] font-bold transition-all"
-                    style={{background:tf===t?'rgba(99,102,241,0.15)':'transparent',color:tf===t?'#818cf8':'var(--text2)',border:`1px solid ${tf===t?'rgba(99,102,241,0.3)':'transparent'}`}}>
-                    {t.toUpperCase()}
-                  </button>
-                ))}
+              <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                <div className="flex gap-1 overflow-x-auto scrollbar-hide">
+                  {(Object.keys(TIMEFRAMES) as Timeframe[]).map(k=>(
+                    <button key={k} onClick={()=>setTfKey(k)} className="px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all"
+                      style={{background:tfKey===k?'rgba(99,102,241,0.15)':'transparent',color:tfKey===k?'#818cf8':'var(--text2)',border:`1px solid ${tfKey===k?'rgba(99,102,241,0.3)':'transparent'}`}}>
+                      {k.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="hidden sm:flex items-center gap-1 text-[9px]" style={{color:'var(--text3)'}}>
+                    <span className="w-1.5 h-1.5 rounded-full animate-pulse-glow" style={{background:'var(--green)'}}/>{trades.length} on-chain trades
+                  </span>
+                  <div className="flex rounded-lg overflow-hidden" style={{border:'1px solid var(--border)'}}>
+                    {(['candle','area'] as ChartKind[]).map(k=>(
+                      <button key={k} onClick={()=>setChartKind(k)} className="px-2.5 py-1 text-[10px] font-bold capitalize"
+                        style={{background:chartKind===k?'rgba(99,102,241,0.15)':'var(--surface2)',color:chartKind===k?'#818cf8':'var(--text2)'}}>{k==='candle'?'Candles':'Line'}</button>
+                    ))}
+                  </div>
+                </div>
               </div>
-              {chartLoad
-                ?<div className="flex items-center justify-center gap-2 py-12" style={{color:'var(--text2)'}}><Loader2 size={14} className="animate-spin"/><span className="text-xs">Loading chart…</span></div>
-                :ohlcv.length>=5
-                ?<TVChart data={ohlcv} height={isDesktop ? 400 : 240} type="candle" loading={false}/>
-                :<div className="flex flex-col items-center justify-center py-10 rounded-xl" style={{background:'var(--surface2)',height:isDesktop ? 380 : 220}}>
-                   <BarChart3 size={24} style={{color:'var(--text3)'}} className="mb-2"/>
-                   <p className="text-sm font-medium" style={{color:'var(--text2)'}}>Chart coming soon</p>
-                   <p className="text-xs mt-1" style={{color:'var(--text3)'}}>Price history will appear as trading activity grows</p>
-                 </div>}
+              <CurveChart
+                candles={graduated && ohlcv.length>=5 ? ohlcv.map((d:any)=>({time:d.time,open:d.open,high:d.high,low:d.low,close:d.close,volume:d.volume??0})) : curveCandles}
+                kind={chartKind} height={isDesktop?440:300} loading={(tradesLoading && !trades.length) || chartLoad}/>
+              {tradesPartial && <p className="text-[9px] mt-1 text-center" style={{color:'var(--text3)'}}>Recent history only — older trades are beyond the scan window.</p>}
             </div>
           )}
           {tab==='orderbook' && <OrderBook price={priceUsd} state={token.state}/>}
           {tab==='holders'   && <HoldersTab tokenAddr={tokenAddr!} creator={token.creator as string} explorer={EXPLORER_BASE}/>}
-          {tab==='txns'      && <TxnsTab tokenAddr={tokenAddr!} factoryAddr={FACTORY_ADDRESS??''} explorer={EXPLORER_BASE}/>}
+          {tab==='txns'      && <TradesTab trades={trades} explorer={EXPLORER_BASE} partial={tradesPartial} loading={tradesLoading}/>}
           {tab==='comments'  && <Comments tokenAddress={tokenAddr!}/>}
         </div>
       </div>
 
+      {curve && <div className="order-[75] lg:order-4"><TokenomicsCard curve={curve}/></div>}
+
       {/* ── Contract details ─────────────────────────────────────── */}
-      <div className="order-8 lg:order-5 rounded-2xl overflow-hidden" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
+      <div className="order-[80] lg:order-6 rounded-2xl overflow-hidden" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
         <div className="px-4 py-3 border-b" style={{borderColor:'var(--border)'}}>
           <span className="text-[9px] font-bold uppercase tracking-widest" style={{color:'var(--text2)'}}>Contract Details</span>
         </div>
@@ -916,7 +1074,7 @@ export function TokenPage() {
 
       <div className="contents lg:flex lg:flex-col lg:gap-4 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto scrollbar-hide lg:pr-1">
       {/* ── Trade panel ─────────────────────────────────────────────── */}
-      <div ref={tradeRef} id="trade-form" className="order-9 lg:order-1 rounded-2xl overflow-hidden" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
+      <div ref={tradeRef} id="trade-form" className="order-[90] lg:order-1 rounded-2xl overflow-hidden" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
         {/* Buy/Sell toggle */}
         <div className="flex p-1.5 gap-1" style={{background:'var(--surface2)'}}>
           {(['buy','sell'] as TradeMode[]).map(m=>(
@@ -993,9 +1151,11 @@ export function TokenPage() {
         </div>
       </div>
 
+      {curve && <div className="order-[95] lg:order-2"><BondingCurveCard curve={curve} threshold={tokenThresholdUsd} raisedUsd={raisedUsd} price={priceUsd} symbol={token.symbol}/></div>}
+
       {/* ── Boost Graduation (everyone, not graduated) ───────────── */}
       {!graduated && tokenThresholdUsd > 0 && (
-        <div className="order-10 lg:order-2"><BoostPanel
+        <div className="order-[100] lg:order-3"><BoostPanel
           tokenAddr={tokenAddr!}
           raisedUsd={raisedUsd}
           threshold={tokenThresholdUsd}
@@ -1008,7 +1168,7 @@ export function TokenPage() {
 
       {/* ── Creator: Force Graduate ───────────────────────────────── */}
       {wallet && token.creator && wallet.toLowerCase() === (token.creator as string).toLowerCase() && !graduated && (
-        <div className="order-11 lg:order-3"><ForceGraduatePanel
+        <div className="order-[110] lg:order-4"><ForceGraduatePanel
           tokenAddr={tokenAddr!}
           raisedUsd={raisedUsd}
           threshold={tokenThresholdUsd}
@@ -1020,7 +1180,7 @@ export function TokenPage() {
       )}
 
       {/* ── Market signal ─────────────────────────────────────────── */}
-      <div className="order-3 lg:order-4 rounded-2xl p-4" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
+      <div className="order-[30] lg:order-5 rounded-2xl p-4" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1.5"><Activity size={11} style={{color:'var(--accent)'}}/><span className="text-[9px] font-bold uppercase tracking-widest" style={{color:'var(--text2)'}}>Market Signal</span></div>
           <span className="text-[11px] font-bold" style={{color:'var(--text2)'}}>{signalScore} / 100</span>
@@ -1040,7 +1200,7 @@ export function TokenPage() {
 
       {/* ── Buy/Sell volume bar ───────────────────────────────────── */}
       {totalTxns > 0 && (
-        <div className="order-5 lg:order-5 rounded-2xl px-4 py-3" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
+        <div className="order-[50] lg:order-6 rounded-2xl px-4 py-3" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
           <div className="flex justify-between text-[9px] mb-2"><span style={{color:'var(--green)',fontWeight:700}}>▲ {buys24h} buys (24h)</span><span style={{color:'var(--red)',fontWeight:700}}>{sells24h} sells ▼</span></div>
           <div className="h-2 rounded-full overflow-hidden flex">
             <div style={{width:`${buyPct}%`,background:'var(--green)',borderRadius:'4px 0 0 4px'}}/>

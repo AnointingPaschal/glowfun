@@ -5,28 +5,40 @@ export const formatAddress = (addr: string): string =>
  * Convert ipfs:// URIs to an https:// Cloudflare gateway URL so browsers can load them.
  * Passes through http/https URLs unchanged. Safe to call with undefined/empty.
  */
+// First entry is our own cached proxy (/api/img → R2 + edge cache, immutable). Public gateways
+// are only the fallback if the proxy itself is unreachable.
 const IPFS_GATEWAYS = [
+  '/api/img/ipfs/',
   'https://w3s.link/ipfs/',
   'https://ipfs.io/ipfs/',
   'https://dweb.link/ipfs/',
   'https://gateway.pinata.cloud/ipfs/',
 ]
 
+const ipfsPath = (uri: string) => uri.slice(7).replace(/^ipfs\//, '')
+
 export const ipfsToHttp = (uri: string | undefined | null, gatewayIndex = 0): string => {
   if (!uri) return ''
   if (uri.startsWith('ipfs://')) {
-    const cid = uri.slice(7)
     const gw = IPFS_GATEWAYS[gatewayIndex % IPFS_GATEWAYS.length]
-    return `${gw}${cid}`
+    return `${gw}${ipfsPath(uri)}`
   }
   return uri
 }
 
-/** Try the next IPFS gateway when the current one fails */
+/** Every URL worth trying for an image, in order (ipfs:// expands to proxy + all gateways). */
+export const imageCandidates = (uri: string | undefined | null): string[] => {
+  if (!uri) return []
+  if (uri.startsWith('ipfs://')) return IPFS_GATEWAYS.map(g => `${g}${ipfsPath(uri)}`)
+  return [uri]
+}
+
+/** Try the next IPFS gateway when the current one fails (works with absolute <img>.src values). */
 export const nextIpfsGateway = (currentSrc: string): string | null => {
   for (let i = 0; i < IPFS_GATEWAYS.length - 1; i++) {
-    if (currentSrc.startsWith(IPFS_GATEWAYS[i])) {
-      const cid = currentSrc.slice(IPFS_GATEWAYS[i].length)
+    const at = currentSrc.indexOf(IPFS_GATEWAYS[i])
+    if (at >= 0) {
+      const cid = currentSrc.slice(at + IPFS_GATEWAYS[i].length)
       return `${IPFS_GATEWAYS[i + 1]}${cid}`
     }
   }

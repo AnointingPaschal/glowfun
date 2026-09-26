@@ -1,6 +1,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { Upload, Link, X, CheckCircle, Loader2, Globe } from 'lucide-react'
 import { clsx } from 'clsx'
+import { ipfsToHttp, imageCandidates } from '@/utils/format'
 
 interface ImageUploadProps {
   value: string
@@ -13,29 +14,8 @@ interface ImageUploadProps {
 type UploadMode = 'upload' | 'url'
 type UploadState = 'idle' | 'uploading' | 'ipfs' | 'r2' | 'error'
 
-const IPFS_GATEWAYS = [
-  'https://gateway.pinata.cloud/ipfs/',
-  'https://ipfs.io/ipfs/',
-  'https://cloudflare-ipfs.com/ipfs/',
-]
-
 export function resolveImageUrl(url: string): string {
-  if (!url) return ''
-  if (url.startsWith('ipfs://')) {
-    const hash = url.slice(7).replace(/^ipfs\//, '')
-    return `${IPFS_GATEWAYS[0]}${hash}`
-  }
-  return url
-}
-
-/** All URLs worth trying for an image, in order (ipfs:// expands to every gateway). */
-export function imageCandidates(url: string): string[] {
-  if (!url) return []
-  if (url.startsWith('ipfs://')) {
-    const hash = url.slice(7).replace(/^ipfs\//, '')
-    return IPFS_GATEWAYS.map(g => `${g}${hash}`)
-  }
-  return [url]
+  return ipfsToHttp(url)
 }
 
 /**

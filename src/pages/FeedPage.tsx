@@ -6,7 +6,7 @@ import { useTokenList } from '@/hooks/useTokenList'
 import { TokenCard } from '@/components/TokenCard'
 import { prefetchAllMarketData } from '@/hooks/useMarketPrice'
 import { useTokenData } from '@/hooks/useTokenData'
-import { formatProgress, timeAgo } from '@/utils/format'
+import { formatProgress, timeAgo, ipfsToHttp } from '@/utils/format'
 
 type Tab = 'new' | 'hot' | 'graduating'
 
@@ -79,7 +79,7 @@ function KingCard({ address, wide=false, label='King' }: { address: `0x${string}
           <Trophy size={9} style={{color:'var(--gold)'}}/><span className="text-[8px] font-black uppercase tracking-widest" style={{color:'var(--gold)'}}>{label}</span>
         </div>
         <div className="flex items-center gap-2 relative">
-          {token.imageUri?<img src={token.imageUri} className="w-9 h-9 rounded-xl object-cover" style={{border:'1px solid rgba(245,158,11,0.3)'}}/>
+          {token.imageUri?<img src={ipfsToHttp(token.imageUri)} className="w-9 h-9 rounded-xl object-cover" style={{border:'1px solid rgba(245,158,11,0.3)'}}/>
             :<div className="w-9 h-9 rounded-xl flex items-center justify-center text-[10px] font-black text-white" style={{background:`linear-gradient(135deg,hsl(${hue},70%,55%),hsl(${(hue+120)%360},65%,45%))`}}>{token.symbol?.slice(0,2)}</div>}
           <div><div className="text-sm font-black" style={{color:'var(--text1)'}}>{token.symbol}</div><div className="text-[8px]" style={{color:'var(--gold)'}}>+${raised.toFixed(0)}</div></div>
         </div>
@@ -100,7 +100,7 @@ function HotCard({ address, rank }: { address:`0x${string}`; rank:number }) {
       <div className="rounded-xl p-3 h-full" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
         <div className="flex items-center gap-2 mb-2">
           <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[9px] font-black text-white flex-shrink-0" style={{background:`linear-gradient(135deg,hsl(${hue},70%,55%),hsl(${(hue+120)%360},65%,45%))`}}>
-            {token.imageUri?<img src={token.imageUri} className="w-7 h-7 rounded-lg object-cover"/>:token.symbol?.slice(0,2)}
+            {token.imageUri?<img src={ipfsToHttp(token.imageUri)} className="w-7 h-7 rounded-lg object-cover"/>:token.symbol?.slice(0,2)}
           </div>
           <div><div className="text-[11px] font-black" style={{color:'var(--text1)'}}>{token.symbol}</div><div className="text-[8px]" style={{color:'var(--text2)'}}>{token.name?.slice(0,12)}</div></div>
         </div>

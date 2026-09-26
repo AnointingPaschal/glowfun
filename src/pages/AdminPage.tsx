@@ -4,6 +4,7 @@ import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchCh
 import { ConnectKitButton } from 'connectkit'
 import { toast } from 'sonner'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
+import { useCurveState } from '@/hooks/useCurveState'
 import { useConfig, type FactoryEntry } from '@/context/ConfigContext'
 import { formatUsdc, formatAddress } from '@/utils/format'
 import {
@@ -1310,12 +1311,11 @@ function AdminTokenRow({ addr, index, factoryAddress, chainId, explorerBase }: {
     )
   }
   const { data: results } = useReadContracts({ contracts: [
-    { address: factoryAddress as `0x${string}`, abi: FACTORY_ABI, functionName: 'getTokenState', args: [addr as `0x${string}`], chainId: chainId as any },
     { address: factoryAddress as `0x${string}`, abi: FACTORY_ABI, functionName: 'pendingGraduationUsdc', args: [addr as `0x${string}`], chainId: chainId as any },
   ]})
 
-  const state = results?.[0]?.result as any
-  const pendingUsdc = results?.[1]?.result as bigint | undefined
+  const { data: state } = useCurveState(addr, factoryAddress)   // layout-adaptive (V2 14-word / V3 15-word)
+  const pendingUsdc = results?.[0]?.result as bigint | undefined
   const graduated = state?.graduated === true || (pendingUsdc !== undefined && pendingUsdc > 0n)
   const hasPending = pendingUsdc !== undefined && pendingUsdc > 0n
   const busy = isPending || isConfirming

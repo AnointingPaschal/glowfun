@@ -40,7 +40,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     })
 
     // Return the public URL — R2 public bucket URL or custom domain
-    const baseUrl = await env.CONFIG.get('R2_PUBLIC_URL') ?? `https://images.glowfun.pages.dev`
+    // Prefer a configured public R2 URL; otherwise serve through our own cached /api/img proxy
+    // (the old fallback pointed at images.glowfun.pages.dev, which doesn't resolve).
+    const configured = (await env.CONFIG.get('R2_PUBLIC_URL'))?.replace(/\/+$/, '')
+    const baseUrl = configured || `${new URL(request.url).origin}/api/img/r2`
     const url = `${baseUrl}/${key}`
 
     return Response.json({ ok: true, url, key })
