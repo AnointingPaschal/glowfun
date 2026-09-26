@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchChain, useReadContract, useReadContracts, useSignMessage } from 'wagmi'
 import { erc20Abi } from 'viem'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   ArrowLeft, Twitter, Send, Globe, ExternalLink, Trophy,
@@ -714,7 +715,7 @@ export function TokenPage() {
   const { balance: tokenBalance, allowance: tokenAllowance, refetch: refetchBal } = useTokenBalance(tokenAddr as `0x${string}`|undefined, wallet)
 
   const { data: usdcBalance }   = useReadContract({ address:USDC_ADDRESS, abi:erc20Abi, functionName:'balanceOf',  args:wallet?[wallet]:undefined,                                   chainId:CHAIN_ID as any, query:{enabled:!!wallet} })
-  const { data: usdcAllowance } = useReadContract({ address:USDC_ADDRESS, abi:erc20Abi, functionName:'allowance', args:wallet&&FACTORY_ADDRESS?[wallet,FACTORY_ADDRESS]:undefined, chainId:CHAIN_ID as any, query:{enabled:!!wallet&&!!FACTORY_ADDRESS} })
+  const { data: usdcAllowance, refetch: refetchAllow } = useReadContract({ address:USDC_ADDRESS, abi:erc20Abi, functionName:'allowance', args:wallet&&FACTORY_ADDRESS?[wallet,FACTORY_ADDRESS]:undefined, chainId:CHAIN_ID as any, query:{enabled:!!wallet&&!!FACTORY_ADDRESS} })
 
   const [mode, setMode]       = useState<TradeMode>('buy')
   const [amount, setAmount]   = useState('')
@@ -805,18 +806,29 @@ export function TokenPage() {
   const { data: sellQuote } = useReadContract({ address:FACTORY_ADDRESS, abi:FACTORY_ABI, functionName:'getSellQuote', args:[tokenAddr as `0x${string}`,parsedTokens], chainId:CHAIN_ID as any, query:{enabled:!!tokenAddr&&!!FACTORY_ADDRESS&&mode==='sell'&&parsedTokens>0n} })
 
   const { writeContract: approveUsdc,  data: approveHash,      isPending: isApproving      } = useWriteContract()
-  const { isLoading: isApproveConf }   = useWaitForTransactionReceipt({ hash:approveHash })
+  const { isLoading: isApproveConf, isSuccess: approveUsdcDone } = useWaitForTransactionReceipt({ hash:approveHash })
   const { writeContract: approveToken, data: approveTokHash,   isPending: isApprovingTok   } = useWriteContract()
-  const { isLoading: isApproveTokConf } = useWaitForTransactionReceipt({ hash:approveTokHash })
+  const { isLoading: isApproveTokConf, isSuccess: approveTokDone } = useWaitForTransactionReceipt({ hash:approveTokHash })
   const { writeContract: trade, data: tradeHash, isPending: isTrading } = useWriteContract()
   const { isLoading: isTxConf, isSuccess: isTxDone } = useWaitForTransactionReceipt({ hash:tradeHash })
 
-  useEffect(() => { if (isTxDone) { void refetch(); void refetchBal(); setAmount('') } }, [isTxDone])
+  const qc = useQueryClient()
+  useEffect(() => {
+    if (!isTxDone) return
+    void refetch(); void refetchBal(); void refetchAllow(); setAmount('')
+    toast.success(mode==='buy' ? '✅ Buy confirmed' : '✅ Sell confirmed')
+    // refresh chart/trades/curve immediately instead of waiting for the 15s poll
+    void qc.invalidateQueries({ queryKey:['trades'] }); void qc.invalidateQueries({ queryKey:['curve-state'] })
+  }, [isTxDone])
 
   const ZERO_ADDR = '0x0000000000000000000000000000000000000000' as `0x${string}`
   // _spendableUsdc = min(allowance, balance) — so approve exactly what user wants to spend
   const usdcAllow          = (usdcAllowance as bigint) ?? 0n
-  const needsUsdcApproval  = mode==='buy'  && parsedUsdc>0n   && usdcAllow < parsedUsdc
+  // buyTokens() spends min(allowance, balance) — the WHOLE allowance, not the typed amount. So the allowance
+  // must equal the amount exactly: too low fails, and a leftover bigger one would silently spend more.
+  const needsUsdcApproval  = mode==='buy'  && parsedUsdc>0n   && usdcAllow !== parsedUsdc
+  const buyAfterApprove  = useRef(false)
+  const sellAfterApprove = useRef(false)
   const needsTokenApproval = mode==='sell' && parsedTokens>0n && tokenAllowance < parsedTokens
   const txBusy = isApproving||isApproveConf||isApprovingTok||isApproveTokConf||isTrading||isTxConf
 
@@ -826,7 +838,7 @@ export function TokenPage() {
     approveUsdc(
       { address:USDC_ADDRESS, abi:erc20Abi, functionName:'approve',
         args:[FACTORY_ADDRESS, parsedUsdc], chainId:CHAIN_ID as any } as any,
-      { onSuccess:()=>toast.success('✅ Approved! Now click Buy.'),
+      { onSuccess:()=>toast.success('Approval sent — confirm the buy when your wallet asks'),
         onError:(e)=>toast.error(parseOnchainError(e)) }
     )
   }
@@ -835,26 +847,40 @@ export function TokenPage() {
     approveToken(
       { address:tokenAddr as `0x${string}`, abi:erc20Abi, functionName:'approve',
         args:[FACTORY_ADDRESS, parsedTokens], chainId:CHAIN_ID as any } as any,
-      { onSuccess:()=>toast.success('✅ Approved! Now click Sell.'),
+      { onSuccess:()=>toast.success('Approval sent — confirm the sell when your wallet asks'),
         onError:(e)=>toast.error(parseOnchainError(e)) }
+    )
+  }
+  // buyTokens(address token, uint256 minTokensOut, address referrer)
+  const doBuy = () => {
+    if (!FACTORY_ADDRESS||!tokenAddr) return
+    if (!buyQuote) { toast.error('Fetching a price quote — try again in a moment'); return }
+    const min = (buyQuote as bigint)*BigInt(100-Math.ceil(slip))/100n
+    trade(
+      { address:FACTORY_ADDRESS, abi:FACTORY_ABI, functionName:'buyTokens',
+        args:[tokenAddr as `0x${string}`, min, ZERO_ADDR], chainId:CHAIN_ID as any } as any,
+      { onSuccess:()=>toast.success('🚀 Buy submitted — waiting for confirmation…'), onError:(e)=>toast.error(parseOnchainError(e)) }
+    )
+  }
+  // sellTokens(address token, uint256 tokensIn, uint256 minUsdcOut)
+  const doSell = () => {
+    if (!FACTORY_ADDRESS||!tokenAddr) return
+    if (!sellQuote) { toast.error('Fetching a price quote — try again in a moment'); return }
+    const min = (sellQuote as bigint)*BigInt(100-Math.ceil(slip))/100n
+    trade(
+      { address:FACTORY_ADDRESS, abi:FACTORY_ABI, functionName:'sellTokens',
+        args:[tokenAddr as `0x${string}`, parsedTokens, min], chainId:CHAIN_ID as any } as any,
+      { onSuccess:()=>toast.success('Sell submitted — waiting for confirmation…'), onError:(e)=>toast.error(parseOnchainError(e)) }
     )
   }
   const handleTrade = () => {
     if (!FACTORY_ADDRESS||!tokenAddr||!wallet) return
     if (wrong) { switchChain({chainId:CHAIN_ID as any}); return }
-    if (mode==='buy') {
-      // Buy path: always go through approve flow (approve exact → auto-buy in onSuccess)
-      handleApproveUsdc()
-    } else {
-      // sellTokens(address token, uint256 tokensIn, uint256 minUsdcOut)
-      const min = sellQuote ? (sellQuote as bigint)*BigInt(100-Math.ceil(slip))/100n : 0n
-      trade(
-        { address:FACTORY_ADDRESS, abi:FACTORY_ABI, functionName:'sellTokens',
-          args:[tokenAddr as `0x${string}`, parsedTokens, min], chainId:CHAIN_ID as any } as any,
-        { onSuccess:()=>toast.success('Sell submitted!'), onError:(e)=>toast.error(parseOnchainError(e)) }
-      )
-    }
+    if (mode==='buy') doBuy(); else doSell()
   }
+  // Approve → buy/sell in one flow: once the approval confirms, send the trade automatically
+  useEffect(() => { if (approveUsdcDone) { void refetchAllow(); if (buyAfterApprove.current) { buyAfterApprove.current=false; doBuy() } } }, [approveUsdcDone])
+  useEffect(() => { if (approveTokDone && sellAfterApprove.current) { sellAfterApprove.current=false; doSell() } }, [approveTokDone])
 
   const scrollToTrade = (m: TradeMode) => {
     setMode(m)
@@ -863,6 +889,8 @@ export function TokenPage() {
   const copyAddr = () => { navigator.clipboard.writeText(tokenAddr??'').then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000)}) }
   const usdcBal = Number(usdcBalance??0n)/1e6
   const tokBal  = Number(tokenBalance??0n)/1e18
+  const amt = parseFloat(amount||'0')
+  const insufficient = (mode==='buy' && amt > usdcBal + 1e-9) || (mode==='sell' && amt > tokBal + 1e-9)
 
   if (isLoading) return (
     <div className="space-y-3 pt-2">{[160,100,200,280].map((h,i)=><div key={i} className="rounded-2xl shimmer" style={{height:h,border:'1px solid var(--border)'}}/>)}</div>
@@ -1137,14 +1165,14 @@ export function TokenPage() {
                <AlertTriangle size={13}/>Switch to Arc Network
              </button>
             :needsUsdcApproval
-            ?<button onClick={handleApproveUsdc} disabled={txBusy} className="w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2" style={{background:'linear-gradient(135deg,#6366f1,#8b5cf6)',color:'#fff',opacity:txBusy?0.6:1}}>
-               {txBusy?<Loader2 size={13} className="animate-spin"/>:<Zap size={13}/>}Approve USDC
+            ?<button onClick={()=>{ buyAfterApprove.current=true; handleApproveUsdc() }} disabled={txBusy||insufficient} className="w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2" style={{background:'linear-gradient(135deg,#6366f1,#8b5cf6)',color:'#fff',opacity:txBusy?0.6:1}}>
+               {txBusy?<Loader2 size={13} className="animate-spin"/>:<Zap size={13}/>}{insufficient?'Insufficient USDC':'Approve USDC & Buy'}
              </button>
             :needsTokenApproval
-            ?<button onClick={handleApproveToken} disabled={txBusy} className="w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2" style={{background:'linear-gradient(135deg,#6366f1,#8b5cf6)',color:'#fff',opacity:txBusy?0.6:1}}>
-               {txBusy?<Loader2 size={13} className="animate-spin"/>:<Zap size={13}/>}Approve {token.symbol}
+            ?<button onClick={()=>{ sellAfterApprove.current=true; handleApproveToken() }} disabled={txBusy||insufficient} className="w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2" style={{background:'linear-gradient(135deg,#6366f1,#8b5cf6)',color:'#fff',opacity:txBusy?0.6:1}}>
+               {txBusy?<Loader2 size={13} className="animate-spin"/>:<Zap size={13}/>}{insufficient?`Insufficient ${token.symbol}`:`Approve ${token.symbol} & Sell`}
              </button>
-            :<button onClick={handleTrade} disabled={txBusy||!amount||parseFloat(amount)<=0} className="w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+            :<button onClick={handleTrade} disabled={txBusy||!amount||parseFloat(amount)<=0||insufficient} className="w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
                style={{background:mode==='buy'?'linear-gradient(135deg,rgba(34,197,94,0.9),rgba(34,197,94,1))':'linear-gradient(135deg,rgba(239,68,68,0.9),rgba(239,68,68,1))',color:'#fff',opacity:txBusy||!amount||parseFloat(amount)<=0?0.5:1,boxShadow:mode==='buy'?'0 4px 20px rgba(34,197,94,0.25)':'0 4px 20px rgba(239,68,68,0.25)'}}>
                {txBusy?<><Loader2 size={13} className="animate-spin"/>Processing…</>:mode==='buy'?<><Flame size={13}/>Buy {token.symbol}</>:<><TrendingDown size={13}/>Sell {token.symbol}</>}
              </button>}
