@@ -100,6 +100,16 @@ export const FACTORY_ABI = [
       { name: 'creatorAllocationBps',    type: 'uint256' },
       { name: 'graduationThresholdUsdc', type: 'uint256' },
       { name: 'initialLiquidityUsdc',   type: 'uint256' },
+      // ── V3 fields — must match GlowFunFactory_V3.LaunchParams exactly, otherwise
+      //    the function selector differs (0x0df12557 vs 0xb75400b0) and the tx reverts with "0x".
+      { name: 'pairToken',              type: 'address' },
+      { name: 'mintable',               type: 'bool'    },
+      { name: 'burnable',               type: 'bool'    },
+      { name: 'pausable',               type: 'bool'    },
+      { name: 'hasBlacklist',           type: 'bool'    },
+      { name: 'maxSupply',              type: 'uint256' },
+      { name: 'vestingDuration',        type: 'uint256' },
+      { name: 'vestingCliff',           type: 'uint256' },
     ]}],
     outputs: [{ name: 'token', type: 'address' }] },
 

@@ -5,7 +5,7 @@ import {
   useAccount, useWriteContract, useWaitForTransactionReceipt,
   useSwitchChain, useReadContract,
 } from 'wagmi'
-import { erc20Abi } from 'viem'
+import { erc20Abi, toEventSelector } from 'viem'
 import { toast } from 'sonner'
 import ImageUpload from '@/components/ImageUpload'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
@@ -261,7 +261,15 @@ export function LaunchPage() {
     if (!lnchDone || !lnchReceipt) return
     setTxStep('done')
     // Extract the deployed token address from the TokenLaunched event log (topic[1])
-    const log = lnchReceipt.logs?.find((l: any) => l.topics?.[0]?.toLowerCase().startsWith('0x'))
+    // Match the factory's TokenLaunched event specifically — the first log in the receipt is
+    // the USDC fee Transfer, whose topics[1] is the creator wallet, not the token.
+    const launchedTopic = toEventSelector(
+      'TokenLaunched(address,address,string,string,uint256,uint256,uint256,uint256,uint256,uint256)'
+    ).toLowerCase()
+    const log = lnchReceipt.logs?.find((l: any) =>
+      l.address?.toLowerCase() === FACTORY_ADDRESS?.toLowerCase() &&
+      l.topics?.[0]?.toLowerCase() === launchedTopic
+    )
     const tokenAddr = log?.topics?.[1]
       ? '0x' + log.topics[1].slice(26)   // ABI-decode address from topic
       : ''
