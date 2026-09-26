@@ -525,7 +525,7 @@ export function LaunchPage() {
       )}
 
       {/* ── Main grid ── */}
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px] gap-6 lg:gap-8">
 
         {/* ═══ LEFT: Form sections ═════════════════════════════════ */}
         <div className="space-y-5">
@@ -538,10 +538,10 @@ export function LaunchPage() {
             <div className="flex flex-col sm:flex-row gap-5">
 
               {/* Logo upload — compact square */}
-              <div className="flex-shrink-0 sm:w-[148px]">
+              <div className="flex-shrink-0 sm:w-[168px]">
                 <Label text="Token logo" tip="Square image. Pinned to IPFS permanently via Pinata."/>
                 <ImageUpload value={form.imageUri} onChange={url=>setForm(f=>({...f,imageUri:url}))}
-                  label=""/>
+                  label="" compact/>
               </div>
 
               {/* Right: name, ticker, description */}
@@ -911,7 +911,7 @@ export function LaunchPage() {
 
           {/* ─── 4. Advanced ─── */}
           <Section title="Advanced settings" icon={Settings2} iconColor="#f59e0b"
-            badge="Optional" step={3}
+            badge="Optional" step={4}
             subtitle="Token allocation split — how supply is distributed across curve, DEX, and creator">
 
             {/* Mode pills */}
@@ -1160,7 +1160,7 @@ export function LaunchPage() {
         </div>
 
         {/* ═══ RIGHT: Sticky preview ═══════════════════════════════ */}
-        <div className="xl:sticky xl:top-20 space-y-4 self-start">
+        <div className="lg:sticky lg:top-20 space-y-4 self-start">
 
           {/* ─── Token preview card ─── */}
           <div className="rounded-2xl overflow-hidden"

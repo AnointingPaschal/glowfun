@@ -72,7 +72,7 @@ export function WalletPage() {
   )
 
   return (
-    <div className="max-w-xl mx-auto xl:max-w-none xl:grid xl:grid-cols-[340px_1fr] xl:gap-6 xl:items-start">
+    <div className="max-w-xl mx-auto lg:max-w-none lg:grid lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)] lg:gap-7 lg:items-start">
 
       {/* ── Left column: hero card ─────────────────────────── */}
       <div className="space-y-4">

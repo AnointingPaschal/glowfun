@@ -879,7 +879,7 @@ export function AdminPage() {
 
   /* ── Main layout ───────────────────────────────────────────────────── */
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-6xl mx-auto">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-[1400px] mx-auto">
 
       {/* Top bar */}
       <div className="flex items-center justify-between mb-6">
@@ -921,7 +921,7 @@ export function AdminPage() {
 
       <div className="flex gap-5">
         {/* Sidebar — desktop only */}
-        <aside className="w-44 flex-shrink-0 hidden md:block">
+        <aside className="w-44 xl:w-52 flex-shrink-0 hidden md:block">
           <nav className="sticky top-20 space-y-1">
             {SECTIONS.map(({ id, label, icon: Icon }) => (
               <button key={id} onClick={() => setSection(id)}

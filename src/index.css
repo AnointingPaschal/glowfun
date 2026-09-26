@@ -108,3 +108,35 @@ body {
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
+
+
+/* ── Desktop layout helpers ───────────────────────────────────────── */
+.dot-grid {
+  background-image: radial-gradient(rgba(255,255,255,0.045) 1px, transparent 1px);
+  background-size: 28px 28px;
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 75%);
+          mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 75%);
+}
+
+/* A raised content panel: subtle top highlight + depth */
+.panel {
+  background: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0) 40%), var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 12px 32px -18px rgba(0,0,0,0.6);
+}
+
+.section-eyebrow {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--text2);
+}
+.section-eyebrow::before {
+  content: ''; width: 3px; height: 14px; border-radius: 3px;
+  background: linear-gradient(180deg,#8b5cf6,#6366f1);
+}
+
+@media (min-width: 1024px) {
+  .lift { transition: transform .2s ease, box-shadow .2s ease; }
+  .lift:hover { transform: translateY(-2px); box-shadow: 0 16px 36px -16px rgba(99,102,241,0.35); }
+}

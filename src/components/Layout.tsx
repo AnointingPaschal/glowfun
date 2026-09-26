@@ -33,11 +33,12 @@ export function Layout({ children }: { children: ReactNode }) {
           style={{ background: 'radial-gradient(circle,#8b5cf6,transparent)', top: '30%', right: '-80px' }}/>
         <div className="absolute w-[300px] h-[300px] rounded-full opacity-[0.025] blur-[60px]"
           style={{ background: 'radial-gradient(circle,#ec4899,transparent)', bottom: '10%', left: '20%' }}/>
+        <div className="hidden lg:block absolute inset-0 dot-grid"/>
       </div>
 
       {/* Topbar */}
       <header className="fixed top-0 left-0 right-0 z-50 glass" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', borderTop: 'none', borderLeft: 'none', borderRight: 'none' }}>
-        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
+        <div className="px-4 lg:px-6 h-14 flex items-center justify-between">
 
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2.5 no-underline">
@@ -58,7 +59,7 @@ export function Layout({ children }: { children: ReactNode }) {
           </Link>
 
           {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-0.5">
+          <nav className={`hidden md:flex ${isIDE ? '' : 'lg:hidden'} items-center gap-0.5`}>
             {NAV_ITEMS.map(({ path, label, icon: Icon }) => {
               const active = loc.pathname === path
               return (
@@ -107,14 +108,61 @@ export function Layout({ children }: { children: ReactNode }) {
         )}
       </AnimatePresence>
 
+      {/* Desktop sidebar: icon rail on lg, full sidebar on xl. Hidden in the IDE (full-screen). */}
+      {!isIDE && (
+        <aside className="hidden lg:flex flex-col fixed left-0 z-30 w-[72px] xl:w-[232px] px-3 xl:px-4 pt-6 pb-5"
+          style={{ top: 57, bottom: 0, borderRight: '1px solid var(--border)', background: 'linear-gradient(180deg,rgba(13,13,26,0.55),rgba(7,7,14,0.35))', backdropFilter: 'blur(14px)' }}>
+          <div className="hidden xl:block px-2 mb-3 text-[9px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--text3)' }}>Explore</div>
+          <nav className="flex flex-col gap-1.5">
+            {NAV_ITEMS.map(({ path, label, icon: Icon }) => {
+              const active = loc.pathname === path
+              return (
+                <Link key={path} to={path} title={label}
+                  className="group relative flex items-center gap-3 rounded-xl no-underline transition-all justify-center xl:justify-start h-11 xl:px-3"
+                  style={{
+                    background: active ? 'linear-gradient(135deg,rgba(99,102,241,0.16),rgba(139,92,246,0.08))' : 'transparent',
+                    color: active ? '#a5b4fc' : 'var(--text2)',
+                    border: active ? '1px solid rgba(99,102,241,0.25)' : '1px solid transparent',
+                    boxShadow: active ? '0 0 24px rgba(99,102,241,0.12)' : 'none',
+                  }}>
+                  {active && <span className="absolute left-0 top-2.5 bottom-2.5 w-[3px] rounded-r-full" style={{ background: 'linear-gradient(180deg,#8b5cf6,#6366f1)' }}/>}
+                  <Icon size={17}/>
+                  <span className="hidden xl:inline text-[13px] font-semibold">{label}</span>
+                  {label === 'IDE' && <span className="hidden xl:inline ml-auto text-[8px] px-1.5 py-0.5 rounded font-bold" style={{ background: 'rgba(34,197,94,0.12)', color: '#22c55e' }}>AI</span>}
+                </Link>
+              )
+            })}
+          </nav>
+
+          <div className="mt-auto space-y-3">
+            <Link to="/launch" title="Launch token" className="no-underline hidden xl:block">
+              <div className="relative overflow-hidden rounded-2xl p-4"
+                style={{ background: 'linear-gradient(135deg,rgba(99,102,241,0.18),rgba(139,92,246,0.10),rgba(236,72,153,0.08))', border: '1px solid rgba(99,102,241,0.22)' }}>
+                <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at 0% 0%,rgba(99,102,241,0.25),transparent 60%)' }}/>
+                <div className="relative">
+                  <Rocket size={16} style={{ color: '#a5b4fc' }}/>
+                  <div className="text-[13px] font-black mt-2" style={{ color: 'var(--text1)', letterSpacing: '-0.02em' }}>Launch a token</div>
+                  <div className="text-[10px] mt-0.5 leading-snug" style={{ color: 'var(--text2)' }}>Fair bonding curve, no liquidity needed.</div>
+                </div>
+              </div>
+            </Link>
+            <Link to="/launch" title="Launch token" className="xl:hidden flex items-center justify-center h-11 rounded-xl no-underline"
+              style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', boxShadow: '0 4px 20px rgba(99,102,241,0.3)' }}>
+              <Rocket size={17} color="#fff"/>
+            </Link>
+            <div className="flex items-center justify-center xl:justify-start gap-2 px-2 py-2 rounded-xl" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} title="Arc Mainnet">
+              <span className="w-2 h-2 rounded-full animate-pulse-glow flex-shrink-0" style={{ background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}/>
+              <span className="hidden xl:inline text-[10px] font-semibold" style={{ color: 'var(--text2)' }}>Arc Mainnet · USDC gas</span>
+            </div>
+          </div>
+        </aside>
+      )}
+
       {/* Main */}
-      <main className="relative z-10" style={
-        isIDE
-          ? { position:'fixed', top:0, left:0, right:0, bottom:0, paddingTop:56, display:'flex', flexDirection:'column', overflow:'hidden' }
-          : { paddingTop:80, paddingBottom:88, paddingLeft:20, paddingRight:20 }
-      }>
+      <main className={isIDE ? 'relative z-10' : 'relative z-10 pt-20 pb-24 px-5 lg:pl-[104px] lg:pr-8 lg:pb-14 xl:pl-[268px] xl:pr-10'}
+        style={isIDE ? { position:'fixed', top:0, left:0, right:0, bottom:0, paddingTop:56, display:'flex', flexDirection:'column', overflow:'hidden' } : undefined}>
         {isIDE ? children : (
-          <div style={{ maxWidth:1400, margin:'0 auto' }}>{children}</div>
+          <div className="mx-auto" style={{ maxWidth: 1560 }}>{children}</div>
         )}
       </main>
 

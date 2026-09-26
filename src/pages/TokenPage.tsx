@@ -573,6 +573,19 @@ function BoostPanel({ tokenAddr, raisedUsd, threshold, wallet, factoryAddress, u
 
 
 /* ── Main ────────────────────────────────────────────────────────── */
+/** True at >= lg (1024px). Used to size the chart bigger on desktop. */
+function useIsDesktop() {
+  const q = '(min-width:1024px)'
+  const [d, setD] = useState(() => typeof window !== 'undefined' && window.matchMedia(q).matches)
+  useEffect(() => {
+    const m = window.matchMedia(q)
+    const f = () => setD(m.matches)
+    m.addEventListener('change', f)
+    return () => m.removeEventListener('change', f)
+  }, [])
+  return d
+}
+
 export function TokenPage() {
   const { address: tokenAddr } = useParams<{address:string}>()
   const { address: wallet, chainId: walletChain } = useAccount()
@@ -617,6 +630,7 @@ export function TokenPage() {
   const gapArr = gapRaw as readonly [bigint,bigint,bigint]|undefined
   const tokenThresholdRaw = gapArr ? gapArr[1] : undefined   // 0n = instant / no target
   const raisedUsd = gapArr ? Number(gapArr[2])/1e6 : (token ? Number(token.state?.realUsdcRaised??0n)/1e6 : 0)
+  const isDesktop = useIsDesktop()
   const tokenThresholdUsd = tokenThresholdRaw !== undefined ? Number(tokenThresholdRaw)/1e6 : Number(cfg.graduationThreshold)/1e6
   const liqUsd    = dsData?.liquidity?.usd ?? 0
   const progress  = token ? formatProgress(token.progress) : 0
@@ -736,10 +750,10 @@ export function TokenPage() {
   ]
 
   return (
-    <div className="space-y-3 pb-24">
+    <div className="flex flex-col gap-3 pb-24 lg:pb-6 lg:grid lg:grid-cols-[minmax(0,1fr)_400px] xl:grid-cols-[minmax(0,1fr)_432px] lg:gap-x-7 lg:gap-y-5 lg:items-start">
 
       {/* ── Header ───────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
+      <div className="order-1 lg:order-first lg:col-span-2 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-1.5 no-underline" style={{color:'var(--text2)'}}>
           <ArrowLeft size={14}/><span className="text-xs font-medium">Tokens</span>
         </Link>
@@ -757,8 +771,9 @@ export function TokenPage() {
         </div>
       </div>
 
+      <div className="contents lg:flex lg:flex-col lg:gap-4 lg:min-w-0">
       {/* ── Token hero ────────────────────────────────────────────── */}
-      <div className="rounded-2xl p-4" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
+      <div className="order-2 lg:order-1 rounded-2xl p-4" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
         <div className="flex items-start gap-3 mb-4">
           <div className="flex-shrink-0">
             {token.imageUri
@@ -820,54 +835,24 @@ export function TokenPage() {
         </button>
       </div>
 
-      {/* ── Market signal ─────────────────────────────────────────── */}
-      <div className="rounded-2xl p-4" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-1.5"><Activity size={11} style={{color:'var(--accent)'}}/><span className="text-[9px] font-bold uppercase tracking-widest" style={{color:'var(--text2)'}}>Market Signal</span></div>
-          <span className="text-[11px] font-bold" style={{color:'var(--text2)'}}>{signalScore} / 100</span>
-        </div>
-        <div className="text-sm font-black mb-2" style={{color:signalColor}}>{signalLabel}</div>
-        <div className="h-2 rounded-full overflow-hidden mb-1" style={{background:'var(--surface3)'}}>
-          <div className="h-full rounded-full transition-all duration-1000" style={{width:`${signalScore}%`,background:'linear-gradient(90deg,#ef4444,#f59e0b,#22c55e)'}}/>
-        </div>
-        <div className="flex justify-between text-[8px]" style={{color:'var(--text2)'}}><span>Bearish</span><span>Neutral</span><span>Bullish</span></div>
-        {(change24h!=null||change1h!=null)&&(
-          <div className="flex items-center gap-2 mt-2 text-[9px]">
-            {change24h!=null&&<span style={{color:change24h>=0?'var(--green)':'var(--red)',fontWeight:700}}>24H {change24h>=0?'+':''}{change24h.toFixed(2)}%</span>}
-            {change1h!=null&&<span style={{color:'var(--text2)'}}>· 1H {change1h>=0?'+':''}{change1h.toFixed(2)}%</span>}
-          </div>
-        )}
-      </div>
-
       {/* ── Stats grid ────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="order-4 lg:order-2 grid grid-cols-2 lg:grid-cols-4 gap-2">
         <Stat label="Market Cap"  value={fmtC(mcapUsd)}/>
         <Stat label="USDC Raised" value={fmtC(raisedUsd)} accent="var(--accent)"/>
         <Stat label="Liquidity"   value={fmtC(liqUsd)}/>
         <Stat label="Pair Age"    value={token.createdAt>0?timeAgo(token.createdAt):'—'}/>
       </div>
 
-      {/* ── Buy/Sell volume bar ───────────────────────────────────── */}
-      {totalTxns > 0 && (
-        <div className="rounded-2xl px-4 py-3" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
-          <div className="flex justify-between text-[9px] mb-2"><span style={{color:'var(--green)',fontWeight:700}}>▲ {buys24h} buys (24h)</span><span style={{color:'var(--red)',fontWeight:700}}>{sells24h} sells ▼</span></div>
-          <div className="h-2 rounded-full overflow-hidden flex">
-            <div style={{width:`${buyPct}%`,background:'var(--green)',borderRadius:'4px 0 0 4px'}}/>
-            <div className="flex-1" style={{background:'var(--red)',borderRadius:'0 4px 4px 0'}}/>
-          </div>
-        </div>
-      )}
-
       {/* ── Token Info (always visible) ───────────────────────────── */}
       {token.description && (
-        <div className="rounded-2xl p-4" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
+        <div className="order-6 lg:order-4 rounded-2xl p-4" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
           <div className="flex items-center gap-1.5 mb-2"><Info size={11} style={{color:'var(--accent)'}}/><span className="text-[9px] font-bold uppercase tracking-widest" style={{color:'var(--text2)'}}>About</span></div>
           <p className="text-xs leading-relaxed" style={{color:'var(--text2)'}}>{token.description}</p>
         </div>
       )}
 
       {/* ── Chart + Tabs ─────────────────────────────────────────── */}
-      <div className="rounded-2xl overflow-hidden" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
+      <div className="order-7 lg:order-3 rounded-2xl overflow-hidden" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
         <div className="flex border-b overflow-x-auto scrollbar-hide" style={{borderColor:'var(--border)'}}>
           {TABS.map(t=>{
             const active=tab===t.id; const Icon=t.icon
@@ -893,8 +878,8 @@ export function TokenPage() {
               {chartLoad
                 ?<div className="flex items-center justify-center gap-2 py-12" style={{color:'var(--text2)'}}><Loader2 size={14} className="animate-spin"/><span className="text-xs">Loading chart…</span></div>
                 :ohlcv.length>=5
-                ?<TVChart data={ohlcv} height={240} type="candle" loading={false}/>
-                :<div className="flex flex-col items-center justify-center py-10 rounded-xl" style={{background:'var(--surface2)',height:220}}>
+                ?<TVChart data={ohlcv} height={isDesktop ? 400 : 240} type="candle" loading={false}/>
+                :<div className="flex flex-col items-center justify-center py-10 rounded-xl" style={{background:'var(--surface2)',height:isDesktop ? 380 : 220}}>
                    <BarChart3 size={24} style={{color:'var(--text3)'}} className="mb-2"/>
                    <p className="text-sm font-medium" style={{color:'var(--text2)'}}>Chart coming soon</p>
                    <p className="text-xs mt-1" style={{color:'var(--text3)'}}>Price history will appear as trading activity grows</p>
@@ -909,7 +894,7 @@ export function TokenPage() {
       </div>
 
       {/* ── Contract details ─────────────────────────────────────── */}
-      <div className="rounded-2xl overflow-hidden" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
+      <div className="order-8 lg:order-5 rounded-2xl overflow-hidden" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
         <div className="px-4 py-3 border-b" style={{borderColor:'var(--border)'}}>
           <span className="text-[9px] font-bold uppercase tracking-widest" style={{color:'var(--text2)'}}>Contract Details</span>
         </div>
@@ -927,8 +912,11 @@ export function TokenPage() {
         ))}
       </div>
 
+      </div>
+
+      <div className="contents lg:flex lg:flex-col lg:gap-4 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto scrollbar-hide lg:pr-1">
       {/* ── Trade panel ─────────────────────────────────────────────── */}
-      <div ref={tradeRef} id="trade-form" className="rounded-2xl overflow-hidden" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
+      <div ref={tradeRef} id="trade-form" className="order-9 lg:order-1 rounded-2xl overflow-hidden" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
         {/* Buy/Sell toggle */}
         <div className="flex p-1.5 gap-1" style={{background:'var(--surface2)'}}>
           {(['buy','sell'] as TradeMode[]).map(m=>(
@@ -1007,7 +995,7 @@ export function TokenPage() {
 
       {/* ── Boost Graduation (everyone, not graduated) ───────────── */}
       {!graduated && tokenThresholdUsd > 0 && (
-        <BoostPanel
+        <div className="order-10 lg:order-2"><BoostPanel
           tokenAddr={tokenAddr!}
           raisedUsd={raisedUsd}
           threshold={tokenThresholdUsd}
@@ -1015,12 +1003,12 @@ export function TokenPage() {
           factoryAddress={FACTORY_ADDRESS}
           usdcAddress={USDC_ADDRESS}
           chainId={CHAIN_ID}
-        />
+        /></div>
       )}
 
       {/* ── Creator: Force Graduate ───────────────────────────────── */}
       {wallet && token.creator && wallet.toLowerCase() === (token.creator as string).toLowerCase() && !graduated && (
-        <ForceGraduatePanel
+        <div className="order-11 lg:order-3"><ForceGraduatePanel
           tokenAddr={tokenAddr!}
           raisedUsd={raisedUsd}
           threshold={tokenThresholdUsd}
@@ -1028,8 +1016,40 @@ export function TokenPage() {
           factoryAddress={FACTORY_ADDRESS}
           usdcAddress={USDC_ADDRESS}
           chainId={CHAIN_ID}
-        />
+        /></div>
       )}
+
+      {/* ── Market signal ─────────────────────────────────────────── */}
+      <div className="order-3 lg:order-4 rounded-2xl p-4" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-1.5"><Activity size={11} style={{color:'var(--accent)'}}/><span className="text-[9px] font-bold uppercase tracking-widest" style={{color:'var(--text2)'}}>Market Signal</span></div>
+          <span className="text-[11px] font-bold" style={{color:'var(--text2)'}}>{signalScore} / 100</span>
+        </div>
+        <div className="text-sm font-black mb-2" style={{color:signalColor}}>{signalLabel}</div>
+        <div className="h-2 rounded-full overflow-hidden mb-1" style={{background:'var(--surface3)'}}>
+          <div className="h-full rounded-full transition-all duration-1000" style={{width:`${signalScore}%`,background:'linear-gradient(90deg,#ef4444,#f59e0b,#22c55e)'}}/>
+        </div>
+        <div className="flex justify-between text-[8px]" style={{color:'var(--text2)'}}><span>Bearish</span><span>Neutral</span><span>Bullish</span></div>
+        {(change24h!=null||change1h!=null)&&(
+          <div className="flex items-center gap-2 mt-2 text-[9px]">
+            {change24h!=null&&<span style={{color:change24h>=0?'var(--green)':'var(--red)',fontWeight:700}}>24H {change24h>=0?'+':''}{change24h.toFixed(2)}%</span>}
+            {change1h!=null&&<span style={{color:'var(--text2)'}}>· 1H {change1h>=0?'+':''}{change1h.toFixed(2)}%</span>}
+          </div>
+        )}
+      </div>
+
+      {/* ── Buy/Sell volume bar ───────────────────────────────────── */}
+      {totalTxns > 0 && (
+        <div className="order-5 lg:order-5 rounded-2xl px-4 py-3" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>
+          <div className="flex justify-between text-[9px] mb-2"><span style={{color:'var(--green)',fontWeight:700}}>▲ {buys24h} buys (24h)</span><span style={{color:'var(--red)',fontWeight:700}}>{sells24h} sells ▼</span></div>
+          <div className="h-2 rounded-full overflow-hidden flex">
+            <div style={{width:`${buyPct}%`,background:'var(--green)',borderRadius:'4px 0 0 4px'}}/>
+            <div className="flex-1" style={{background:'var(--red)',borderRadius:'0 4px 4px 0'}}/>
+          </div>
+        </div>
+      )}
+
+      </div>
 
       {/* ── Floating Buy/Sell ─────────────────────────────────────── */}
       <div className="fixed bottom-20 left-4 right-4 z-40 md:hidden">

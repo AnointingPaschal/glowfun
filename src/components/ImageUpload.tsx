@@ -6,6 +6,8 @@ interface ImageUploadProps {
   value: string
   onChange: (url: string) => void
   label?: string
+  /** Narrow slot (e.g. a 150px column): stack preview above the drop zone instead of side-by-side */
+  compact?: boolean
 }
 
 type UploadMode = 'upload' | 'url'
@@ -48,7 +50,7 @@ export function SmartImg({ src, ...rest }: { src: string } & Omit<React.ImgHTMLA
   return <img {...rest} src={urls[idx]} onError={() => setIdx(i => i + 1)} />
 }
 
-export default function ImageUpload({ value, onChange, label = 'Token Logo' }: ImageUploadProps) {
+export default function ImageUpload({ value, onChange, label = 'Token Logo', compact = false }: ImageUploadProps) {
   const [mode, setMode] = useState<UploadMode>('upload')
   const [urlInput, setUrlInput] = useState('')
   const [uploadState, setUploadState] = useState<UploadState>('idle')
@@ -171,14 +173,14 @@ export default function ImageUpload({ value, onChange, label = 'Token Logo' }: I
             mode === 'url' ? 'bg-purple-600 text-white' : 'text-white/50 hover:text-white/80'
           )}
         >
-          <Link className="w-3 h-3" /> URL / IPFS
+          <Link className="w-3 h-3" /> {compact ? 'URL' : 'URL / IPFS'}
         </button>
       </div>
 
-      <div className="flex gap-3 items-start">
+      <div className={compact ? 'flex flex-col gap-2.5' : 'flex gap-3 items-start'}>
         {/* Preview */}
-        <div className="relative flex-shrink-0">
-          <div className="w-20 h-20 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center">
+        <div className={compact ? 'relative w-full' : 'relative flex-shrink-0'}>
+          <div className={compact ? 'w-full aspect-square max-h-32 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center' : 'w-20 h-20 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center'}>
             {displayUrl ? (
               <SmartImg src={displayUrl} alt="preview" className="w-full h-full object-cover" />
             ) : (
@@ -197,7 +199,7 @@ export default function ImageUpload({ value, onChange, label = 'Token Logo' }: I
         </div>
 
         {/* Input area */}
-        <div className="flex-1 space-y-2">
+        <div className={compact ? 'w-full space-y-2' : 'flex-1 space-y-2'}>
           {mode === 'upload' ? (
             <div
               onDrop={handleDrop}
