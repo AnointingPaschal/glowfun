@@ -606,7 +606,18 @@ export function TokenPage() {
   const change5m  = dsData?.priceChange?.m5  ?? token?.market?.change5m
   // Always use on-chain market cap for bonding curve tokens — never DexScreener override
   const mcapUsd   = token ? Number(token.marketCap ?? 0n) / 1e6 : 0
-  const raisedUsd = token ? Number(token.state?.realUsdcRaised??0n)/1e6 : 0
+  // Per-token graduation target + raised, straight from the factory. The threshold is baked into each
+  // token at launch (it does NOT follow later changes to the factory-wide value), and this is the same
+  // number getBoostTierCost / boostByTier use, so the UI can't disagree with what the contract charges.
+  const { data: gapRaw } = useReadContract({
+    address:FACTORY_ADDRESS, abi:FACTORY_ABI, functionName:'getGraduationGap',
+    args:tokenAddr?[tokenAddr as `0x${string}`]:undefined, chainId:CHAIN_ID as any,
+    query:{enabled:!!tokenAddr&&!!FACTORY_ADDRESS, refetchInterval:15_000},
+  })
+  const gapArr = gapRaw as readonly [bigint,bigint,bigint]|undefined
+  const tokenThresholdRaw = gapArr ? gapArr[1] : undefined   // 0n = instant / no target
+  const raisedUsd = gapArr ? Number(gapArr[2])/1e6 : (token ? Number(token.state?.realUsdcRaised??0n)/1e6 : 0)
+  const tokenThresholdUsd = tokenThresholdRaw !== undefined ? Number(tokenThresholdRaw)/1e6 : Number(cfg.graduationThreshold)/1e6
   const liqUsd    = dsData?.liquidity?.usd ?? 0
   const progress  = token ? formatProgress(token.progress) : 0
   const graduated = token?.state?.graduated
@@ -995,11 +1006,11 @@ export function TokenPage() {
       </div>
 
       {/* ── Boost Graduation (everyone, not graduated) ───────────── */}
-      {!graduated && cfg.graduationThreshold > 0n && (
+      {!graduated && tokenThresholdUsd > 0 && (
         <BoostPanel
           tokenAddr={tokenAddr!}
           raisedUsd={raisedUsd}
-          threshold={Number(token.state?.tokenGraduationThreshold ? token.state.tokenGraduationThreshold : cfg.graduationThreshold)/1e6}
+          threshold={tokenThresholdUsd}
           wallet={wallet}
           factoryAddress={FACTORY_ADDRESS}
           usdcAddress={USDC_ADDRESS}
@@ -1012,7 +1023,7 @@ export function TokenPage() {
         <ForceGraduatePanel
           tokenAddr={tokenAddr!}
           raisedUsd={raisedUsd}
-          threshold={Number(token.state?.tokenGraduationThreshold ? token.state.tokenGraduationThreshold : cfg.graduationThreshold)/1e6}
+          threshold={tokenThresholdUsd}
           wallet={wallet}
           factoryAddress={FACTORY_ADDRESS}
           usdcAddress={USDC_ADDRESS}

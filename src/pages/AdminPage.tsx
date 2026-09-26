@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchChain, useReadContract, useReadContracts } from 'wagmi'
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchChain, useReadContract, useReadContracts, usePublicClient } from 'wagmi'
 import { ConnectKitButton } from 'connectkit'
 import { toast } from 'sonner'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
@@ -1283,11 +1283,29 @@ function AdminTokenRow({ addr, index, factoryAddress, chainId, explorerBase }: {
   const [gradInput, setGradInput] = useState('')
   const { writeContract: writeGrad, isPending: gradPending } = useWriteContract()
 
-  const handleSetGrad = () => {
+  const publicClient = usePublicClient({ chainId: chainId as any })
+  const { address: adminWallet } = useAccount()
+
+  const handleSetGrad = async () => {
     const val = parseFloat(gradInput)
     if (isNaN(val) || val < 0) return toast.error('Enter a valid dollar amount (0 = instant)')
+    const args = [addr as `0x${string}`, BigInt(Math.round(val * 1_000_000))] as const
+    // Dry-run first: a factory without this function (V1/V2) reverts with empty data "0x", which is
+    // useless to read on the explorer. Catch that here and explain it.
+    try {
+      await publicClient?.simulateContract({
+        address: factoryAddress as `0x${string}`, abi: FACTORY_ABI, functionName: 'setTokenGraduationThreshold',
+        args, account: adminWallet,
+      } as any)
+    } catch (e: any) {
+      const msg = String(e?.shortMessage ?? e?.message ?? '')
+      if (/returned no data|reverted with the following reason:\s*0x\s*$|execution reverted$|0x\s*$/i.test(msg) && !/Unauthorized|OwnableUnauthorizedAccount/i.test(msg)) {
+        return toast.error(`Factory ${factoryAddress.slice(0, 8)}… has no setTokenGraduationThreshold (V3 only). Put GlowFunFactory_V3 first in Admin → Factories, or this token isn't on this factory.`)
+      }
+      return toast.error(parseOnchainError(e))
+    }
     writeGrad(
-      { address: factoryAddress as `0x${string}`, abi: FACTORY_ABI, functionName: 'setTokenGraduationThreshold', args: [addr as `0x${string}`, BigInt(Math.round(val * 1_000_000))], chainId: chainId as any } as any,
+      { address: factoryAddress as `0x${string}`, abi: FACTORY_ABI, functionName: 'setTokenGraduationThreshold', args, chainId: chainId as any } as any,
       { onSuccess: () => { toast.success(`Graduation target set to $${val.toLocaleString()}`); setShowGradSet(false); setGradInput('') }, onError: (e) => toast.error(parseOnchainError(e)) }
     )
   }
