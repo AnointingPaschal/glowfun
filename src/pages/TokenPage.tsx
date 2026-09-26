@@ -999,7 +999,7 @@ export function TokenPage() {
         <BoostPanel
           tokenAddr={tokenAddr!}
           raisedUsd={raisedUsd}
-          threshold={Number(token.state?.tokenGraduationThreshold ?? cfg.graduationThreshold)/1e6}
+          threshold={Number(token.state?.tokenGraduationThreshold ? token.state.tokenGraduationThreshold : cfg.graduationThreshold)/1e6}
           wallet={wallet}
           factoryAddress={FACTORY_ADDRESS}
           usdcAddress={USDC_ADDRESS}
@@ -1012,7 +1012,7 @@ export function TokenPage() {
         <ForceGraduatePanel
           tokenAddr={tokenAddr!}
           raisedUsd={raisedUsd}
-          threshold={Number(token.state?.tokenGraduationThreshold ?? cfg.graduationThreshold)/1e6}
+          threshold={Number(token.state?.tokenGraduationThreshold ? token.state.tokenGraduationThreshold : cfg.graduationThreshold)/1e6}
           wallet={wallet}
           factoryAddress={FACTORY_ADDRESS}
           usdcAddress={USDC_ADDRESS}
