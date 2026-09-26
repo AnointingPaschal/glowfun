@@ -11,6 +11,7 @@ import ImageUpload, { SmartImg } from '@/components/ImageUpload'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
 import { useConfig } from '@/context/ConfigContext'
 import { parseUsdc } from '@/utils/format'
+import { GRADUATION_THRESHOLD } from '@/constants'
 import { useFactoryConfig } from '@/hooks/useFactoryConfig'
 import { parseOnchainError } from '@/utils/errors'
 import { ConnectKitButton } from 'connectkit'
@@ -334,7 +335,11 @@ export function LaunchPage() {
         twitter:form.twitter, telegram:form.telegram, website:form.website,
         totalSupply:supply, curveAllocationBps:BigInt(curveBps),
         creatorAllocationBps:BigInt(creatorBps),
-        graduationThresholdUsdc: grad,
+        // Contract: threshold 0 (after falling back to the factory-wide value) => instant-listing mode,
+        // which requires initialLiquidityUsdc > 0 or it reverts InvalidAmount().
+        // So: instant listing => send 0; bonding curve => always send a real threshold, even if the
+        // admin has set the factory-wide value to 0 to *enable* instant listing.
+        graduationThresholdUsdc: userChoseInstant ? 0n : (grad === 0n ? GRADUATION_THRESHOLD : grad),
         initialLiquidityUsdc:    userChoseInstant ? initLiqUsdc : 0n,
         pairToken:  (pairToken && pairToken !== '' && pairToken !== 'EURC') ? pairToken as `0x${string}` : ZERO_ADDR,
         mintable,   burnable,   pausable: false,   hasBlacklist,
