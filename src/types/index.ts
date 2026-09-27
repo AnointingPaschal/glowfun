@@ -49,6 +49,8 @@ export interface TokenInfo extends TokenMeta {
   marketCap: bigint
   progress: bigint
   market?: MarketData   // live external market data overlay (from DexScreener/GeckoTerminal)
+  /** Best available USD price per token: market price if listed, else the bonding curve's price. */
+  priceUsd?: number
 }
 
 export type TradeMode = 'buy' | 'sell'

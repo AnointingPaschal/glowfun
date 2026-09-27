@@ -4,6 +4,10 @@ import { useTokenData } from '@/hooks/useTokenData'
 import { useMarketPrice } from '@/hooks/useMarketPrice'
 import { formatProgress, timeAgo, ipfsToHttp, nextIpfsGateway } from '@/utils/format'
 import { Flame, Sprout, Trophy } from 'lucide-react'
+import { usePlatformTrades } from '@/hooks/usePlatformTrades'
+import { useLaunchPrice } from '@/hooks/useLaunchPrice'
+import { changeOver, priceSeries } from '@/utils/priceChange'
+import { Sparkline } from '@/components/Sparkline'
 
 interface Props { address: `0x${string}`; index?: number; rank?: number }
 
@@ -26,6 +30,8 @@ function fmtUsd(n: number) {
 export function TokenCard({ address, index = 0, rank }: Props) {
   const { token, isLoading } = useTokenData(address)
   const { market } = useMarketPrice(address)
+  const { byToken, ready: tradesReady } = usePlatformTrades()   // one shared scan for all cards
+  const launchPrice = useLaunchPrice()
 
   if (isLoading || !token) {
     return (
@@ -38,10 +44,15 @@ export function TokenCard({ address, index = 0, rank }: Props) {
   const hue        = parseInt(address.slice(2, 6), 16) % 360
   const color1     = `hsl(${hue},70%,60%)`
   const color2     = `hsl(${(hue + 120) % 360},65%,50%)`
-  const priceUsd   = market?.priceUsd  ?? (Number(token.price ?? 0n) / 1e42)
+  // token.priceUsd = market price if listed, else the curve's price (the old `market?.priceUsd ?? price/1e42`
+  // showed $0 for every bonding-curve token: a 0 market price defeats `??`, and 1e42 is the wrong scale).
+  const priceUsd   = token.priceUsd ?? 0
+  const trades     = byToken.get(address.toLowerCase()) ?? []
   // Use on-chain market cap — DexScreener mcap is for graduated tokens only
   const mcapUsd    = Number(token.marketCap ?? 0n) / 1e6
-  const change24h  = market?.change24h
+  // 24h change from real on-chain trades (or since launch if the token is younger than 24h)
+  const change24h  = market?.change24h ?? changeOver(trades, priceUsd, 86400, { startPrice: launchPrice, complete: tradesReady })
+  const series     = priceSeries(trades, priceUsd, 86400, 24, launchPrice)
   const ch24Pos    = (change24h ?? 0) >= 0
 
   // Bonding progress: 0–100
@@ -140,6 +151,7 @@ export function TokenCard({ address, index = 0, rank }: Props) {
             <span className="text-[8.5px]" style={{ color:'var(--text2)' }}>
               Raised <span style={{ color:'var(--text1)', fontWeight:600 }}>{fmtUsd(Number(token.state?.realUsdcRaised ?? 0n) / 1e6)}</span>
             </span>
+            <span className="ml-auto" title="Price, last 24h"><Sparkline values={series}/></span>
           </div>
         </div>
       </Link>

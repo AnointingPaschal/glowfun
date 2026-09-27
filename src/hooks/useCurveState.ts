@@ -5,7 +5,7 @@ import { FACTORY_ABI } from '@/abi/GlowFunFactory'
 import { useConfig } from '@/context/ConfigContext'
 
 /**
- * Bonding-curve state of one token, read from the factory's getTokenState().
+ * Bonding-curve state of one token, read from the factory's tokenStates() (V3) or getTokenState() (V2).
  *
  * Deployed factories differ in how many words getTokenState() returns (V2: 14, V3: 15, and other
  * builds may add fields). A fixed ABI mis-aligns or throws on any mismatch, so we read the raw
@@ -93,16 +93,24 @@ export function useCurveState(token: string | undefined, factoryOverride?: strin
     queryFn: async (): Promise<CurveRead> => {
       // A failed/reverted read must NOT throw: a query that has never succeeded goes back to
       // "pending" on every retry/poll, which used to blank the whole page (skeleton loop).
-      try {
-        const data = encodeFunctionData({ abi: FACTORY_ABI as any, functionName: 'getTokenState', args: [token as `0x${string}`] })
-        const res = await client!.call({ to: FACTORY_ADDRESS, data })
-        const hex = res.data ?? '0x'
-        const words = hex === '0x' ? 0 : (hex.length - 2) / WORD
-        const state = decodeCurveState(hex)
-        return { state, words, error: state ? undefined : `getTokenState returned ${words} words that don't match a known layout` }
-      } catch (e: any) {
-        return { state: null, words: 0, error: String(e?.shortMessage ?? e?.message ?? e).slice(0, 200) }
+      //
+      // V3 factories have no getTokenState(); the same struct is exposed by the public `tokenStates`
+      // mapping getter (15 words). V2 factories only have getTokenState() (14 words). Try both.
+      let lastError = ''
+      for (const fn of ['tokenStates', 'getTokenState'] as const) {
+        try {
+          const data = encodeFunctionData({ abi: FACTORY_ABI as any, functionName: fn, args: [token as `0x${string}`] })
+          const res = await client!.call({ to: FACTORY_ADDRESS, data })
+          const hex = res.data ?? '0x'
+          const words = hex === '0x' ? 0 : (hex.length - 2) / WORD
+          const state = decodeCurveState(hex)
+          if (state) return { state, words }
+          lastError = `${fn}() returned ${words} words that don't match a known layout`
+        } catch (e: any) {
+          lastError = `${fn}(): ${String(e?.shortMessage ?? e?.message ?? e)}`.slice(0, 200)
+        }
       }
+      return { state: null, words: 0, error: lastError }
     },
   })
   return {

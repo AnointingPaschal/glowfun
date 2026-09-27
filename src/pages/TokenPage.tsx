@@ -21,6 +21,7 @@ import { useTokenTrades, type Trade } from '@/hooks/useTokenTrades'
 import { useTokenBanner } from '@/hooks/useTokenBanner'
 import { buildCandles, computeStats, TIMEFRAMES, fmtPrice, type Timeframe } from '@/utils/candles'
 import { saveBanner } from '@/utils/banner'
+import { changeOver } from '@/utils/priceChange'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
 import { GLOW_TOKEN_ABI } from '@/abi/GlowToken'
 import { useConfig } from '@/context/ConfigContext'
@@ -36,6 +37,7 @@ const SLIP_OPTIONS = [0.5, 1, 3, 5]
 /* ── Price calculation (fixed — no scientific notation) ─────────── */
 function calcPrice(token: any): number {
   if (!token) return 0
+  if (token.priceUsd > 0) return token.priceUsd
   if (token.market?.priceUsd > 0) return token.market.priceUsd
   const vU = Number(token.state?.virtualUsdcReserves ?? 0n)
   const vT = Number(token.state?.virtualTokenReserves ?? 0n)
@@ -735,10 +737,6 @@ export function TokenPage() {
   // Price: DexScreener/market if listed, else the curve's virtual reserves, else the factory's own getTokenPrice
   // (uR*1e30/tR, i.e. USD*1e18) so a token-state read problem can never show "$0".
   const priceUsd  = calcPrice(token) || (quotedPriceRaw ? Number(quotedPriceRaw as bigint) / 1e18 : 0)
-  const change24h = dsData?.priceChange?.h24 ?? token?.market?.change24h
-  const change1h  = dsData?.priceChange?.h1  ?? token?.market?.change1h
-  const change6h  = dsData?.priceChange?.h6  ?? token?.market?.change6h
-  const change5m  = dsData?.priceChange?.m5  ?? token?.market?.change5m
   // Always use on-chain market cap for bonding curve tokens — never DexScreener override
   const mcapUsd   = token ? Number(token.marketCap ?? 0n) / 1e6 : 0
   // Per-token graduation target + raised, straight from the factory. The threshold is baked into each
@@ -765,6 +763,13 @@ export function TokenPage() {
   const { bannerUri, setLocal: setBannerLocal } = useTokenBanner(tokenAddr)
   const tradeStats = useMemo(() => computeStats(trades), [trades])
   const curvePrice = curve && curve.virtualTokens > 0n ? Number(curve.virtualUsdc)*1e12/Number(curve.virtualTokens) : 0
+  // 5m / 1h / 6h / 24h price change: DEX data when the token is listed, otherwise computed from the token's
+  // on-chain trades (windows longer than the token's age read as "change since launch").
+  const chgOf = (sec:number) => changeOver(trades, priceUsd, sec, { startPrice, complete: !tradesLoading && !tradesError })
+  const change24h = dsData?.priceChange?.h24 ?? token?.market?.change24h ?? chgOf(86400)
+  const change1h  = dsData?.priceChange?.h1  ?? token?.market?.change1h  ?? chgOf(3600)
+  const change6h  = dsData?.priceChange?.h6  ?? token?.market?.change6h  ?? chgOf(21600)
+  const change5m  = dsData?.priceChange?.m5  ?? token?.market?.change5m  ?? chgOf(300)
   const curveCandles = useMemo(() => buildCandles(trades, TIMEFRAMES[tfKey], { startPrice, nowPrice: curvePrice || undefined }), [trades, tfKey, startPrice, curvePrice])
   const tokenThresholdUsd = tokenThresholdRaw !== undefined ? Number(tokenThresholdRaw)/1e6 : Number(cfg.graduationThreshold)/1e6
   const liqUsd    = dsData?.liquidity?.usd ?? 0
@@ -996,7 +1001,7 @@ export function TokenPage() {
               <div className="text-[9px] uppercase tracking-widest mb-0.5" style={{color:'var(--text2)'}}>Price</div>
               <div className="text-3xl font-black tabular-nums" style={{color:'var(--text1)',fontFamily:'Space Grotesk,monospace',letterSpacing:'-0.03em'}}><PxDisplay p={priceUsd}/></div>
             </div>
-            {(()=>{ const c = change24h ?? (tradeStats.firstPrice>0 && priceUsd>0 ? ((priceUsd-tradeStats.firstPrice)/tradeStats.firstPrice)*100 : null); const lbl = change24h!=null?'24h':'since first trade'
+            {(()=>{ const c = change24h ?? (tradeStats.firstPrice>0 && priceUsd>0 ? ((priceUsd-tradeStats.firstPrice)/tradeStats.firstPrice)*100 : null); const ageSec = Date.now()/1000 - (token.createdAt||0); const lbl = (dsData?.priceChange?.h24!=null || token?.market?.change24h!=null || ageSec>=86400) ? '24h' : 'since launch'
               return c!=null ? (
                 <div className="flex flex-col items-end gap-0.5">
                   <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl" style={{background:c>=0?'rgba(34,197,94,0.08)':'rgba(239,68,68,0.08)',border:`1px solid ${c>=0?'rgba(34,197,94,0.2)':'rgba(239,68,68,0.2)'}`}}>

@@ -77,7 +77,7 @@ export function fmtPrice(p: number): string {
   if (!p) return '0'
   if (p >= 1) return p.toFixed(4)
   if (p >= 0.01) return p.toFixed(6)
-  const m = p.toFixed(20).match(/^0\.(0+)([1-9]\d{0,3})/)
+  const m = p.toFixed(20).match(/^0\.(0+)([1-9]\d{0,4})/)
   if (m && m[1].length >= 3) return `0.0${String(m[1].length).split('').map(d => SUB[+d]).join('')}${m[2]}`
   return p.toFixed(8)
 }

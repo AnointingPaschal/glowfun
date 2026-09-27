@@ -73,8 +73,14 @@ export function useTokenData(tokenAddress: `0x${string}` | undefined) {
   const { market } = useMarketPrice(tokenAddress)
 
   // Overlay external market price on top of bonding curve values when available
+  // One trustworthy USD price. NOTE the chain's getTokenPrice() is USD*1e18 (uR*1e30/tR) — the old card code
+  // divided by 1e42 and always showed $0. Prefer: market price -> curve reserves -> factory price.
+  const curveUsd = token && token.state && token.state.virtualTokenReserves > 0n
+    ? (Number(token.state.virtualUsdcReserves) * 1e12) / Number(token.state.virtualTokenReserves) : 0
+  const chainUsd = curveUsd || (token && token.price ? Number(token.price) / 1e18 : 0)
   const tokenWithMarket: TokenInfo | null = token ? {
     ...token,
+    priceUsd: market?.priceUsd && market.priceUsd > 0 ? market.priceUsd : chainUsd,
     // If there's a live market price, override price + marketCap so all
     // downstream displays (TokenCard, TokenPage, feed) show consistent numbers
     price: market?.priceUsd && market.priceUsd > 0

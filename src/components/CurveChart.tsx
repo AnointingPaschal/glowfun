@@ -48,16 +48,27 @@ export function CurveChart({ candles, kind = 'candle', height = 400, loading = f
         horzLine: { color: 'rgba(129,140,248,0.5)', labelBackgroundColor: '#4f46e5', style: LineStyle.Dashed },
       },
       rightPriceScale: { borderColor: 'rgba(255,255,255,0.06)', scaleMargins: { top: 0.1, bottom: 0.25 } },
-      timeScale: { borderColor: 'rgba(255,255,255,0.06)', timeVisible: true, secondsVisible: false, rightOffset: 4, barSpacing: 10 },
+      timeScale: { borderColor: 'rgba(255,255,255,0.06)', timeVisible: true, secondsVisible: false, rightOffset: 4, barSpacing: 10, minBarSpacing: 2, maxBarSpacing: 14 },
       localization: { priceFormatter: (p: number) => fmtPrice(p) },
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true },
       handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
     } as any)
 
     const priceFormat = { type: 'custom' as const, minMove: 1e-12, formatter: (p: number) => fmtPrice(p) }
+    // Never zoom the price axis tighter than ~2% of the price: otherwise a 0.01% move fills the whole
+    // pane and a handful of trades render as giant candles.
+    const autoscaleInfoProvider = (original: () => any) => {
+      const r = original()
+      if (!r || !r.priceRange) return r
+      const { minValue, maxValue } = r.priceRange
+      const mid = (minValue + maxValue) / 2
+      const minSpan = Math.abs(mid) * 0.02
+      if (maxValue - minValue >= minSpan) return r
+      return { ...r, priceRange: { minValue: mid - minSpan / 2, maxValue: mid + minSpan / 2 } }
+    }
     const main = kind === 'candle'
-      ? chart.addSeries(CandlestickSeries, { upColor: UP, downColor: DOWN, borderUpColor: UP, borderDownColor: DOWN, wickUpColor: UP, wickDownColor: DOWN, priceFormat, priceLineColor: '#818cf8' })
-      : chart.addSeries(AreaSeries, { lineColor: '#818cf8', topColor: 'rgba(99,102,241,0.35)', bottomColor: 'rgba(99,102,241,0.02)', lineWidth: 2, priceFormat, priceLineColor: '#818cf8' })
+      ? chart.addSeries(CandlestickSeries, { upColor: UP, downColor: DOWN, borderUpColor: UP, borderDownColor: DOWN, wickUpColor: UP, wickDownColor: DOWN, priceFormat, priceLineColor: '#818cf8', autoscaleInfoProvider })
+      : chart.addSeries(AreaSeries, { lineColor: '#818cf8', topColor: 'rgba(99,102,241,0.35)', bottomColor: 'rgba(99,102,241,0.02)', lineWidth: 2, priceFormat, priceLineColor: '#818cf8', autoscaleInfoProvider })
     const vol = chart.addSeries(HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: 'vol', lastValueVisible: false, priceLineVisible: false })
     vol.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } })
 
@@ -83,7 +94,14 @@ export function CurveChart({ candles, kind = 'candle', height = 400, loading = f
     if (kind === 'candle') main.setData(candles.map(c => ({ time: (c.time + off) as UTCTimestamp, open: c.open, high: c.high, low: c.low, close: c.close })))
     else main.setData(candles.map(c => ({ time: (c.time + off) as UTCTimestamp, value: c.close })))
     vol.setData(candles.map(c => ({ time: (c.time + off) as UTCTimestamp, value: c.volume, color: c.close >= c.open ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)' })))
-    if (!fitted.current && candles.length) { chart.timeScale().fitContent(); fitted.current = true }
+    if (!fitted.current && candles.length) {
+      // With few candles fitContent() stretches each one across the whole pane. Show a fixed-size window
+      // (right-aligned) instead so candles keep a normal width; with lots of history, fit everything.
+      const SLOTS = 60
+      if (candles.length < SLOTS) chart.timeScale().setVisibleLogicalRange({ from: candles.length - SLOTS, to: candles.length + 2 })
+      else chart.timeScale().fitContent()
+      fitted.current = true
+    }
   }, [candles, kind, height])
 
   const empty = useMemo(() => candles.length === 0, [candles])
