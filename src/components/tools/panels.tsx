@@ -2,7 +2,7 @@ import { useState, useMemo, type ReactNode } from 'react'
 import { useReadContract, useReadContracts } from 'wagmi'
 import { toast } from 'sonner'
 import {
-  Flame, PlusCircle, Hourglass, Lock, Coins, Droplets, ShieldAlert, PenLine, Gift, Loader2, Copy, Check, AlertTriangle, ExternalLink,
+  Flame, PlusCircle, Hourglass, Lock, Coins, Droplets, ShieldAlert, PenLine, Gift, Loader2, Copy, Check, AlertTriangle, ExternalLink, ShieldCheck, KeyRound, Users,
 } from 'lucide-react'
 import { GLOW_TOKEN_ABI } from '@/abi/GlowToken'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
@@ -10,6 +10,7 @@ import { POSITION_MANAGER_ABI } from '@/abi/PositionManager'
 import { useConfig } from '@/context/ConfigContext'
 import { useTx } from '@/hooks/useTx'
 import { useFactoryConfig } from '@/hooks/useFactoryConfig'
+import { useIsContractWallet } from '@/hooks/useWalletKind'
 import { DEAD, useTokenTools } from '@/hooks/useTokenTools'
 import ImageUpload from '@/components/ImageUpload'
 import { parseTokens } from '@/utils/format'
@@ -28,8 +29,8 @@ export const fmtTokens = (n: bigint) => {
   const v = Number(n) / 1e18
   return v >= 1e9 ? `${(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `${(v / 1e6).toFixed(2)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(1)}K` : v.toLocaleString('en', { maximumFractionDigits: 4 })
 }
-const fmtDate = (sec: number) => new Date(sec * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-const until = (sec: number) => {
+export const fmtDate = (sec: number) => new Date(sec * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+export const until = (sec: number) => {
   const d = sec - Math.floor(Date.now() / 1000)
   if (d <= 0) return 'now'
   const days = Math.floor(d / 86400), hrs = Math.floor((d % 86400) / 3600), mins = Math.floor((d % 3600) / 60)
@@ -50,12 +51,12 @@ export function ToolShell({ icon: Icon, title, badge, tone = '#818cf8', children
     </div>
   )
 }
-const Note = ({ children, warn }: { children: ReactNode; warn?: boolean }) => (
+export const Note = ({ children, warn }: { children: ReactNode; warn?: boolean }) => (
   <p className="text-[11px] leading-relaxed flex gap-2" style={{ color: warn ? 'var(--gold)' : 'var(--text2)' }}>
     {warn && <AlertTriangle size={12} className="flex-shrink-0 mt-0.5" />}<span>{children}</span>
   </p>
 )
-const Btn = ({ onClick, disabled, busy, children, tone = 'primary' }: { onClick: () => void; disabled?: boolean; busy?: boolean; children: ReactNode; tone?: 'primary' | 'danger' | 'ghost' }) => (
+export const Btn = ({ onClick, disabled, busy, children, tone = 'primary' }: { onClick: () => void; disabled?: boolean; busy?: boolean; children: ReactNode; tone?: 'primary' | 'danger' | 'ghost' }) => (
   <button onClick={onClick} disabled={disabled || busy} className="w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-40 transition-opacity"
     style={tone === 'danger' ? { background: 'rgba(239,68,68,0.14)', color: 'var(--red)', border: '1px solid rgba(239,68,68,0.3)' }
       : tone === 'ghost' ? { background: 'var(--surface2)', color: 'var(--text1)', border: '1px solid var(--border)' }
@@ -63,11 +64,25 @@ const Btn = ({ onClick, disabled, busy, children, tone = 'primary' }: { onClick:
     {busy && <Loader2 size={12} className="animate-spin" />}{children}
   </button>
 )
-const Row = ({ k, v }: { k: string; v: ReactNode }) => (
+export const Row = ({ k, v }: { k: string; v: ReactNode }) => (
   <div className="flex justify-between items-center text-[11px] py-1" style={{ borderBottom: '1px solid var(--border)' }}>
     <span style={{ color: 'var(--text2)' }}>{k}</span><span className="font-semibold tabular-nums" style={{ color: 'var(--text1)' }}>{v}</span>
   </div>
 )
+
+/**
+ * Extra friction on a high-impact, single-key action: the caller must type an
+ * exact phrase before the button unlocks. This is NOT cryptographic multisig
+ * (nothing here requires a second signer) — it just makes a single misclick
+ * or a compromised session harder to turn into an irreversible action. Real
+ * multi-party protection means the creator wallet itself is a multisig (see
+ * the Security tool page).
+ */
+function TypeToConfirm({ phrase, value, onChange }: { phrase: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <input className={inputCls} style={inputSt} placeholder={`Type ${phrase} to confirm`} value={value} onChange={e => onChange(e.target.value)} />
+  )
+}
 
 /* ── Burn (any holder) ─────────────────────────────────────────────────── */
 export function BurnPanel({ token, info, refetch }: PanelProps) {
@@ -103,10 +118,13 @@ export function MintPanel({ token, info, wallet, refetch }: PanelProps) {
   const { CHAIN_ID } = useConfig()
   const [to, setTo] = useState(wallet ?? '')
   const [amt, setAmt] = useState('')
-  const { send, busy } = useTx(() => { setAmt(''); void refetch() })
+  const [confirm, setConfirm] = useState('')
+  const { send, busy } = useTx(() => { setAmt(''); setConfirm(''); void refetch() })
   const amount = parseTokens(amt)
   const remaining = info.maxSupply > info.totalSupply ? info.maxSupply - info.totalSupply : 0n
-  const invalid = !isAddr(to) || amount <= 0n || amount > remaining
+  const newSupply = info.totalSupply + amount
+  const dilutionPct = info.totalSupply > 0n && amount > 0n ? Number((amount * 10000n) / info.totalSupply) / 100 : 0
+  const invalid = !isAddr(to) || amount <= 0n || amount > remaining || confirm.trim().toUpperCase() !== 'MINT'
   return (
     <ToolShell icon={PlusCircle} title="Minter" badge="Creator" tone="#6366f1">
       <Row k="Total supply" v={fmtTokens(info.totalSupply)} />
@@ -115,6 +133,10 @@ export function MintPanel({ token, info, wallet, refetch }: PanelProps) {
       {remaining === 0n && <Note warn>The supply cap has been reached: no more tokens can be minted.</Note>}
       <input className={inputCls} style={inputSt} placeholder="Recipient address (0x…)" value={to} onChange={e => setTo(e.target.value.trim())} />
       <input className={inputCls} style={inputSt} placeholder={`Amount of ${info.symbol || 'tokens'}`} inputMode="decimal" value={amt} onChange={e => setAmt(e.target.value)} />
+      {amount > 0n && amount <= remaining && (
+        <Note warn={dilutionPct > 5}>New supply would be <b>{fmtTokens(newSupply)}</b>, a <b>{dilutionPct.toFixed(2)}%</b> increase — every existing holder's share is diluted by that much.</Note>
+      )}
+      <TypeToConfirm phrase="MINT" value={confirm} onChange={setConfirm} />
       <Btn onClick={() => send({ address: token, abi: GLOW_TOKEN_ABI, functionName: 'mint', args: [to as `0x${string}`, amount], chainId: CHAIN_ID }, `Minted ${amt} ${info.symbol}`)} busy={busy} disabled={invalid}>
         {amount > remaining ? 'Above the cap' : `Mint ${amt || ''} ${info.symbol}`}
       </Btn>
@@ -257,24 +279,55 @@ export function ControlsPanel({ token, info, refetch }: PanelProps) {
   const { CHAIN_ID } = useConfig()
   const { send, busy } = useTx(() => void refetch())
   const [who, setWho] = useState('')
+  const [pauseConfirm, setPauseConfirm] = useState('')
+  const [blConfirm, setBlConfirm] = useState('')
   const valid = isAddr(who)
   const { data: isBl } = useReadContract({ address: token, abi: GLOW_TOKEN_ABI, functionName: 'blacklisted', args: [valid ? (who as `0x${string}`) : (ZERO as `0x${string}`)], chainId: CHAIN_ID as any, query: { enabled: valid && info.hasBlacklist } })
   return (
     <ToolShell icon={ShieldAlert} title="Compliance controls" badge="Creator" tone="#f59e0b">
       {info.pausable && (<>
         <Row k="Trading status" v={info.paused ? 'Paused' : 'Active'} />
-        <Btn tone={info.paused ? 'primary' : 'danger'} busy={busy} onClick={() => send({ address: token, abi: GLOW_TOKEN_ABI, functionName: 'setTokenPaused', args: [!info.paused], chainId: CHAIN_ID }, info.paused ? 'Token resumed' : 'Token paused')}>
+        {!info.paused && <Note warn>Pausing stops every holder from transferring or trading this token, instantly and for everyone, until you resume it.</Note>}
+        {!info.paused && <TypeToConfirm phrase="PAUSE" value={pauseConfirm} onChange={setPauseConfirm} />}
+        <Btn tone={info.paused ? 'primary' : 'danger'} busy={busy} disabled={!info.paused && pauseConfirm.trim().toUpperCase() !== 'PAUSE'}
+          onClick={() => { send({ address: token, abi: GLOW_TOKEN_ABI, functionName: 'setTokenPaused', args: [!info.paused], chainId: CHAIN_ID }, info.paused ? 'Token resumed' : 'Token paused'); setPauseConfirm('') }}>
           {info.paused ? 'Resume transfers' : 'Pause all transfers'}
         </Btn>
       </>)}
       {info.hasBlacklist && (<>
         <input className={inputCls} style={inputSt} placeholder="Wallet address to restrict (0x…)" value={who} onChange={e => setWho(e.target.value.trim())} />
         {valid && <Note>{isBl ? 'This wallet is currently blacklisted.' : 'This wallet is not blacklisted.'}</Note>}
+        {valid && !isBl && <TypeToConfirm phrase="BLOCK" value={blConfirm} onChange={setBlConfirm} />}
         <div className="flex gap-2">
-          <Btn tone="danger" busy={busy} disabled={!valid || !!isBl} onClick={() => send({ address: token, abi: GLOW_TOKEN_ABI, functionName: 'setBlacklisted', args: [who, true], chainId: CHAIN_ID }, 'Wallet blacklisted')}>Blacklist</Btn>
+          <Btn tone="danger" busy={busy} disabled={!valid || !!isBl || blConfirm.trim().toUpperCase() !== 'BLOCK'}
+            onClick={() => { send({ address: token, abi: GLOW_TOKEN_ABI, functionName: 'setBlacklisted', args: [who, true], chainId: CHAIN_ID }, 'Wallet blacklisted'); setBlConfirm('') }}>Blacklist</Btn>
           <Btn tone="ghost" busy={busy} disabled={!valid || !isBl} onClick={() => send({ address: token, abi: GLOW_TOKEN_ABI, functionName: 'setBlacklisted', args: [who, false], chainId: CHAIN_ID }, 'Wallet un-blacklisted')}>Remove</Btn>
         </div>
       </>)}
+      {!info.pausable && !info.hasBlacklist && <Note>This token wasn't launched with pause or blacklist controls, so there's nothing to configure here.</Note>}
+    </ToolShell>
+  )
+}
+
+/* ── Multisig / wallet-security analysis (Security page) ─────────────────── */
+export function MultisigPanel({ info }: PanelProps) {
+  const { isContract, isLoading } = useIsContractWallet(info.creator)
+  return (
+    <ToolShell icon={isContract ? ShieldCheck : KeyRound} title="Creator wallet security" badge={isLoading ? undefined : isContract ? 'Multisig-capable' : isContract === false ? 'Single key' : 'Unknown'} tone={isContract ? '#22c55e' : '#f59e0b'}>
+      <Row k="Recorded creator" v={<span className="font-mono text-[10px]">{info.creator.slice(0, 8)}…{info.creator.slice(-6)}</span>} />
+      {isLoading ? (
+        <Note>Checking whether this address is a wallet or a contract…</Note>
+      ) : isContract ? (
+        <Note>This address is a <b>contract</b>, not a plain wallet — consistent with a multisig like Safe. If it's a Safe with a threshold above 1, every creator-only action here (mint, pause, blacklist, edit details, unlock your allocation, claim payouts and LP) requires that many owners to approve before it executes, because the contracts only check that the final caller is this address.</Note>
+      ) : isContract === false ? (
+        <Note warn>This is a single-key wallet (EOA). Anyone with that one private key can mint, pause, blacklist or edit this token instantly — there's no approval threshold. GlowFun's contracts don't have multisig logic built in; they simply require <code>msg.sender == creator</code>.</Note>
+      ) : (
+        <Note>Couldn't determine the wallet type right now — try again shortly.</Note>
+      )}
+      <Note>
+        <b>To get real multi-signature protection</b>, launch (or relaunch) the token from a Safe (Gnosis Safe) multisig address instead of a personal wallet, so <i>that</i> address becomes the recorded creator. Once it is, connecting any of the Safe's owner wallets here will route each action through the Safe for approval before anything executes.
+      </Note>
+      <Note warn>This can't be retrofitted after launch: a token's creator is set immutably when it's deployed, and the factory's own "transfer creator" bookkeeping doesn't change who the token contract itself checks — so an already-launched token stays tied to whichever wallet created it.</Note>
     </ToolShell>
   )
 }

@@ -2,8 +2,9 @@ import { ReactNode, useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { ConnectKitButton } from 'connectkit'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Flame, Rocket, Wallet, X, Zap, Code2, Menu, Wrench } from 'lucide-react'
+import { Flame, Rocket, Wallet, X, Zap, Code2, Menu, Wrench, ChevronRight } from 'lucide-react'
 import { MobileNav } from './MobileNav'
+import { ToolsMenuModal } from './tools/ToolsMenuModal'
 import { useConfig } from '@/context/ConfigContext'
 import { captureReferral } from '@/utils/referral'
 
@@ -20,6 +21,7 @@ const NAV_ITEMS = [
 export function Layout({ children }: { children: ReactNode }) {
   const loc = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [toolsModalOpen, setToolsModalOpen] = useState(false)
   const isIDE = loc.pathname === '/ide'
   useEffect(() => { captureReferral() }, [loc.search])   // remember ?ref=0x… so buys credit the referrer
   const { SITE_TITLE, SITE_LOGO } = useConfig()
@@ -99,13 +101,23 @@ export function Layout({ children }: { children: ReactNode }) {
             className="fixed top-14 left-0 right-0 z-40 md:hidden p-3 glass"
             style={{ borderTop:'1px solid var(--border)', borderLeft:'none', borderRight:'none', borderBottom:'1px solid var(--border)' }}>
             {NAV_ITEMS.map(({ path, label, icon: Icon }) => (
-              <Link key={path} to={path} onClick={() => setMobileOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 rounded-xl mb-1 no-underline"
-                style={{ background: loc.pathname===path ? 'rgba(99,102,241,0.08)' : 'transparent', color: loc.pathname===path ? '#818cf8' : 'var(--text1)' }}>
-                <Icon size={16}/>
-                <span className="text-sm font-medium">{label}</span>
-                {label==='IDE' && <span className="text-[8px] px-1.5 py-px rounded" style={{ background:'rgba(34,197,94,0.1)',color:'#22c55e' }}>AI</span>}
-              </Link>
+              label === 'Tools' ? (
+                <button key={path} onClick={() => { setMobileOpen(false); setToolsModalOpen(true) }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl mb-1 text-left"
+                  style={{ background: loc.pathname.startsWith('/tools') ? 'rgba(99,102,241,0.08)' : 'transparent', color: loc.pathname.startsWith('/tools') ? '#818cf8' : 'var(--text1)' }}>
+                  <Icon size={16}/>
+                  <span className="text-sm font-medium flex-1">{label}</span>
+                  <ChevronRight size={14} style={{ color: 'var(--text3)' }}/>
+                </button>
+              ) : (
+                <Link key={path} to={path} onClick={() => setMobileOpen(false)}
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl mb-1 no-underline"
+                  style={{ background: loc.pathname===path ? 'rgba(99,102,241,0.08)' : 'transparent', color: loc.pathname===path ? '#818cf8' : 'var(--text1)' }}>
+                  <Icon size={16}/>
+                  <span className="text-sm font-medium">{label}</span>
+                  {label==='IDE' && <span className="text-[8px] px-1.5 py-px rounded" style={{ background:'rgba(34,197,94,0.1)',color:'#22c55e' }}>AI</span>}
+                </Link>
+              )
             ))}
           </motion.div>
         )}
@@ -170,6 +182,7 @@ export function Layout({ children }: { children: ReactNode }) {
       </main>
 
       <MobileNav/>
+      <ToolsMenuModal open={toolsModalOpen} onClose={() => setToolsModalOpen(false)}/>
     </div>
   )
 }

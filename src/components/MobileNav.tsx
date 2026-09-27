@@ -1,12 +1,14 @@
 import { Link, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Flame, Rocket, Wallet, Code2, Wrench } from 'lucide-react'
+import { Flame, Rocket, Wallet, Code2 } from 'lucide-react'
 
+// "Tools" isn't a bottom-bar tab on mobile — it lives in the top menu (the
+// mobile equivalent of the desktop sidebar) and opens a pop-up of its own
+// sub-pages, since there are too many of them for a single bottom-bar icon.
 const NAV = [
   { path:'/',       label:'Tokens', icon:Flame  },
   { path:'/launch', label:'Launch',  icon:Rocket },
   { path:'/wallet', label:'Wallet',  icon:Wallet },
-  { path:'/tools',  label:'Tools',   icon:Wrench },
   { path:'/ide',    label:'IDE',     icon:Code2  },
 ]
 
