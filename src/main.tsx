@@ -15,6 +15,15 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 2, staleTime: 10_000 } },
 })
 
+// E2E-only test hook: connects the mock wallet configured in src/config.ts. Only wired up when
+// VITE_E2E=1 (see config.ts) — dropped from a normal production build entirely.
+if (import.meta.env.VITE_E2E === '1') {
+  import('wagmi/actions').then(({ connect }) => {
+    const mockConnector = config.connectors.find((c) => c.type === 'mock')
+    ;(window as any).__connect = () => mockConnector && connect(config, { connector: mockConnector })
+  })
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <WagmiProvider config={config}>

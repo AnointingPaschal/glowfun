@@ -73,6 +73,9 @@ export const FACTORY_ABI = [
   { name: 'kingOfHillRaised',         type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
   { name: 'paused',                   type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'bool' }] },
   { name: 'pausedAt',                 type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  // Ownable (OZ) — not emitted by GlowFun's own code but inherited by the deployed contract
+  { name: 'owner',                    type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
+  { name: 'transferOwnership',        type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'newOwner', type: 'address' }], outputs: [] },
   { name: 'pendingFeeRecipient',      type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
   { name: 'pendingGraduationRecipient', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
   { name: 'blacklistedTokens',        type: 'function', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'bool' }] },
@@ -292,6 +295,19 @@ export const FACTORY_ABI = [
   { name: 'GraduationBoosted',   type: 'event', inputs: [{ name: 'token', type: 'address', indexed: true }, { name: 'booster', type: 'address', indexed: true }, { name: 'usdcSent', type: 'uint256', indexed: false }, { name: 'usdcAdded', type: 'uint256', indexed: false }, { name: 'feeTaken', type: 'uint256', indexed: false }] },
   { name: 'TokenThresholdUpdated', type: 'event', inputs: [{ name: 'token', type: 'address', indexed: true }, { name: 'oldThreshold', type: 'uint256', indexed: false }, { name: 'newThreshold', type: 'uint256', indexed: false }] },
   { name: 'CreatorTransferred',   type: 'event', inputs: [{ name: 'token', type: 'address', indexed: true }, { name: 'oldCreator', type: 'address', indexed: true }, { name: 'newCreator', type: 'address', indexed: true }] },
+
+  // ── Security-relevant events used by the Security Center's activity log ────
+  // Ownable / Pausable (OZ) — inherited, not declared in GlowFun's own event list
+  { name: 'OwnershipTransferred', type: 'event', inputs: [{ name: 'previousOwner', type: 'address', indexed: true }, { name: 'newOwner', type: 'address', indexed: true }] },
+  { name: 'Paused',               type: 'event', inputs: [{ name: 'account', type: 'address', indexed: false }] },
+  { name: 'Unpaused',             type: 'event', inputs: [{ name: 'account', type: 'address', indexed: false }] },
+  { name: 'EmergencyWithdraw',    type: 'event', inputs: [{ name: 'token', type: 'address', indexed: true }, { name: 'to', type: 'address', indexed: true }, { name: 'amount', type: 'uint256', indexed: false }] },
+  { name: 'TokenBlacklisted',     type: 'event', inputs: [{ name: 'token', type: 'address', indexed: true }, { name: 'blacklisted', type: 'bool', indexed: false }] },
+  { name: 'WalletBlacklisted',    type: 'event', inputs: [{ name: 'wallet', type: 'address', indexed: true }, { name: 'blacklisted', type: 'bool', indexed: false }] },
+  { name: 'FeeRecipientProposed',      type: 'event', inputs: [{ name: 'proposed', type: 'address', indexed: true }] },
+  { name: 'FeeRecipientUpdated',       type: 'event', inputs: [{ name: 'newRecipient', type: 'address', indexed: true }] },
+  { name: 'GraduationRecipientProposed', type: 'event', inputs: [{ name: 'proposed', type: 'address', indexed: true }] },
+  { name: 'GraduationRecipientUpdated',  type: 'event', inputs: [{ name: 'newRecipient', type: 'address', indexed: true }] },
 
   // ── V3 boost tiers ──────────────────────────────────────────────────
   { name: 'boostByTier', type: 'function', stateMutability: 'nonpayable',

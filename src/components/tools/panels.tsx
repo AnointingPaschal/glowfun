@@ -23,8 +23,8 @@ export interface PanelProps { token: `0x${string}`; info: Info; curve: Curve; wa
 
 const ZERO = '0x0000000000000000000000000000000000000000'
 const card = { background: 'var(--surface)', border: '1px solid var(--border)' }
-const inputCls = 'w-full px-3 py-2.5 rounded-xl text-sm outline-none'
-const inputSt = { background: 'var(--surface2)', border: '1px solid var(--border2)', color: 'var(--text1)' }
+export const inputCls = 'w-full px-3 py-2.5 rounded-xl text-sm outline-none'
+export const inputSt = { background: 'var(--surface2)', border: '1px solid var(--border2)', color: 'var(--text1)' }
 
 export const fmtTokens = (n: bigint) => {
   const v = Number(n) / 1e18
@@ -341,7 +341,7 @@ export function MultisigPanel({ info }: PanelProps) {
       <Note>
         <b>To get real multi-signature protection</b>, launch (or relaunch) the token from a Safe (Gnosis Safe) multisig address instead of a personal wallet, so <i>that</i> address becomes the recorded creator. Once it is, connecting any of the Safe's owner wallets here will route each action through the Safe for approval before anything executes.
       </Note>
-      <Note warn>This can't be retrofitted after launch: a token's creator is set immutably when it's deployed, and the factory's own "transfer creator" bookkeeping doesn't change who the token contract itself checks — so an already-launched token stays tied to whichever wallet created it.</Note>
+      <Note warn>Mint, pause and blacklist specifically can't be retrofitted after launch — this address is set immutably when the token is deployed and gates those three functions forever. Other creator powers (editing metadata, unlocking your allocation, force-graduating, claiming an unclaimed bonus) use a <i>separate</i>, mutable record the factory keeps, which <b>can</b> be moved to a Safe right now for an already-launched token — see the Creator role panel below.</Note>
     </ToolShell>
   )
 }

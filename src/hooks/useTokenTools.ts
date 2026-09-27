@@ -27,6 +27,7 @@ export function useTokenTools(token: `0x${string}` | undefined, wallet: `0x${str
       f('pendingLpNftId', [token]), f('pendingLpNftOwner', [token]), f('pendingLpUnlockTime', [token]), // 22-24
       f('pendingCreatorGraduationUsdc', [token]), f('pendingGraduationCreator', [token]),        // 25-26
       f('nonfungiblePositionMgr'), f('isCreatorLocked', [token]),                                // 27-28
+      f('owner'),                                                                                // 29
     ] as any[]) : [],
     query: { enabled, refetchInterval: 20_000 },
   })
@@ -35,6 +36,15 @@ export function useTokenTools(token: `0x${string}` | undefined, wallet: `0x${str
     if (!data) return null
     const v = <T,>(i: number, d: T) => (data[i]?.status === 'success' ? (data[i].result as T) : d)
     const creator = v<string>(3, ZERO)
+    // Factory's own (mutable) creator record for this token — separate from the token
+    // contract's immutable `creator`. Redirectable at any time via `transferCreatorRole`;
+    // gates metadata/unlock/force-graduate/unclaimed bonus. Read via useCurveState's raw
+    // word-decoder (curve.creator), NOT a typed getTokenState()/tokenStates() ABI call:
+    // deployed factories return 14 (V2) or 15 (V3) words for that struct, and a fixed ABI
+    // either misaligns every field after `totalSupply` or throws outright — see the
+    // "adaptive decoder" comment in useCurveState.ts for why.
+    const factoryCreator = (curve.data?.creator as string | undefined) ?? ZERO
+    const owner = v<string>(29, ZERO)
     return {
       name: v<string>(0, ''), symbol: v<string>(1, ''),
       totalSupply: v<bigint>(2, 0n), creator: creator as `0x${string}`,
@@ -50,9 +60,17 @@ export function useTokenTools(token: `0x${string}` | undefined, wallet: `0x${str
       creatorBonus: v<bigint>(25, 0n), bonusOwner: v<string>(26, ZERO) as `0x${string}`,
       positionManager: v<string>(27, ZERO) as `0x${string}`,
       creatorLocked: v<boolean>(28, false),
+      // `creator` (above) is the token's own immutable creator — permanently gates
+      // mint/pause/blacklist, can never change. `factoryCreator` is the factory's
+      // separate, mutable record for this token — gates metadata/unlock/force-graduate/
+      // unclaimed-bonus, and CAN be moved to a new address (e.g. a Safe) right now via
+      // `transferCreatorRole`, even for an already-launched token.
+      factoryCreator: factoryCreator as `0x${string}`,
+      factoryOwner: owner as `0x${string}`,
       isCreator: !!wallet && creator.toLowerCase() === wallet.toLowerCase(),
+      isFactoryCreator: !!wallet && factoryCreator.toLowerCase() === wallet.toLowerCase(),
     }
-  }, [data, wallet])
+  }, [data, wallet, curve.data])
 
   return { info, curve: curve.data, isLoading, refetch: async () => { await Promise.all([refetch(), curve.refetch()]) } }
 }

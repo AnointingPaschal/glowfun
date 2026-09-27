@@ -1,0 +1,63 @@
+name: Security monitor
+
+# Watches the GlowFunFactory_V3 contract for admin-key actions (ownership transfer,
+# creator-role transfer, emergency withdrawal, platform pause, blacklist changes, fee/
+# graduation recipient changes) and alerts Discord/Telegram the moment one happens.
+# See scripts/security-monitor.mjs for the actual logic and docs/SECURITY.md for setup.
+#
+# Required repo secrets (Settings -> Secrets and variables -> Actions):
+#   RPC_URL                - an Arc Mainnet RPC endpoint
+#   FACTORY_ADDRESS         - the factory to watch (GlowFunFactory_V3)
+#   DISCORD_WEBHOOK_URL     - and/or TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID
+#
+# State (the last block scanned) is committed back to the repo by this workflow so
+# consecutive runs don't re-alert the same event. That commit is made with [skip ci]
+# and github-actions[bot] as the author so it doesn't trigger other workflows or show
+# up as a "real" commit in the usual sense.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # every 10 minutes
+  workflow_dispatch: {}       # lets you trigger a run manually from the Actions tab
+
+permissions:
+  contents: write
+
+concurrency:
+  group: security-monitor
+  cancel-in-progress: false   # never skip a scan — let one finish before the next starts
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install viem
+        run: npm install --no-save viem@^2
+
+      - name: Run monitor
+        env:
+          RPC_URL: ${{ secrets.RPC_URL }}
+          FACTORY_ADDRESS: ${{ secrets.FACTORY_ADDRESS }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          STATE_FILE: .github/security-monitor-state.json
+        run: node scripts/security-monitor.mjs
+
+      - name: Commit updated state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet -- .github/security-monitor-state.json; then
+            git add .github/security-monitor-state.json
+            git commit -m "chore(security-monitor): update last-scanned block [skip ci]"
+            git push
+          else
+            echo "No state change to commit."
+          fi
