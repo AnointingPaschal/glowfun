@@ -675,6 +675,40 @@ export const onRequest:PagesFunction<Env> = async(ctx)=>{
     return j({success:true,data:candles,real:candles.length>=5})
   }
 
+  /* Recent trades — real per-swap data for a pool (external-token "Trades" tab).
+     There's no order-book endpoint here on purpose: a Uniswap V3 pool has no resting
+     limit orders to show — it's a continuous liquidity curve, not a matching engine —
+     so an "order book" for one would have to be invented. This is the honest substitute. */
+  if (path.endsWith('/trades')){
+    const pool=url.searchParams.get('pool')??'', token=url.searchParams.get('token')??''
+    const usdc='0x3600000000000000000000000000000000000000'
+    const ck=`trades:arc:${pool||token}`
+    const cached=env.CONFIG?await env.CONFIG.get(ck).catch(()=>null):null
+    if(cached)return j({success:true,data:JSON.parse(cached),cached:true})
+    const parse=(d:any)=>{
+      const rows:any[]=d?.data??[]
+      return rows.map((row:any)=>{
+        const a=row?.attributes??{}
+        const fromAddr=(a.from_token_address??'').toLowerCase()
+        const toAddr=(a.to_token_address??'').toLowerCase()
+        const kindRaw=(a.kind??'').toLowerCase()
+        const kind:'buy'|'sell' = kindRaw==='buy'||kindRaw==='sell' ? kindRaw : (toAddr===usdc ? 'sell' : 'buy')
+        const usdcAmt=Number(a.volume_in_usd??0)
+        const tokenAmt=Number(kind==='buy' ? (a.to_token_amount??0) : (a.from_token_amount??0))
+        const price=tokenAmt>0?usdcAmt/tokenAmt:0
+        const ts=a.block_timestamp?Math.floor(new Date(a.block_timestamp).getTime()/1000):0
+        return { kind, usdc:usdcAmt, tokens:tokenAmt, price, trader:a.tx_from_address??'', tx:a.tx_hash??row.id??'', ts }
+      }).filter((t:any)=>t.tx && t.ts>0 && t.price>0)
+    }
+    let trades:any[]=[]
+    const tryGT=async(addr:string)=>{try{const r=await fetch(`https://api.geckoterminal.com/api/v2/networks/arc/pools/${addr}/trades?trade_volume_in_usd_greater_than=0`,{signal:AbortSignal.timeout(8_000)});if(!r.ok)return[];return parse(await r.json())}catch{return[]}}
+    if(pool)trades=await tryGT(pool)
+    if(!trades.length&&token){try{const r=await fetch(`https://api.geckoterminal.com/api/v2/networks/arc/tokens/${token}/pools?page=1`,{signal:AbortSignal.timeout(6_000)});if(r.ok){const d:any=await r.json();const p=d.data?.[0]?.attributes?.address;if(p)trades=await tryGT(p)}}catch{}}
+    trades.sort((a,b)=>b.ts-a.ts)
+    if(trades.length&&env.CONFIG)env.CONFIG.put(ck,JSON.stringify(trades),{expirationTtl:30}).catch(()=>{})
+    return j({success:true,data:trades,real:trades.length>0})
+  }
+
   /* Single-token lookup — powers the external token detail page */
   const addressParam = (url.searchParams.get('address') ?? '').trim().toLowerCase()
   if (addressParam) {

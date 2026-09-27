@@ -3,7 +3,8 @@ import { useParams, Link, Navigate } from 'react-router-dom'
 import { useAccount } from 'wagmi'
 import {
   ArrowLeft, RefreshCw, Share2, Copy, Check, ExternalLink, TrendingUp, TrendingDown,
-  BarChart3, MessageCircle, Info, Activity, Sprout, Loader2, AlertTriangle,
+  BarChart3, MessageCircle, Info, Activity, Sprout, Loader2, AlertTriangle, List,
+  ArrowUpRight, ArrowDownLeft,
 } from 'lucide-react'
 import { Comments } from '@/components/Comments'
 import { CurveChart, type ChartKind } from '@/components/CurveChart'
@@ -12,8 +13,55 @@ import { useArcToken } from '@/hooks/useArcMarket'
 import { useTokenList } from '@/hooks/useTokenList'
 import { useConfig } from '@/context/ConfigContext'
 import { timeAgo, formatAddress } from '@/utils/format'
+import { fmtPrice } from '@/utils/candles'
 
-type TabId = 'chart' | 'comments'
+type TabId = 'chart' | 'trades' | 'comments'
+
+interface ExtTrade { kind: 'buy' | 'sell'; usdc: number; tokens: number; price: number; trader: string; tx: string; ts: number }
+
+async function fetchTrades(pool: string, tokenAddr: string): Promise<ExtTrade[]> {
+  try {
+    const r = await fetch(`/api/market/trades?pool=${pool}&token=${tokenAddr}`, { signal: AbortSignal.timeout(8000) })
+    if (!r.ok) return []
+    const d = await r.json(); return d.data ?? []
+  } catch { return [] }
+}
+
+/* Real per-swap trade feed (GeckoTerminal-backed). No order-book tab exists here on
+   purpose — a Uniswap V3 pool has no resting limit orders to show, it trades against a
+   liquidity curve, so a book would have to be invented; this real trade-by-trade feed is
+   the honest substitute. */
+function ExtTradesTab({ trades, explorer, loading }: { trades: ExtTrade[]; explorer: string; loading: boolean }) {
+  const [rows, setRows] = useState(25)
+  if (loading && !trades.length) return <div className="flex items-center justify-center py-10 gap-2" style={{ color: 'var(--text2)' }}><Loader2 size={14} className="animate-spin" /><span className="text-xs">Loading recent swaps…</span></div>
+  return (
+    <div>
+      <div className="flex text-[8.5px] font-bold px-3 py-2 mb-2 rounded-lg" style={{ color: 'var(--text2)', background: 'var(--surface3)' }}>
+        <span className="w-14">Type</span><span className="flex-1 text-right">USDC</span><span className="flex-1 text-right hidden sm:block">Tokens</span><span className="flex-1 text-right">Price</span><span className="w-16 text-right">Wallet</span><span className="w-12 text-right">Age</span>
+      </div>
+      <div className="space-y-1">
+        {trades.length === 0
+          ? <div className="py-8 text-center text-xs" style={{ color: 'var(--text2)' }}>No recent swaps indexed for this pool yet.</div>
+          : trades.slice(0, rows).map(t => (
+            <a key={`${t.tx}-${t.ts}`} href={`${explorer}/tx/${t.tx}`} target="_blank" rel="noopener" className="flex items-center text-[10px] px-3 py-2 rounded-lg no-underline transition-colors hover:brightness-125" style={{ background: 'var(--surface3)' }}>
+              <div className="w-14 flex items-center gap-1">
+                {t.kind === 'buy'
+                  ? <><ArrowUpRight size={10} style={{ color: 'var(--green)' }} /><span style={{ color: 'var(--green)', fontWeight: 700 }}>BUY</span></>
+                  : <><ArrowDownLeft size={10} style={{ color: 'var(--red)' }} /><span style={{ color: 'var(--red)', fontWeight: 700 }}>SELL</span></>}
+              </div>
+              <span className="flex-1 text-right font-mono" style={{ color: 'var(--text1)' }}>${t.usdc.toLocaleString('en', { maximumFractionDigits: 2 })}</span>
+              <span className="flex-1 text-right font-mono hidden sm:block" style={{ color: 'var(--text2)' }}>{t.tokens >= 1e6 ? `${(t.tokens / 1e6).toFixed(2)}M` : t.tokens >= 1e3 ? `${(t.tokens / 1e3).toFixed(1)}K` : t.tokens.toFixed(2)}</span>
+              <span className="flex-1 text-right font-mono" style={{ color: 'var(--text2)' }}>${fmtPrice(t.price)}</span>
+              <span className="w-16 text-right font-mono" style={{ color: 'var(--accent)' }}>{t.trader ? `${t.trader.slice(0, 4)}…${t.trader.slice(-3)}` : '—'}</span>
+              <span className="w-12 text-right" style={{ color: 'var(--text2)' }}>{timeAgo(t.ts)}</span>
+            </a>
+          ))}
+      </div>
+      {trades.length > rows && <button onClick={() => setRows(r => r + 50)} className="w-full mt-2 py-2 rounded-lg text-[10px] font-bold" style={{ background: 'var(--surface3)', color: 'var(--accent)' }}>Show more ({trades.length - rows} older)</button>}
+      <p className="text-[9px] mt-2 text-center" style={{ color: 'var(--text3)' }}>Real swaps from this pool, via GeckoTerminal — no order book here since AMM pools don't have one.</p>
+    </div>
+  )
+}
 
 const TIMEFRAMES = { '5m': 0, '15m': 0, '1h': 0, '4h': 0, '1d': 0 } as const
 type Timeframe = keyof typeof TIMEFRAMES
@@ -127,6 +175,8 @@ export function ExternalTokenPage() {
   const [chartReal, setChartReal] = useState(false)
   const [chartLoad, setChartLoad] = useState(true)
   const [copied, setCopied] = useState(false)
+  const [trades, setTrades] = useState<ExtTrade[]>([])
+  const [tradesLoad, setTradesLoad] = useState(true)
 
   const glowSet = useMemo(() => new Set(glowAddrs.map(a => a.toLowerCase())), [glowAddrs])
   const isGlow = !!address && glowSet.has(address.toLowerCase())
@@ -152,6 +202,19 @@ export function ExternalTokenPage() {
     setCandles(buildDerivedTrend(token))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token?.priceUsd, token?.change5m, token?.change1h, token?.change6h, token?.change24h])
+
+  // Real per-swap trades, polled every 15s.
+  useEffect(() => {
+    if (!token || isGlow) return
+    let cancelled = false
+    const load = async () => {
+      const d = await fetchTrades(token.pairAddress || '', token.address)
+      if (!cancelled) { setTrades(d); setTradesLoad(false) }
+    }
+    load()
+    const iv = setInterval(load, 15_000)
+    return () => { cancelled = true; clearInterval(iv) }
+  }, [token?.pairAddress, token?.address, isGlow])
 
   if (!address) return <Navigate to="/dex" replace />
   if (isGlow) return <Navigate to={`/token/${address}`} replace />
@@ -183,6 +246,7 @@ export function ExternalTokenPage() {
 
   const TABS = [
     { id: 'chart' as TabId, label: 'Chart', icon: BarChart3 },
+    { id: 'trades' as TabId, label: 'Trades', icon: List },
     { id: 'comments' as TabId, label: 'Chat', icon: MessageCircle },
   ]
 
@@ -311,6 +375,7 @@ export function ExternalTokenPage() {
                 )}
               </div>
             )}
+            {tab === 'trades' && <ExtTradesTab trades={trades} explorer={EXPLORER_BASE} loading={tradesLoad} />}
             {tab === 'comments' && <Comments tokenAddress={token.address} />}
           </div>
         </div>
