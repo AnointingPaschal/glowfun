@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Flame, Sprout, Trophy, Search, X, RefreshCw,
-  TrendingUp, TrendingDown, Activity, Droplets, Zap, Filter, Eye,
+  TrendingUp, TrendingDown, Activity, Droplets, Zap, Filter,
 } from 'lucide-react'
 import { useArcMarket, type ArcMarketTab, type ArcMarketToken } from '@/hooks/useArcMarket'
 import { useTokenList } from '@/hooks/useTokenList'
@@ -65,7 +65,7 @@ function TokenLogo({ url, symbol, address, size = 32 }: { url: string; symbol: s
 
 /* ── Featured banner strip ─────────────────────────────────────────────
  * GlowFun tokens open their internal trading page; every other Arc token
- * is shown as a read-only preview card — nothing here ever navigates off
+ * opens its own live trade page here too — nothing ever navigates off
  * this site. */
 function BannerStrip({ tokens, glowSet }: { tokens: ArcMarketToken[]; glowSet: Set<string> }) {
   const featured = useMemo(() => tokens.filter(t => t.bannerUrl).slice(0, 8), [tokens])
@@ -90,9 +90,7 @@ function BannerStrip({ tokens, glowSet }: { tokens: ArcMarketToken[]; glowSet: S
             </div>
           </div>
         )
-        return isGlow
-          ? <Link key={t.address} to={`/token/${t.address}`} className="no-underline">{card}</Link>
-          : <div key={t.address}>{card}</div>
+        return <Link key={t.address} to={isGlow ? `/token/${t.address}` : `/dex/${t.address}`} className="no-underline">{card}</Link>
       })}
     </div>
   )
@@ -125,16 +123,16 @@ function Row({ t, rank, isGlow }: { t: ArcMarketToken; rank: number; isGlow: boo
       <td className="py-2.5 px-2 text-right text-[12px] whitespace-nowrap" style={{ color: 'var(--text1)' }}>{fmtUsd(t.mcapUsd)}</td>
       <td className="py-2.5 px-2 text-right text-[11px]" style={{ color: 'var(--text2)' }}>{fmtAge(t.ageSec)}</td>
       <td className="py-2.5 pr-3 text-right">
-        {isGlow
-          ? <span className="text-[9px] font-bold" style={{ color: '#818cf8' }}>Trade →</span>
-          : <Eye size={11} style={{ color: 'var(--text3)' }} />}
+        <span className="text-[9px] font-bold" style={{ color: isGlow ? '#818cf8' : 'var(--green)' }}>Trade →</span>
       </td>
     </>
   )
   const rowStyle = { borderColor: 'var(--border)' }
-  return isGlow
-    ? <Link to={`/token/${t.address}`} className="table-row no-underline border-b transition-colors hover:bg-white/[0.03] cursor-pointer" style={rowStyle as any}>{inner}</Link>
-    : <tr className="border-b" style={rowStyle as any} title="Live data only — trading for this token isn't handled on GlowFun">{inner}</tr>
+  return (
+    <Link to={isGlow ? `/token/${t.address}` : `/dex/${t.address}`} className="table-row no-underline border-b transition-colors hover:bg-white/[0.03] cursor-pointer" style={rowStyle as any}>
+      {inner}
+    </Link>
+  )
 }
 
 /* ── Mobile card ─────────────────────────────────────────────────────── */
@@ -155,7 +153,7 @@ function MobileCard({ t, isGlow }: { t: ArcMarketToken; isGlow: boolean }) {
       </div>
     </div>
   )
-  return isGlow ? <Link to={`/token/${t.address}`} className="no-underline block">{body}</Link> : <div>{body}</div>
+  return <Link to={isGlow ? `/token/${t.address}` : `/dex/${t.address}`} className="no-underline block">{body}</Link>
 }
 
 /* ── Main ─────────────────────────────────────────────────────────────── */
@@ -175,8 +173,16 @@ export function DexPage() {
 
   const displayed = useMemo(() => {
     const list = glowOnly ? tokens.filter(t => glowSet.has(t.address.toLowerCase())) : tokens
-    return list
-  }, [tokens, glowOnly, glowSet])
+    // Keep the backend's real ranking (volume/mcap/age) as the primary order —
+    // only break ties (mostly a pile of 0-volume tokens) by preferring the
+    // ones with a real logo, so the page doesn't open on a wall of monograms.
+    const metric = (t: ArcMarketToken) => tab === 'top' ? t.mcapUsd : tab === 'new' ? -(t.ageSec || 0) : (t.vol5m || t.volUsd || 0)
+    return [...list].sort((a, b) => {
+      const diff = metric(b) - metric(a)
+      if (diff !== 0) return diff
+      return (b.logoUrl ? 1 : 0) - (a.logoUrl ? 1 : 0)
+    })
+  }, [tokens, glowOnly, glowSet, tab])
 
   return (
     <div className="space-y-5">
@@ -301,7 +307,7 @@ export function DexPage() {
       </div>
 
       <p className="text-[10px] text-center px-4" style={{ color: 'var(--text3)' }}>
-        Live prices and liquidity read directly from Arc network pools. GlowFun-launched tokens open their full trading page here; every other Arc token is shown read-only.
+        Live prices and liquidity read directly from Arc network pools. Every token here opens its own trading page — buy and sell right on GlowFun.
       </p>
     </div>
   )

@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { Flame, Sprout, Trophy, Search, X, Rocket, Zap, TrendingUp, Users, DollarSign, ArrowUpRight, Star, Clock, BarChart3 } from 'lucide-react'
 import { useTokenList } from '@/hooks/useTokenList'
 import { TokenCard } from '@/components/TokenCard'
+import { ArcNewTokensPanel } from '@/components/ArcNewTokensPanel'
 import { prefetchAllMarketData } from '@/hooks/useMarketPrice'
 import { useTokenData } from '@/hooks/useTokenData'
 import { formatProgress, timeAgo, ipfsToHttp } from '@/utils/format'
@@ -252,6 +253,7 @@ export function FeedPage() {
         {/* ── Mobile-only: ticker + stats ───────────────────────────── */}
         <div className="space-y-4 lg:hidden">
           <LiveTicker addresses={addresses}/>
+          <ArcNewTokensPanel compact/>
           {statsRow}
         </div>
 
@@ -319,6 +321,7 @@ export function FeedPage() {
       {/* ═══ RIGHT RAIL (desktop) ══════════════════════════════════ */}
       <aside className="hidden lg:block sticky top-20 space-y-4">
         <LiveTicker addresses={addresses} list/>
+        <ArcNewTokensPanel/>
         <div>
           <div className="section-eyebrow mb-3">Platform</div>
           {statsRow}

@@ -429,6 +429,138 @@ async function discoverViaBoostsProfiles(): Promise<string[]> {
   return [...addrs]
 }
 
+/* ── METHOD 3: GeckoTerminal ──────────────────────────────────────────── */
+async function fetchGeckoTerminalPools(): Promise<Token[]> {
+  const endpoints = [
+    'https://api.geckoterminal.com/api/v2/networks/arc/trending_pools',
+    'https://api.geckoterminal.com/api/v2/networks/arc/new_pools',
+    'https://api.geckoterminal.com/api/v2/networks/arc/pools?page=1',
+  ]
+  const usdc = USDC_ARC.toLowerCase()
+  const out: Token[] = []
+  const results = await Promise.allSettled(endpoints.map(u =>
+    fetch(u, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(10_000) })
+      .then(r => r.ok ? r.json() : null).catch(() => null)
+  ))
+  for (const r of results) {
+    if (r.status !== 'fulfilled' || !r.value) continue
+    const d: any = r.value
+    const included = new Map<string, any>((d.included ?? []).map((t: any) => [`${t.type}:${t.id}`, t]))
+    for (const p of d.data ?? []) {
+      try {
+        const a = p.attributes ?? {}
+        const baseRel  = p.relationships?.base_token?.data
+        const quoteRel = p.relationships?.quote_token?.data
+        const baseTok  = baseRel  ? included.get(`${baseRel.type}:${baseRel.id}`)   : null
+        const quoteTok = quoteRel ? included.get(`${quoteRel.type}:${quoteRel.id}`) : null
+        const baseAddr  = (baseTok?.attributes?.address  ?? '').toLowerCase()
+        const quoteAddr = (quoteTok?.attributes?.address ?? '').toLowerCase()
+        // The non-USDC side of the pair is the actual token being traded.
+        const isBaseTheToken = quoteAddr === usdc
+        const tokenSide = isBaseTheToken ? baseTok : (baseAddr === usdc ? quoteTok : baseTok)
+        if (!tokenSide) continue
+        const addr = (tokenSide.attributes?.address ?? '').toLowerCase()
+        if (!addr || addr === '0x' + '0'.repeat(40)) continue
+        const priceUsd = parseFloat((isBaseTheToken ? a.base_token_price_usd : a.quote_token_price_usd) ?? '0') || 0
+        if (!priceUsd) continue
+        const logoRaw = tokenSide.attributes?.image_url ?? ''
+        out.push({
+          address: addr,
+          pairAddress: (a.address ?? '').toLowerCase(),
+          name: tokenSide.attributes?.name ?? '',
+          symbol: tokenSide.attributes?.symbol ?? '',
+          logoUrl: logoRaw && !logoRaw.includes('missing') ? logoRaw : '',
+          bannerUrl: '',
+          priceUsd,
+          change5m:  a.price_change_percentage?.m5  != null ? parseFloat(a.price_change_percentage.m5)  : undefined,
+          change1h:  a.price_change_percentage?.h1  != null ? parseFloat(a.price_change_percentage.h1)  : undefined,
+          change6h:  a.price_change_percentage?.h6  != null ? parseFloat(a.price_change_percentage.h6)  : undefined,
+          change24h: a.price_change_percentage?.h24 != null ? parseFloat(a.price_change_percentage.h24) : undefined,
+          liqUsd:  parseFloat(a.reserve_in_usd ?? '0') || 0,
+          volUsd:  parseFloat(a.volume_usd?.h24 ?? '0') || 0,
+          mcapUsd: parseFloat(a.market_cap_usd ?? a.fdv_usd ?? '0') || 0,
+          ageSec:  a.pool_created_at ? Math.max(0, Math.floor((Date.now() - new Date(a.pool_created_at).getTime()) / 1000)) : 0,
+          buys24h:  a.transactions?.h24?.buys ?? 0,
+          sells24h: a.transactions?.h24?.sells ?? 0,
+          txns5m:   (a.transactions?.m5?.buys ?? 0) + (a.transactions?.m5?.sells ?? 0),
+          vol5m:    parseFloat(a.volume_usd?.m5 ?? '0') || 0,
+          dexId: 'geckoterminal',
+          updatedAt: Math.floor(Date.now() / 1000),
+        })
+      } catch { /* skip a malformed pool entry rather than dropping the whole response */ }
+    }
+  }
+  return out
+}
+
+/* ── Single-token lookup — powers the external token detail page ────────
+ * D1 first (cheap, covers anything already discovered by any method above),
+ * then a live fallback so a brand-new token that hasn't been indexed yet
+ * still resolves: check DexScreener directly, and check whether it's a
+ * GlowFun launch (covers a token minutes old, before any discovery pass
+ * has run again). */
+const GF_SEL_ISLAUNCHED = '0x319f8643' // isLaunchedToken(address) -> bool
+
+async function fetchGlowFunTokenByAddress(addr: string): Promise<Token | null> {
+  const a = addr.toLowerCase()
+  for (const f of GLOWFUN_FACTORIES) {
+    try {
+      const [chk] = await gfRpcBatch([{ jsonrpc:'2.0', id:1, method:'eth_call', params:[{ to:f.address, data: GF_SEL_ISLAUNCHED+'000000000000000000000000'+a.slice(2) }, 'latest'] }])
+      const isLaunched = gfUintAt(chk?.result ?? '0x', 0) === 1n
+      if (!isLaunched) continue
+      const calls = [
+        { jsonrpc:'2.0', id:0, method:'eth_call', params:[{ to:a, data: GF_SEL.name }, 'latest'] },
+        { jsonrpc:'2.0', id:1, method:'eth_call', params:[{ to:a, data: GF_SEL.symbol }, 'latest'] },
+        { jsonrpc:'2.0', id:2, method:'eth_call', params:[{ to:a, data: GF_SEL.imageUri }, 'latest'] },
+        { jsonrpc:'2.0', id:3, method:'eth_call', params:[{ to:f.address, data: GF_SEL.tokenStates+'000000000000000000000000'+a.slice(2) }, 'latest'] },
+        { jsonrpc:'2.0', id:4, method:'eth_call', params:[{ to:f.address, data: GF_SEL.getTokenPrice+'000000000000000000000000'+a.slice(2) }, 'latest'] },
+      ]
+      const raw = await gfRpcBatch(calls)
+      const map = new Map(raw.map((r:any)=>[r.id, r.result ?? '0x']))
+      const name    = gfDecStr(map.get(0) ?? '0x') || a.slice(0,8)
+      const symbol  = gfDecStr(map.get(1) ?? '0x') || '???'
+      const logoRaw = gfDecStr(map.get(2) ?? '0x')
+      const st      = map.get(3) ?? '0x'
+      const priceRaw= gfUintAt(map.get(4) ?? '0x', 0)
+      const realUsdcRaised = gfUintAt(st,3), graduated = gfBoolAt(st,5), createdAt = gfUintAt(st,6), totalSupply = gfUintAt(st,10)
+      const priceUsd = Number(priceRaw) / 1e42
+      const now = Math.floor(Date.now()/1000)
+      return {
+        address:a, pairAddress:'', name, symbol, logoUrl: gfResolveIpfs(logoRaw), bannerUrl:'',
+        priceUsd, change5m:undefined, change1h:undefined, change6h:undefined, change24h:undefined,
+        liqUsd: Number(realUsdcRaised)/1e6, volUsd:0, mcapUsd: priceUsd*(Number(totalSupply)/1e18),
+        ageSec: createdAt>0n ? Math.max(0, now-Number(createdAt)) : 0,
+        buys24h:0, sells24h:0, txns5m:0, vol5m:0,
+        dexId: graduated?'glowfun-graduated':'glowfun', updatedAt: now,
+      }
+    } catch { continue }
+  }
+  return null
+}
+
+async function fetchTokenByAddress(addr: string, env: Env): Promise<Token | null> {
+  const a = addr.toLowerCase()
+  if (env.DB) {
+    try {
+      await dbSetup(env)
+      const row = await env.DB.prepare('SELECT * FROM arc_tokens WHERE address = ?').bind(a).first()
+      if (row) {
+        const t = rowToToken(row)
+        if (t.priceUsd > 0) return t
+      }
+    } catch {}
+  }
+  // Not cached (or cached with no price yet) — try live sources directly.
+  const [dsPairs, gf] = await Promise.all([
+    fetchDSByTokens([a]).catch(() => []),
+    fetchGlowFunTokenByAddress(a).catch(() => null),
+  ])
+  const dsToken = dsPairs.map(pairToToken).filter((t): t is Token => !!t).sort((x, y) => y.volUsd - x.volUsd)[0]
+  const resolved = dsToken ?? gf ?? null
+  if (resolved) dbSave([resolved], env).catch(() => {})
+  return resolved
+}
+
 /* ── Sort ─────────────────────────────────────────────────────────────── */
 function sortTokens(tokens:Token[],tab:string):Token[]{
   return [...tokens].sort((a,b)=>
@@ -445,17 +577,19 @@ async function fetchAllArcTokens(): Promise<Token[]> {
   // Can't pass env here so we'll handle in the route handler
 
   // Run all discovery methods in parallel
-  const [onChain, boostAddrs, searchPairs, glowFunTokens] = await Promise.allSettled([
+  const [onChain, boostAddrs, searchPairs, glowFunTokens, geckoTokens] = await Promise.allSettled([
     fetchNewPoolsFromChain(2000),     // Last ~2000 blocks (~70 min on Arc)
     discoverViaBoostsProfiles(),
     discoverViaSearches(),
     fetchGlowFunTokens(),             // every GlowFun-launched token, direct from the factories
+    fetchGeckoTerminalPools(),        // GeckoTerminal's own Arc pool listings
   ])
 
   const chainData  = onChain.status==='fulfilled'      ? onChain.value    : []
   const boosts     = boostAddrs.status==='fulfilled'   ? boostAddrs.value : []
   const fromSearch = searchPairs.status==='fulfilled'  ? searchPairs.value : []
   const glowTokens = glowFunTokens.status==='fulfilled' ? glowFunTokens.value : []
+  const geckoOnly  = geckoTokens.status==='fulfilled'  ? geckoTokens.value : []
 
   // Fetch DexScreener data for on-chain discovered pairs (pair address → rich data)
   const pairAddrs   = chainData.map(c=>c.poolAddr).filter(Boolean)
@@ -479,6 +613,13 @@ async function fetchAllArcTokens(): Promise<Token[]> {
   // accurate than the frozen bonding-curve price and wins.
   const map = new Map<string,Token>()
   for (const t of glowTokens) map.set(t.address, t)
+  // GeckoTerminal fills gaps DexScreener misses (and vice versa) — merge it in the same way,
+  // keeping the GlowFun seed until real pool data (from either source) is available.
+  for (const t of geckoOnly) {
+    const ex = map.get(t.address)
+    const exIsGlowFunSeed = ex?.dexId==='glowfun'||ex?.dexId==='glowfun-graduated'
+    if (!ex||exIsGlowFunSeed||t.volUsd>=ex.volUsd) map.set(t.address,t)
+  }
   for (const p of allPairs) {
     const t = pairToToken(p); if (!t) continue
     const ex = map.get(t.address)
@@ -486,7 +627,7 @@ async function fetchAllArcTokens(): Promise<Token[]> {
     if (!ex||exIsGlowFunSeed||t.volUsd>=ex.volUsd) map.set(t.address,t)
   }
 
-  console.log(`[fetch] on-chain-pools:${chainData.length} boosts:${boosts.length} search-pairs:${fromSearch.length} glowfun:${glowTokens.length} total-unique:${map.size}`)
+  console.log(`[fetch] on-chain-pools:${chainData.length} boosts:${boosts.length} search-pairs:${fromSearch.length} glowfun:${glowTokens.length} geckoterminal:${geckoOnly.length} total-unique:${map.size}`)
   return [...map.values()]
 }
 
@@ -532,6 +673,13 @@ export const onRequest:PagesFunction<Env> = async(ctx)=>{
     if(!candles.length&&token){try{const r=await fetch(`https://api.geckoterminal.com/api/v2/networks/arc/tokens/${token}/pools?page=1`,{signal:AbortSignal.timeout(6_000)});if(r.ok){const d:any=await r.json();const p=d.data?.[0]?.attributes?.address;if(p)candles=await tryGT(p)}}catch{}}
     if(candles.length>=5&&env.CONFIG)env.CONFIG.put(ck,JSON.stringify(candles),{expirationTtl:900}).catch(()=>{})
     return j({success:true,data:candles,real:candles.length>=5})
+  }
+
+  /* Single-token lookup — powers the external token detail page */
+  const addressParam = (url.searchParams.get('address') ?? '').trim().toLowerCase()
+  if (addressParam) {
+    const token = await fetchTokenByAddress(addressParam, env)
+    return j({ success: true, data: { token } })
   }
 
   /* Token list */

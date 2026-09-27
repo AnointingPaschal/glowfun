@@ -87,3 +87,44 @@ export function useArcMarket(tab: ArcMarketTab, query: string, pollMs = 20_000) 
 
   return { tokens, stats, total, loading, error, lastFetched, refresh: () => load() }
 }
+
+/**
+ * Live data for a single Arc token by address — powers the external token
+ * detail page. Backed by /api/market?address=, which checks D1 first and
+ * falls back to a live DexScreener/GlowFun-factory lookup for a token that
+ * hasn't been indexed yet.
+ */
+export function useArcToken(address: string | undefined, pollMs = 10_000) {
+  const [token, setToken] = useState<ArcMarketToken | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const reqId = useRef(0)
+
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!address) { setLoading(false); return }
+    const id = ++reqId.current
+    if (!opts?.silent) setLoading(true)
+    try {
+      const r = await fetch(`/api/market?address=${address.toLowerCase()}`, { signal: AbortSignal.timeout(15_000) })
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      const d = await r.json() as { success: boolean; data: { token: ArcMarketToken | null } }
+      if (id !== reqId.current) return
+      if (!d.success) throw new Error('API returned an error')
+      setToken(d.data.token ?? null)
+      setError(null)
+    } catch (e: any) {
+      if (id !== reqId.current) return
+      setError(e?.message ?? 'Failed to load token data')
+    } finally {
+      if (id === reqId.current) setLoading(false)
+    }
+  }, [address])
+
+  useEffect(() => {
+    load()
+    const iv = setInterval(() => load({ silent: true }), pollMs)
+    return () => clearInterval(iv)
+  }, [load, pollMs])
+
+  return { token, loading, error, refresh: () => load() }
+}
