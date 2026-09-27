@@ -72,6 +72,36 @@ async function fetchOHLCV(pool: string, tokenAddr: string, tf: string): Promise<
 }
 
 /**
+ * When GeckoTerminal has no indexed OHLCV history for this pool (common for pools
+ * DexScreener tracks but GeckoTerminal doesn't), fall back to a real — not fabricated —
+ * approximate trend line: the current price plus prices "backed out" algebraically from
+ * the token's own real reported 5m/1h/6h/24h % changes. Each point is a genuine data point
+ * derived from real numbers already shown elsewhere on the page, just plotted over time.
+ */
+function buildDerivedTrend(token: { priceUsd: number; change5m?: number; change1h?: number; change6h?: number; change24h?: number }): any[] {
+  const now = Math.floor(Date.now() / 1000)
+  const p = token.priceUsd
+  if (!p) return []
+  const anchors: { secAgo: number; change?: number }[] = [
+    { secAgo: 86400, change: token.change24h },
+    { secAgo: 21600, change: token.change6h },
+    { secAgo: 3600, change: token.change1h },
+    { secAgo: 300, change: token.change5m },
+  ]
+  const points = anchors
+    .filter(a => a.change != null && Number.isFinite(a.change))
+    .map(a => ({ time: now - a.secAgo, price: p / (1 + (a.change as number) / 100) }))
+    .filter(pt => pt.price > 0)
+  points.push({ time: now, price: p })
+  points.sort((a, b) => a.time - b.time)
+  // de-dupe identical timestamps (can happen if two windows overlap for a very new token)
+  const seen = new Set<number>()
+  const uniq = points.filter(pt => (seen.has(pt.time) ? false : (seen.add(pt.time), true)))
+  if (uniq.length < 2) return []
+  return uniq.map(pt => ({ time: pt.time, open: pt.price, high: pt.price, low: pt.price, close: pt.price, volume: 0 }))
+}
+
+/**
  * Detail + trade page for a non-GlowFun Arc token (discovered via GeckoTerminal /
  * DexScreener). Mirrors GlowFun's own TokenPage layout (hero, stat grid, real
  * chart, trade panel) as closely as is honest for a token with no bonding curve:
@@ -94,19 +124,34 @@ export function ExternalTokenPage() {
   const [tfKey, setTfKey] = useState<Timeframe>('1h')
   const [chartKind, setChartKind] = useState<ChartKind>('candle')
   const [candles, setCandles] = useState<any[]>([])
+  const [chartReal, setChartReal] = useState(false)
   const [chartLoad, setChartLoad] = useState(true)
   const [copied, setCopied] = useState(false)
 
   const glowSet = useMemo(() => new Set(glowAddrs.map(a => a.toLowerCase())), [glowAddrs])
   const isGlow = !!address && glowSet.has(address.toLowerCase())
 
+  // Fetch real OHLCV only when the pool/timeframe changes, not on every 10s price poll.
   useEffect(() => {
     if (!token || isGlow) return
     let cancelled = false
     setChartLoad(true)
-    fetchOHLCV(token.pairAddress || '', token.address, tfKey).then(d => { if (!cancelled) { setCandles(d); setChartLoad(false) } })
+    fetchOHLCV(token.pairAddress || '', token.address, tfKey).then(d => {
+      if (cancelled) return
+      if (d.length >= 2) { setCandles(d); setChartReal(true) }
+      else { setCandles(buildDerivedTrend(token)); setChartReal(false) }
+      setChartLoad(false)
+    })
     return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token?.pairAddress, token?.address, tfKey, isGlow])
+
+  // Keep the derived (non-real) trend line fresh as the live price ticks, without re-hitting GeckoTerminal.
+  useEffect(() => {
+    if (!token || isGlow || chartReal) return
+    setCandles(buildDerivedTrend(token))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token?.priceUsd, token?.change5m, token?.change1h, token?.change6h, token?.change24h])
 
   if (!address) return <Navigate to="/dex" replace />
   if (isGlow) return <Navigate to={`/token/${address}`} replace />
@@ -250,15 +295,20 @@ export function ExternalTokenPage() {
                       </button>
                     ))}
                   </div>
-                  <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-                    {(['candle', 'area'] as ChartKind[]).map(k => (
-                      <button key={k} onClick={() => setChartKind(k)} className="px-2.5 py-1 text-[10px] font-bold capitalize"
-                        style={{ background: chartKind === k ? 'rgba(99,102,241,0.15)' : 'var(--surface2)', color: chartKind === k ? '#818cf8' : 'var(--text2)' }}>{k === 'candle' ? 'Candles' : 'Line'}</button>
-                    ))}
-                  </div>
+                  {chartReal && (
+                    <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+                      {(['candle', 'area'] as ChartKind[]).map(k => (
+                        <button key={k} onClick={() => setChartKind(k)} className="px-2.5 py-1 text-[10px] font-bold capitalize"
+                          style={{ background: chartKind === k ? 'rgba(99,102,241,0.15)' : 'var(--surface2)', color: chartKind === k ? '#818cf8' : 'var(--text2)' }}>{k === 'candle' ? 'Candles' : 'Line'}</button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <CurveChart candles={candles} kind={chartKind} height={isDesktop ? 440 : 300} loading={chartLoad}
-                  emptyText={!chartLoad && !candles.length ? 'No pool chart data available yet for this token.' : undefined} />
+                <CurveChart candles={candles} kind={chartReal ? chartKind : 'area'} height={isDesktop ? 440 : 300} loading={chartLoad}
+                  emptyText={!chartLoad && !candles.length ? 'No chart data available yet for this token.' : undefined} />
+                {!chartLoad && candles.length > 0 && !chartReal && (
+                  <p className="text-[9px] mt-1.5 text-center" style={{ color: 'var(--text3)' }}>Approximate trend from real 5m/1h/6h/24h price changes — GeckoTerminal hasn't indexed full trade history for this pool yet.</p>
+                )}
               </div>
             )}
             {tab === 'comments' && <Comments tokenAddress={token.address} />}

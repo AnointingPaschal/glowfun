@@ -30,18 +30,21 @@ export const EURC_ADDRESS    = (import.meta.env.VITE_EURC_ADDRESS ?? '0xbEf5f6d5
 export const USYC_ADDRESS    = (import.meta.env.VITE_USYC_ADDRESS ?? '0x8a5D989Bbb96929F689B0200f435f53dA42bF490') as `0x${string}`
 export const CIRBTC_ADDRESS  = (import.meta.env.VITE_CIRBTC_ADDRESS ?? '0x171A4217b86A807A64eB94757Db6849fb4bDbAA0') as `0x${string}`
 
-// Uniswap V3 periphery for the wallet's Swap feature. UNCONFIGURED (empty) by default —
-// deliberately, not an oversight. This app's own factory contract already trusts a
-// UniswapV3Factory + NonfungiblePositionManager on Arc for token graduation (read live from
-// GlowFunFactory_V3.uniswapV3Factory()/nonfungiblePositionMgr()), but SwapRouter02 and
-// QuoterV2 are separate periphery contracts deployed independently per chain — e.g. Base's
-// SwapRouter02 address differs from Ethereum/Arbitrum/Optimism's, even though its Factory and
-// PositionManager match theirs. There's no way to verify Arc's actual SwapRouter02/QuoterV2
-// addresses from this environment, and calling the wrong contract with real funds is not a
-// safe-by-default failure the way a bad display value is. Set both once confirmed against
-// Arc's own docs/explorer — the Swap tab enables itself automatically once they're set.
-export const SWAP_ROUTER_ADDRESS = (import.meta.env.VITE_SWAP_ROUTER_ADDRESS ?? '') as `0x${string}` | ''
-export const QUOTER_ADDRESS      = (import.meta.env.VITE_QUOTER_ADDRESS ?? '') as `0x${string}` | ''
+// Uniswap V3 periphery for the wallet's Swap feature and the DEX buy/sell panels.
+// Sourced from @uniswap/sdk-core's own published ARC_ADDRESSES for chainId 5042
+// (installed directly from the npm registry and inspected — the same canonical source
+// Uniswap's own tooling/SDKs use — not guessed or carried over from another chain):
+//   v3CoreFactoryAddress:            0xf0db7b58379503491d857db50ac9ece64c653918
+//   nonfungiblePositionManagerAddress: 0x39654a85a4c05127f5fd6ed22caec077a0fb1377
+//   swapRouter02Address:             0x53bf6b0684ec7ef91e1387da3d1a1769bc5a6f77
+//   quoterAddress (QuoterV2):        0x7dfd4f31be6814d2906bde155c3e1b146eac1468
+// The factory/position-manager pair matches what GlowFunFactory_V3 itself trusts on-chain
+// (read live via uniswapV3Factory()/nonfungiblePositionMgr()) and the USDC predeploy address
+// in that same source matches this codebase's own hardcoded ARC_USDC exactly — cross-checked,
+// not assumed. Still overridable via VITE_SWAP_ROUTER_ADDRESS/VITE_QUOTER_ADDRESS if Circle/
+// Uniswap ever redeploys.
+export const SWAP_ROUTER_ADDRESS = (import.meta.env.VITE_SWAP_ROUTER_ADDRESS ?? '0x53Bf6B0684eC7Ef91E1387Da3d1A1769bC5a6F77') as `0x${string}` | ''
+export const QUOTER_ADDRESS      = (import.meta.env.VITE_QUOTER_ADDRESS ?? '0x7dFd4F31Be6814D2906BDE155C3e1b146EaC1468') as `0x${string}` | ''
 
 // Circle CCTP V2 — cross-chain USDC bridging. TokenMessengerV2/MessageTransmitterV2 addresses
 // below are Circle's canonical, deterministic-deployment addresses, identical across every
