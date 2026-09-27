@@ -15,7 +15,7 @@
  * KV: fast cache — 15s for 'new', 60s for others
  */
 
-interface Env { CONFIG: KVNamespace; DB: D1Database }
+interface Env { CONFIG: KVNamespace; DB: D1Database; APIFY_API_TOKEN?: string }
 const CORS = { 'Access-Control-Allow-Origin':'*','Access-Control-Allow-Methods':'GET,OPTIONS','Content-Type':'application/json' }
 const j = (d: unknown, s = 200) =>
   new Response(JSON.stringify(d,(_,v)=>typeof v==='bigint'?v.toString():v),{status:s,headers:CORS})
@@ -416,16 +416,33 @@ async function discoverViaSearches(): Promise<any[]> {
 
 async function discoverViaBoostsProfiles(): Promise<string[]> {
   const addrs=new Set<string>()
-  const [bR,pR]=await Promise.allSettled([
-    fetch('https://api.dexscreener.com/token-boosts/top/v1',    {headers:{accept:'application/json'},signal:AbortSignal.timeout(12_000)}).then(r=>r.ok?r.json():[]).then((d:any)=>Array.isArray(d)?d:[]),
-    fetch('https://api.dexscreener.com/token-profiles/latest/v1',{headers:{accept:'application/json'},signal:AbortSignal.timeout(12_000)}).then(r=>r.ok?r.json():[]).then((d:any)=>Array.isArray(d)?d:[]),
-  ])
-  for (const res of [bR,pR]) {
-    if (res.status!=='fulfilled') continue
-    for (const t of res.value) {
-      if (isArc(t.chainId??'')&&t.tokenAddress) addrs.add(t.tokenAddress)
-    }
+  // All five of DexScreener's free, no-key-required v1 discovery feeds — each surfaces a
+  // different slice of "what's active right now" that a plain keyword search can miss
+  // entirely (a token doesn't need to match any guessed name to show up in its own
+  // trending/boost/CTO feed).
+  const ENDPOINTS = [
+    'https://api.dexscreener.com/token-boosts/top/v1',
+    'https://api.dexscreener.com/token-boosts/latest/v1',
+    'https://api.dexscreener.com/token-profiles/latest/v1',
+    'https://api.dexscreener.com/community-takeovers/latest/v1',
+    'https://api.dexscreener.com/metas/trending/v1',
+  ]
+  const results = await Promise.allSettled(ENDPOINTS.map(u =>
+    fetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(12_000)}).then(r=>r.ok?r.json():[]).catch(()=>[])
+  ))
+  // Response shapes differ per endpoint (flat arrays vs. metas/trending's tokens-per-meta
+  // grouping) and aren't fully pinned down here, so walk each response generically looking
+  // for any object carrying both a chain id and a token address, however it's nested.
+  const collect = (node:any, depth=0)=>{
+    if (!node || depth>4) return
+    if (Array.isArray(node)) { for (const x of node) collect(x, depth+1); return }
+    if (typeof node!=='object') return
+    const chainId = node.chainId ?? node.chain ?? ''
+    const addr = node.tokenAddress ?? node.address ?? ''
+    if (chainId && addr && isArc(chainId)) addrs.add(addr)
+    for (const v of Object.values(node)) collect(v, depth+1)
   }
+  for (const res of results) if (res.status==='fulfilled') collect(res.value)
   return [...addrs]
 }
 
@@ -578,18 +595,61 @@ function sortTokens(tokens:Token[],tab:string):Token[]{
 }
 
 /* ── Main fetch — combines all methods ───────────────────────────────── */
-async function fetchAllArcTokens(): Promise<Token[]> {
+/* ── METHOD 6 (optional): Apify's DexScreener scraper actor ──────────────
+ * Off by default — only runs if APIFY_API_TOKEN is set as a Cloudflare Pages
+ * environment variable/secret (Pages dashboard → Settings → Environment
+ * variables). This is a paid third-party service, billed per run on your own
+ * Apify account, so it's opt-in rather than always-on. Uses Apify's
+ * "run-sync-get-dataset-items" endpoint so a single fetch both runs the actor
+ * and returns its output — no separate poll-for-completion step needed. If
+ * the token isn't set, or the actor/run fails or times out, this silently
+ * contributes nothing rather than breaking discovery — the other five
+ * methods above already cover the common case.
+ */
+const APIFY_ACTOR_ID = 'GWfH8uzlNFz2fEjKj'
+async function fetchApifyTokens(env?: Env): Promise<string[]> {
+  const token = env?.APIFY_API_TOKEN
+  if (!token) return []
+  try {
+    const r = await fetch(`https://api.apify.com/v2/acts/${APIFY_ACTOR_ID}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chain: 'arc', mode: 'latestListings', maxItems: 200 }),
+      signal: AbortSignal.timeout(25_000),
+    })
+    if (!r.ok) return []
+    const items: any = await r.json()
+    // The actor's exact field names for chain/address aren't independently confirmed here
+    // (this environment can't reach api.apify.com to test against a real run), so this
+    // walks the response generically rather than assuming one specific shape.
+    const addrs = new Set<string>()
+    const collect = (node: any, depth = 0) => {
+      if (!node || depth > 4) return
+      if (Array.isArray(node)) { for (const x of node) collect(x, depth + 1); return }
+      if (typeof node !== 'object') return
+      const chainId = node.chain ?? node.chainId ?? ''
+      const addr = node.tokenAddress ?? node.address ?? node.baseToken?.address ?? ''
+      if (chainId && addr && isArc(String(chainId))) addrs.add(String(addr).toLowerCase())
+      for (const v of Object.values(node)) collect(v, depth + 1)
+    }
+    collect(items)
+    return [...addrs]
+  } catch { return [] }
+}
+
+async function fetchAllArcTokens(env?: Env): Promise<Token[]> {
   // Load existing D1 data first
   const existing = await dbLoad({} as any,'trending',2000).catch(()=>[])
   // Can't pass env here so we'll handle in the route handler
 
   // Run all discovery methods in parallel
-  const [onChain, boostAddrs, searchPairs, glowFunTokens, geckoTokens] = await Promise.allSettled([
+  const [onChain, boostAddrs, searchPairs, glowFunTokens, geckoTokens, apifyAddrs] = await Promise.allSettled([
     fetchNewPoolsFromChain(2000),     // Last ~2000 blocks (~70 min on Arc)
     discoverViaBoostsProfiles(),
     discoverViaSearches(),
     fetchGlowFunTokens(),             // every GlowFun-launched token, direct from the factories
     fetchGeckoTerminalPools(),        // GeckoTerminal's own Arc pool listings
+    fetchApifyTokens(env),            // optional: Apify DexScreener scraper, if APIFY_API_TOKEN is set
   ])
 
   const chainData  = onChain.status==='fulfilled'      ? onChain.value    : []
@@ -597,10 +657,11 @@ async function fetchAllArcTokens(): Promise<Token[]> {
   const fromSearch = searchPairs.status==='fulfilled'  ? searchPairs.value : []
   const glowTokens = glowFunTokens.status==='fulfilled' ? glowFunTokens.value : []
   const geckoOnly  = geckoTokens.status==='fulfilled'  ? geckoTokens.value : []
+  const apifyOnly  = apifyAddrs.status==='fulfilled'   ? apifyAddrs.value : []
 
   // Fetch DexScreener data for on-chain discovered pairs (pair address → rich data)
   const pairAddrs   = chainData.map(c=>c.poolAddr).filter(Boolean)
-  const tokenAddrs  = [...new Set([...chainData.map(c=>c.tokenAddr),...boosts])].filter(Boolean)
+  const tokenAddrs  = [...new Set([...chainData.map(c=>c.tokenAddr),...boosts,...apifyOnly])].filter(Boolean)
 
   const [pairsData, tokensData] = await Promise.allSettled([
     fetchDSByPairs(pairAddrs),    // exact pair lookup — most accurate
@@ -736,7 +797,7 @@ export const onRequest:PagesFunction<Env> = async(ctx)=>{
     tokens=JSON.parse(kvRaw)
     // Always refresh in background — catches new on-chain pools
     ctx.waitUntil((async()=>{
-      const fresh=await fetchAllArcTokens()
+      const fresh=await fetchAllArcTokens(env)
       if (!fresh.length) return
       const d1merged=await dbLoad(env,'trending',2000)
       const map=new Map(d1merged.map(t=>[t.address,t]))
@@ -756,7 +817,7 @@ export const onRequest:PagesFunction<Env> = async(ctx)=>{
     if (d1tokens.length>=5) {
       tokens=d1tokens
       ctx.waitUntil((async()=>{
-        const fresh=await fetchAllArcTokens()
+        const fresh=await fetchAllArcTokens(env)
         if (!fresh.length) return
         const map=new Map(d1tokens.map(t=>[t.address,t]))
         fresh.forEach(t=>{if(!map.has(t.address)||t.volUsd>=(map.get(t.address)?.volUsd??0))map.set(t.address,t)})
@@ -770,7 +831,7 @@ export const onRequest:PagesFunction<Env> = async(ctx)=>{
       })().catch(()=>{}))
     } else {
       // First ever load
-      const fresh=await fetchAllArcTokens()
+      const fresh=await fetchAllArcTokens(env)
       tokens=sortTokens(fresh,tab)
       ctx.waitUntil(Promise.allSettled([
         dbSave(fresh,env),
