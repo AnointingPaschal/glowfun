@@ -14,7 +14,7 @@ import { useIsContractWallet } from '@/hooks/useWalletKind'
 import { ConfirmActionModal } from '@/components/tools/ConfirmActionModal'
 import { DEAD, useTokenTools } from '@/hooks/useTokenTools'
 import ImageUpload from '@/components/ImageUpload'
-import { parseTokens } from '@/utils/format'
+import { parseTokens, tokensToInputStr } from '@/utils/format'
 import { referralLink } from '@/utils/referral'
 
 type Info = NonNullable<ReturnType<typeof useTokenTools>['info']>
@@ -85,7 +85,7 @@ export function BurnPanel({ token, info, wallet, refetch }: PanelProps) {
       ? { address: token, abi: GLOW_TOKEN_ABI, functionName: 'burn', args: [amount], chainId: CHAIN_ID }
       : { address: token, abi: GLOW_TOKEN_ABI, functionName: 'transfer', args: [DEAD, amount], chainId: CHAIN_ID },
     info.burnable ? `Burned ${amt} ${info.symbol}` : `Sent ${amt} ${info.symbol} to the dead address`)
-  const pick = (pct: number) => setAmt((Number((info.balance * BigInt(pct)) / 100n) / 1e18).toString())
+  const pick = (pct: number) => setAmt(tokensToInputStr((info.balance * BigInt(pct)) / 100n))
   const symbol = info.symbol || 'TOKEN'
   return (
     <ToolShell icon={Flame} title="Token burner" badge={info.burnable ? 'Burnable' : 'Dead-address burn'} tone="#ef4444">

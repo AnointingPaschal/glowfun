@@ -45,12 +45,17 @@ export function ConfirmActionModal({
   return (
     <AnimatePresence>
       {open && (
-        <>
-          <motion.div key="backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70]" style={{ background: 'rgba(0,0,0,0.65)' }} onClick={busy ? undefined : onClose} />
+        // A single fixed, flex-centered overlay (not left/top % + transform) so this
+        // stays centered even inside embedded/scaled contexts (e.g. the in-app IDE
+        // preview) and when a mobile keyboard resizes the visual viewport. The card
+        // itself just sits in normal flow inside the flex box — no position tricks.
+        <motion.div key="backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 overflow-y-auto"
+          style={{ background: 'rgba(0,0,0,0.65)' }} onClick={busy ? undefined : onClose}>
           <motion.div key="modal" role="dialog" aria-modal="true" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 12, scale: 0.98 }}
             transition={{ type: 'spring', damping: 28, stiffness: 340 }}
-            className="fixed left-1/2 top-1/2 z-[71] w-[min(92vw,420px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl p-5"
+            onClick={e => e.stopPropagation()}
+            className="w-full max-w-[420px] my-auto rounded-2xl p-5 max-h-[calc(100vh-2rem)] overflow-y-auto"
             style={{ background: 'var(--bg)', border: `1px solid ${tone}40`, boxShadow: `0 24px 60px rgba(0,0,0,0.5), 0 0 0 1px ${tone}20` }}>
             <div className="flex items-start gap-3 mb-3">
               <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `${tone}18` }}><Icon size={17} style={{ color: tone }} /></div>
@@ -87,7 +92,7 @@ export function ConfirmActionModal({
             <label className="block text-[10px] font-bold uppercase tracking-wide mb-1.5" style={{ color: 'var(--text2)' }}>
               Type <span style={{ color: tone }}>{phrase}</span> to confirm
             </label>
-            <input autoFocus value={typed} onChange={e => setTyped(e.target.value)} placeholder={phrase}
+            <input value={typed} onChange={e => setTyped(e.target.value)} placeholder={phrase}
               className="w-full px-3 py-2.5 rounded-xl text-sm outline-none font-mono" style={{ background: 'var(--surface2)', border: `1px solid ${match ? tone : 'var(--border2)'}`, color: 'var(--text1)' }} />
 
             <div className="flex gap-2 mt-4">
@@ -98,7 +103,7 @@ export function ConfirmActionModal({
               </button>
             </div>
           </motion.div>
-        </>
+        </motion.div>
       )}
     </AnimatePresence>
   )

@@ -134,6 +134,20 @@ export const parseTokens = (val: string): bigint => {
   return whole * 10n ** 18n + BigInt(decimal)
 }
 
+/**
+ * Exact bigint -> decimal-string conversion for pre-filling an amount input
+ * (e.g. a "MAX" button). Unlike `Number(raw) / 1e18`, this never introduces
+ * floating-point noise (no more "124999972.966982" for a round balance) —
+ * it's pure integer math, trimmed to a few decimals for readability.
+ */
+export const tokensToInputStr = (raw: bigint, maxDecimals = 6): string => {
+  if (raw <= 0n) return '0'
+  const whole = raw / 10n ** 18n
+  let frac = (raw % 10n ** 18n).toString().padStart(18, '0').slice(0, maxDecimals)
+  frac = frac.replace(/0+$/, '')
+  return frac ? `${whole}.${frac}` : whole.toString()
+}
+
 export const timeAgo = (ts: number | bigint | undefined): string => {
   if (!ts) return 'recently'
   const secs = Math.floor(Date.now() / 1000) - Number(ts)
