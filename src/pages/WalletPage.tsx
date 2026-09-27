@@ -7,13 +7,22 @@ import { QRCodeSVG } from 'qrcode.react'
 import { toast } from 'sonner'
 import {
   Wallet, Shield, ExternalLink, Copy, Check, AlertTriangle,
-  Loader2, Send, ArrowDownLeft, Activity, BarChart3, Coins,
-  TrendingUp, DollarSign, RefreshCw, Eye, EyeOff, PieChart,
+  Loader2, Send, ArrowDownLeft, Activity, BarChart3,
+  RefreshCw, Eye, EyeOff, PieChart,
 } from 'lucide-react'
 import { formatUsdc, formatAddress } from '@/utils/format'
 import { useHeldTokens } from '@/hooks/usePortfolio'
 import { PortfolioTokenRow } from '@/components/wallet/PortfolioTokenRow'
-import { USDC_ADDRESS, CHAIN_ID, EXPLORER_BASE } from '@/constants'
+import { AssetLogo } from '@/components/wallet/AssetLogo'
+import { USDC_ADDRESS, EURC_ADDRESS, USYC_ADDRESS, CIRBTC_ADDRESS, CHAIN_ID, EXPLORER_BASE } from '@/constants'
+
+/** Format a raw balance for a non-USDC Circle asset — arbitrary decimals, no $ assumption. */
+const fmtAsset = (raw: bigint | undefined, decimals: number): string => {
+  const n = Number(raw ?? 0n) / 10 ** decimals
+  if (n === 0) return '0'
+  if (n >= 1000) return n.toLocaleString('en', { maximumFractionDigits: 2 })
+  return n.toFixed(decimals >= 8 ? 6 : 4).replace(/\.?0+$/, '') || '0'
+}
 
 type WTab = 'portfolio'|'overview'|'send'|'receive'|'activity'
 
@@ -39,6 +48,16 @@ export function WalletPage() {
   })
   const usdcBal = (usdcRaw as bigint)??0n
   const usdcUsd = Number(usdcBal)/1e6
+
+  // Other Circle-issued assets on Arc. Shown only when actually held (unlike USDC, these
+  // aren't the platform's settlement asset) — no live FX/BTC price feed here, so their
+  // balances are shown in their own unit rather than folded into the USD total below.
+  const { data: eurcRaw }   = useReadContract({ address: EURC_ADDRESS,   abi: erc20Abi, functionName: 'balanceOf', args: evmAddr?[evmAddr]:undefined, chainId: CHAIN_ID as any, query:{ enabled:!!evmAddr, refetchInterval:15000 } })
+  const { data: usycRaw }   = useReadContract({ address: USYC_ADDRESS,   abi: erc20Abi, functionName: 'balanceOf', args: evmAddr?[evmAddr]:undefined, chainId: CHAIN_ID as any, query:{ enabled:!!evmAddr, refetchInterval:15000 } })
+  const { data: cirbtcRaw } = useReadContract({ address: CIRBTC_ADDRESS, abi: erc20Abi, functionName: 'balanceOf', args: evmAddr?[evmAddr]:undefined, chainId: CHAIN_ID as any, query:{ enabled:!!evmAddr, refetchInterval:15000 } })
+  const eurcBal   = (eurcRaw as bigint)   ?? 0n
+  const usycBal   = (usycRaw as bigint)   ?? 0n
+  const cirbtcBal = (cirbtcRaw as bigint) ?? 0n
 
   // All platform-launched tokens this wallet actually holds (balance > 0), across every
   // GlowFun factory version — not just a count, real balances + logos + live USD value.
@@ -85,15 +104,6 @@ export function WalletPage() {
 
       {/* ── Left column: hero card ─────────────────────────── */}
       <div className="space-y-4">
-        <div className="h-1 w-14 rounded-full" style={{ background:'linear-gradient(90deg,#6366f1,#8b5cf6)' }}/>
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold" style={{ fontFamily:'Space Grotesk,sans-serif', color:'var(--text1)' }}>Wallet</h1>
-            <p className="text-xs" style={{ color:'var(--text2)' }}>Arc Mainnet</p>
-          </div>
-          <ConnectKitButton/>
-        </div>
-
         {/* Balance hero */}
         <div className="rounded-2xl p-5" style={{ background:'linear-gradient(135deg,#6366f1,#8b5cf6)', boxShadow:'0 8px 24px rgba(99,102,241,0.3)' }}>
           <div className="flex items-center justify-between mb-3">
@@ -109,39 +119,20 @@ export function WalletPage() {
             </div>
           )}
           <div className="text-white/60 text-xs mb-5 font-mono">{formatAddress(evmAddr??'')}</div>
-          {/* Quick actions */}
-          <div className="grid grid-cols-4 gap-2">
-            {([['portfolio','Portfolio',PieChart],['send','Send',Send],['receive','Receive',ArrowDownLeft],['activity','Activity',Activity]] as const).map(([t,label,Icon])=>(
-              <button key={t} onClick={()=>setTab(t)}
+          {/* Quick actions — the only tab switcher below xl; the sidebar tab nav takes over on xl+ */}
+          <div className="grid grid-cols-5 gap-1.5">
+            {TABS.map(({ id, label, icon: Icon }) => (
+              <button key={id} onClick={()=>setTab(id)}
                 className="flex flex-col items-center gap-1.5 py-2.5 rounded-xl transition-all text-white"
-                style={{ background:tab===t?'rgba(255,255,255,0.22)':'rgba(255,255,255,0.12)' }}>
-                <Icon size={16}/>
-                <span className="text-[9px] font-bold uppercase tracking-wide">{label}</span>
+                style={{ background:tab===id?'rgba(255,255,255,0.22)':'rgba(255,255,255,0.12)' }}>
+                <Icon size={15}/>
+                <span className="text-[8px] font-bold uppercase tracking-wide">{label}</span>
               </button>
             ))}
           </div>
         </div>
 
-        {/* Stats strip */}
-        <div className="grid grid-cols-3 gap-2.5">
-          {[
-            { label:'USDC',     value:hideBalance?'••••':formatUsdc(usdcBal), icon:DollarSign, color:'var(--green)' },
-            { label:'Holdings', value:String(held.length),                     icon:Coins,      color:'#818cf8'      },
-            { label:'Network',  value:'Arc',                                   icon:TrendingUp, color:'var(--gold)'  },
-          ].map(({ label, value, icon: Icon, color }) => (
-            <div key={label} className="flex items-center gap-2.5 p-3 rounded-2xl" style={{ background:'var(--surface)', border:'1px solid var(--border)' }}>
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background:`color-mix(in srgb,${color} 15%,transparent)` }}>
-                <Icon size={14} style={{ color }}/>
-              </div>
-              <div>
-                <div className="text-[9px] font-semibold uppercase tracking-widest" style={{ color:'var(--text2)' }}>{label}</div>
-                <div className="text-sm font-bold" style={{ color:'var(--text1)', fontFamily:'Space Grotesk,sans-serif' }}>{value}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Desktop tab nav (hidden on mobile — tabs sit below on mobile) */}
+        {/* Desktop tab nav (hidden below xl — the hero's quick actions above cover it there) */}
         <div className="hidden xl:flex flex-col gap-1">
           {TABS.map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={()=>setTab(id)}
@@ -159,17 +150,6 @@ export function WalletPage() {
 
       {/* ── Right column: tab content ──────────────────────── */}
       <div className="mt-4 xl:mt-0">
-        {/* Mobile tab bar */}
-        <div className="flex gap-1 p-1 rounded-2xl mb-4 xl:hidden" style={{ background:'var(--surface)', border:'1px solid var(--border)' }}>
-          {TABS.map(({ id, label, icon: Icon }) => (
-            <button key={id} onClick={()=>setTab(id)}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all"
-              style={{ background:tab===id?'#6366f1':'transparent', color:tab===id?'#fff':'var(--text2)' }}>
-              <Icon size={12}/><span className="hidden sm:inline">{label}</span>
-            </button>
-          ))}
-        </div>
-
         <AnimatePresence mode="wait">
           <motion.div key={tab} initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0, y:-4 }} transition={{ duration:0.15 }}>
             <div className="rounded-2xl p-5" style={{ background:'var(--surface)', border:'1px solid var(--border)' }}>
@@ -217,7 +197,7 @@ export function WalletPage() {
 
                   {/* USDC — always shown, the platform's own settlement asset */}
                   <div className="flex items-center gap-3 p-3 rounded-xl mb-2" style={{ background:'var(--surface2)', border:'1px solid var(--border)' }}>
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-base flex-shrink-0" style={{ background:'rgba(59,130,246,0.12)' }}>💲</div>
+                    <AssetLogo symbol="USDC" size={40} />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-bold" style={{ color:'var(--text1)' }}>USDC</div>
                       <div className="text-xs" style={{ color:'var(--text2)' }}>USD Coin</div>
@@ -227,6 +207,46 @@ export function WalletPage() {
                       <div className="text-xs" style={{ color:'var(--text2)' }}>{hideBalance?'••••':`$${usdcUsd.toLocaleString('en',{maximumFractionDigits:2})}`}</div>
                     </div>
                   </div>
+
+                  {/* Other Circle-issued assets — shown only if actually held, since most
+                      wallets won't hold these. No live FX/BTC price feed here, so these show
+                      their own-unit balance rather than a guessed $ figure. */}
+                  {eurcBal > 0n && (
+                    <div className="flex items-center gap-3 p-3 rounded-xl mb-2" style={{ background:'var(--surface2)', border:'1px solid var(--border)' }}>
+                      <AssetLogo symbol="EURC" size={40} />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-bold" style={{ color:'var(--text1)' }}>EURC</div>
+                        <div className="text-xs" style={{ color:'var(--text2)' }}>Euro Coin</div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <div className="text-sm font-bold" style={{ color:'var(--text1)' }}>{hideBalance?'••••':`€${fmtAsset(eurcBal,6)}`}</div>
+                      </div>
+                    </div>
+                  )}
+                  {usycBal > 0n && (
+                    <div className="flex items-center gap-3 p-3 rounded-xl mb-2" style={{ background:'var(--surface2)', border:'1px solid var(--border)' }}>
+                      <AssetLogo symbol="USYC" size={40} />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-bold" style={{ color:'var(--text1)' }}>USYC</div>
+                        <div className="text-xs" style={{ color:'var(--text2)' }}>Tokenized money-market fund shares</div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <div className="text-sm font-bold" style={{ color:'var(--text1)' }}>{hideBalance?'••••':fmtAsset(usycBal,6)}</div>
+                      </div>
+                    </div>
+                  )}
+                  {cirbtcBal > 0n && (
+                    <div className="flex items-center gap-3 p-3 rounded-xl mb-2" style={{ background:'var(--surface2)', border:'1px solid var(--border)' }}>
+                      <AssetLogo symbol="cirBTC" size={40} />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-bold" style={{ color:'var(--text1)' }}>cirBTC</div>
+                        <div className="text-xs" style={{ color:'var(--text2)' }}>Circle wrapped Bitcoin</div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <div className="text-sm font-bold" style={{ color:'var(--text1)' }}>{hideBalance?'••••':fmtAsset(cirbtcBal,8)}</div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Every platform token actually held, with real logos + live value */}
                   {held.map((h) => (
@@ -238,7 +258,7 @@ export function WalletPage() {
                       {[0,1].map(i => <div key={i} className="h-[64px] rounded-xl shimmer" style={{ border:'1px solid var(--border)' }}/>)}
                     </div>
                   )}
-                  {!heldLoading && held.length===0 && (
+                  {!heldLoading && held.length===0 && eurcBal===0n && usycBal===0n && cirbtcBal===0n && (
                     <p className="text-xs text-center py-6" style={{ color:'var(--text3)' }}>No GlowFun tokens held yet — buy or launch one to see it here.</p>
                   )}
                 </div>
