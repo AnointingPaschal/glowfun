@@ -1,44 +1,55 @@
 import { useEffect, useState } from 'react'
-import { useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi'
 import { erc20Abi, parseUnits, formatUnits, zeroAddress } from 'viem'
 import { toast } from 'sonner'
-import { ArrowDown, Loader2, Repeat, Info } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { ChevronDown, ChevronUp, Loader2, Zap, AlertTriangle, Flame, TrendingDown, Info } from 'lucide-react'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
 import { FACTORY_V3_GETPOOL_ABI, QUOTER_V2_ABI, SWAP_ROUTER02_ABI, CANDIDATE_FEE_TIERS } from '@/abi/UniswapV3Periphery'
-import { FACTORY_ADDRESS, SWAP_ROUTER_ADDRESS, QUOTER_ADDRESS, USDC_ADDRESS, CHAIN_ID } from '@/constants'
+import { useConfig } from '@/context/ConfigContext'
+import { SWAP_ROUTER_ADDRESS, QUOTER_ADDRESS } from '@/constants'
+
+type Mode = 'buy' | 'sell'
+const SLIP_OPTIONS = [0.5, 1, 3, 5]
 
 /**
- * Buy/sell for ANY Arc token against USDC — the same real Uniswap V3 single-hop
- * plumbing as the wallet's SwapPanel (pool lookup via the live GlowFun-trusted
- * Uniswap V3 factory, QuoterV2 for a quote, SwapRouter02 to execute), generalized
- * to an arbitrary token address/decimals instead of the 4 fixed wallet assets.
- * Only goes live once SWAP_ROUTER_ADDRESS + QUOTER_ADDRESS are configured — see
- * constants.ts for why they're empty by default. Until then this still shows
- * real pool-lookup info instead of a dead form.
+ * Buy/sell for ANY Arc token against USDC — visually styled to match the
+ * GlowFun bonding-curve trade panel (TokenPage.tsx) exactly: same Buy/Sell
+ * toggle, balance/MAX row, quick-amount chips, slippage picker, and button
+ * states. Underneath it's real Uniswap V3 (pool lookup via the live
+ * GlowFun-trusted factory, QuoterV2 for a quote, SwapRouter02 to execute) —
+ * a plain AMM swap, since a token that isn't a GlowFun launch has no
+ * bonding curve to trade against. Goes live once SWAP_ROUTER_ADDRESS +
+ * QUOTER_ADDRESS are configured (see constants.ts); until then it still
+ * shows real pool-lookup status instead of a dead form.
  */
 export function GenericSwapPanel({
-  tokenAddress, tokenSymbol, tokenDecimals, tokenLogo, wallet,
+  tokenAddress, tokenSymbol, tokenDecimals, tokenLogo, wallet, walletChain,
 }: {
   tokenAddress: `0x${string}`
   tokenSymbol: string
   tokenDecimals: number
   tokenLogo?: string
   wallet?: `0x${string}`
+  walletChain?: number
 }) {
-  const [side, setSide] = useState<'buy' | 'sell'>('buy')
-  const [amtIn, setAmtIn] = useState('')
+  const { FACTORY_ADDRESS, USDC_ADDRESS, CHAIN_ID } = useConfig()
+  const { switchChain } = useSwitchChain()
+  const [mode, setMode] = useState<Mode>('buy')
+  const [amount, setAmount] = useState('')
+  const [slip, setSlip] = useState(1)
+  const [showSlip, setShowSlip] = useState(false)
 
-  const tokenIn  = side === 'buy' ? USDC_ADDRESS : tokenAddress
-  const tokenOut = side === 'buy' ? tokenAddress : USDC_ADDRESS
-  const decIn    = side === 'buy' ? 6 : tokenDecimals
-  const decOut   = side === 'buy' ? tokenDecimals : 6
-  const symIn    = side === 'buy' ? 'USDC' : tokenSymbol
-  const symOut   = side === 'buy' ? tokenSymbol : 'USDC'
+  const tokenIn  = mode === 'buy' ? USDC_ADDRESS : tokenAddress
+  const tokenOut = mode === 'buy' ? tokenAddress : USDC_ADDRESS
+  const decIn    = mode === 'buy' ? 6 : tokenDecimals
+  const decOut   = mode === 'buy' ? tokenDecimals : 6
 
   const configured = !!SWAP_ROUTER_ADDRESS && !!QUOTER_ADDRESS
+  const wrongNetwork = !!wallet && !!walletChain && walletChain !== CHAIN_ID
 
-  // Read the live Uniswap V3 factory address the same way the graduation flow does —
-  // one owner-mutable source of truth instead of a second hardcoded copy.
+  // Read the live Uniswap V3 factory address the same way graduation does — one
+  // owner-mutable source of truth instead of a second hardcoded copy.
   const { data: uniFactory } = useReadContract({
     address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'uniswapV3Factory', chainId: CHAIN_ID as any,
     query: { enabled: !!FACTORY_ADDRESS },
@@ -56,15 +67,16 @@ export function GenericSwapPanel({
   const fee = foundFee >= 0 ? CANDIDATE_FEE_TIERS[foundFee] : undefined
   const poolExists = fee !== undefined
 
-  const { data: balRaw, refetch: refetchBal } = useReadContract({
-    address: tokenIn, abi: erc20Abi, functionName: 'balanceOf',
-    args: wallet ? [wallet] : undefined, chainId: CHAIN_ID as any,
-    query: { enabled: !!wallet, refetchInterval: 15000 },
-  })
-  const balance = (balRaw as bigint) ?? 0n
+  const { data: usdcBalRaw }  = useReadContract({ address: USDC_ADDRESS, abi: erc20Abi, functionName: 'balanceOf', args: wallet ? [wallet] : undefined, chainId: CHAIN_ID as any, query: { enabled: !!wallet, refetchInterval: 15000 } })
+  const { data: tokBalRaw, refetch: refetchTokBal } = useReadContract({ address: tokenAddress, abi: erc20Abi, functionName: 'balanceOf', args: wallet ? [wallet] : undefined, chainId: CHAIN_ID as any, query: { enabled: !!wallet, refetchInterval: 15000 } })
+  const usdcBal = Number(usdcBalRaw ?? 0n) / 1e6
+  const tokBal  = Number(tokBalRaw ?? 0n) / 10 ** tokenDecimals
+  const balance = mode === 'buy' ? (usdcBalRaw as bigint ?? 0n) : (tokBalRaw as bigint ?? 0n)
 
   let amountInRaw = 0n
-  try { amountInRaw = amtIn ? parseUnits(amtIn, decIn) : 0n } catch { /* mid-typing */ }
+  try { amountInRaw = amount ? parseUnits(amount, decIn) : 0n } catch { /* mid-typing */ }
+  const amt = parseFloat(amount || '0')
+  const insufficient = (mode === 'buy' && amt > usdcBal + 1e-9) || (mode === 'sell' && amt > tokBal + 1e-9)
 
   const { data: quoteData, isFetching: quoting } = useReadContract({
     address: QUOTER_ADDRESS || undefined, abi: QUOTER_V2_ABI, functionName: 'quoteExactInputSingle',
@@ -86,7 +98,7 @@ export function GenericSwapPanel({
   useEffect(() => {
     if (!done) return
     if (needsApproval) refetchAllowance()
-    else { toast.success(side === 'buy' ? `Bought ${tokenSymbol}!` : `Sold ${tokenSymbol}!`); refetchBal(); setAmtIn('') }
+    else { toast.success(mode === 'buy' ? `Bought ${tokenSymbol}!` : `Sold ${tokenSymbol}!`); refetchTokBal(); setAmount('') }
   }, [done])
 
   const doApprove = () => {
@@ -96,85 +108,112 @@ export function GenericSwapPanel({
   }
   const doSwap = () => {
     if (!wallet || fee === undefined || !amountOut) return
-    const amountOutMinimum = (amountOut * 99n) / 100n // 1% slippage tolerance
+    const amountOutMinimum = (amountOut * BigInt(Math.round((100 - slip) * 100))) / 10000n
     writeContract({
       address: SWAP_ROUTER_ADDRESS as `0x${string}`, abi: SWAP_ROUTER02_ABI, functionName: 'exactInputSingle',
       args: [{ tokenIn, tokenOut, fee, recipient: wallet, amountIn: amountInRaw, amountOutMinimum, sqrtPriceLimitX96: 0n }],
       chainId: CHAIN_ID as any,
     } as any, { onError: (e: any) => toast.error(e.shortMessage ?? e.message) })
   }
+  const txBusy = writing || confirming
 
   return (
-    <div className="space-y-3">
-      {/* Buy / Sell toggle */}
-      <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
-        {(['buy', 'sell'] as const).map(s => (
-          <button key={s} onClick={() => { setSide(s); setAmtIn('') }}
-            className="flex-1 py-2 rounded-lg text-xs font-bold transition-all capitalize"
-            style={{ background: side === s ? (s === 'buy' ? 'var(--green)' : 'var(--red)') : 'transparent', color: side === s ? '#fff' : 'var(--text2)' }}>
-            {s} {tokenSymbol}
+    <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      {/* Buy/Sell toggle */}
+      <div className="flex p-1.5 gap-1" style={{ background: 'var(--surface2)' }}>
+        {(['buy', 'sell'] as Mode[]).map(m => (
+          <button key={m} onClick={() => { setMode(m); setAmount('') }} className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all capitalize"
+            style={{ background: mode === m ? (m === 'buy' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)') : 'transparent', color: mode === m ? (m === 'buy' ? 'var(--green)' : 'var(--red)') : 'var(--text2)', border: mode === m ? `1px solid ${m === 'buy' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}` : '1px solid transparent' }}>
+            {m === 'buy' ? '▲ Buy' : '▼ Sell'}
           </button>
         ))}
       </div>
 
-      {!configured && (
-        <div className="flex items-start gap-2 p-3.5 rounded-xl" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)' }}>
-          <Info size={14} className="flex-shrink-0 mt-0.5" style={{ color: 'var(--gold)' }} />
-          <div className="text-xs leading-relaxed" style={{ color: 'var(--text2)' }}>
-            <p className="font-bold mb-1" style={{ color: 'var(--text1)' }}>Trading isn't turned on yet</p>
-            <p>The pool lookup below is already wired to Arc's live Uniswap V3 factory — what's missing is Arc's SwapRouter02 and QuoterV2 addresses, which aren't publicly confirmed anywhere I could verify from here. Setting <code>VITE_SWAP_ROUTER_ADDRESS</code> and <code>VITE_QUOTER_ADDRESS</code> turns this on immediately.</p>
-            <p className="mt-1.5">
-              {factoryAddr
-                ? (poolExists ? `A ${(fee!/10000).toFixed(2)}% ${symIn}/${symOut} pool exists on Arc — ready to quote once the router/quoter are set.` : `No direct ${symIn}/${symOut} pool found on Arc's Uniswap V3 factory yet (checked ${CANDIDATE_FEE_TIERS.map(f=>`${f/10000}%`).join(', ')} tiers).`)
-                : 'Reading Arc’s Uniswap V3 factory address…'}
-            </p>
+      <div className="p-4 space-y-3">
+        {!configured && (
+          <div className="flex items-start gap-2 p-3 rounded-xl" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)' }}>
+            <Info size={13} className="flex-shrink-0 mt-0.5" style={{ color: 'var(--gold)' }} />
+            <div className="text-[10px] leading-relaxed" style={{ color: 'var(--text2)' }}>
+              <p className="font-bold mb-0.5" style={{ color: 'var(--text1)' }}>Trading isn't turned on yet</p>
+              <p>The pool lookup is already wired to Arc's live Uniswap V3 factory — Arc's SwapRouter02/QuoterV2 addresses just aren't publicly confirmed yet. {factoryAddr ? (poolExists ? `A ${(fee!/10000).toFixed(2)}% pool exists for this pair.` : `No direct pool found on Arc yet (checked ${CANDIDATE_FEE_TIERS.map(f=>`${f/10000}%`).join(', ')} tiers).`) : 'Reading Arc’s Uniswap V3 factory…'}</p>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      <div>
-        <div className="flex justify-between mb-1.5">
-          <label className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text2)' }}>You pay ({symIn})</label>
-          {wallet && <button className="text-[10px] font-semibold" style={{ color: '#818cf8' }} onClick={() => setAmtIn(formatUnits(balance, decIn))}>Balance: {Number(formatUnits(balance, decIn)).toLocaleString('en',{maximumFractionDigits:4})}</button>}
+        <div className="flex items-center justify-between text-[9px]" style={{ color: 'var(--text2)' }}>
+          <span>Balance: <span style={{ color: 'var(--text1)', fontWeight: 600 }}>{mode === 'buy' ? `${usdcBal.toFixed(2)} USDC` : `${tokBal.toLocaleString('en', { maximumFractionDigits: 4 })} ${tokenSymbol}`}</span></span>
+          <button onClick={() => setAmount(mode === 'buy' ? usdcBal.toFixed(6) : tokBal.toFixed(6))} className="px-1.5 py-0.5 rounded font-bold" style={{ background: 'rgba(99,102,241,0.12)', color: 'var(--accent)' }}>MAX</button>
         </div>
-        <div className="flex items-center gap-2 p-3 rounded-xl" style={{ background: 'var(--surface2)', border: '1px solid var(--border2)' }}>
-          {side === 'buy'
-            ? <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black text-white flex-shrink-0" style={{ background: 'linear-gradient(135deg,#2775CA,#1a5490)' }}>$</div>
-            : (tokenLogo ? <img src={tokenLogo} className="w-7 h-7 rounded-full object-cover flex-shrink-0" /> : <div className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-black text-white flex-shrink-0" style={{ background: '#6366f1' }}>{tokenSymbol.slice(0,2)}</div>)}
-          <input className="flex-1 bg-transparent outline-none text-sm" style={{ color: 'var(--text1)' }}
-            type="number" placeholder="0.00" value={amtIn} onChange={e => setAmtIn(e.target.value)} disabled={!configured} />
-          <span className="text-xs font-bold flex-shrink-0" style={{ color: 'var(--text2)' }}>{symIn}</span>
+
+        <div className="relative">
+          <input type="number" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} disabled={!configured}
+            className="w-full px-3 py-3 rounded-xl text-base font-bold outline-none"
+            style={{ background: 'var(--surface2)', border: `1px solid ${amount ? 'rgba(99,102,241,0.3)' : 'var(--border)'}`, color: 'var(--text1)', fontFamily: 'Space Grotesk,monospace' }} />
+          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold" style={{ color: 'var(--text2)' }}>{mode === 'buy' ? 'USDC' : tokenSymbol}</div>
         </div>
+
+        {mode === 'buy' && (
+          <div className="flex gap-1.5">
+            {['10', '50', '100', '500'].map(v => (
+              <button key={v} onClick={() => setAmount(v)} className="flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all"
+                style={{ background: amount === v ? 'rgba(99,102,241,0.15)' : 'var(--surface2)', color: amount === v ? 'var(--accent)' : 'var(--text2)', border: `1px solid ${amount === v ? 'rgba(99,102,241,0.3)' : 'var(--border)'}` }}>
+                ${v}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {configured && amountInRaw > 0n && (
+          <div className="px-3 py-2 rounded-xl text-xs" style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+            <div className="flex justify-between">
+              <span style={{ color: 'var(--text2)' }}>You receive</span>
+              <span className="font-bold" style={{ color: 'var(--text1)' }}>
+                {quoting ? 'Fetching quote…' : amountOut ? `~${Number(formatUnits(amountOut, decOut)).toLocaleString('en', { maximumFractionDigits: decOut >= 8 ? 6 : 4 })} ${mode === 'buy' ? tokenSymbol : 'USDC'}` : '—'}
+              </span>
+            </div>
+          </div>
+        )}
+        {configured && !poolExists && amount && (
+          <p className="text-[10px] px-1" style={{ color: 'var(--red)' }}>No direct {mode === 'buy' ? `USDC/${tokenSymbol}` : `${tokenSymbol}/USDC`} pool found on Arc yet.</p>
+        )}
+
+        <div>
+          <button onClick={() => setShowSlip(v => !v)} className="flex items-center gap-1 text-[9px]" style={{ color: 'var(--text2)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+            Slippage: <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{slip}%</span>{showSlip ? <ChevronUp size={9} /> : <ChevronDown size={9} />}
+          </button>
+          <AnimatePresence>
+            {showSlip && (
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                <div className="flex gap-1.5 mt-2">
+                  {SLIP_OPTIONS.map(s => (
+                    <button key={s} onClick={() => setSlip(s)} className="flex-1 py-1.5 rounded-lg text-[10px] font-bold"
+                      style={{ background: slip === s ? 'rgba(99,102,241,0.15)' : 'var(--surface2)', color: slip === s ? 'var(--accent)' : 'var(--text2)', border: `1px solid ${slip === s ? 'rgba(99,102,241,0.3)' : 'var(--border)'}` }}>
+                      {s}%
+                    </button>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {!wallet
+          ? <div className="text-center py-3 text-sm font-bold rounded-xl" style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text2)' }}>Connect wallet to trade</div>
+          : wrongNetwork
+          ? <button onClick={() => switchChain({ chainId: CHAIN_ID as any })} className="w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2" style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--gold)', border: '1px solid rgba(245,158,11,0.25)' }}>
+              <AlertTriangle size={13} />Switch to Arc Network
+            </button>
+          : needsApproval
+          ? <button onClick={doApprove} disabled={txBusy || insufficient || !configured} className="w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50" style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff' }}>
+              {txBusy ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}{insufficient ? `Insufficient ${mode === 'buy' ? 'USDC' : tokenSymbol}` : `Approve ${mode === 'buy' ? 'USDC' : tokenSymbol}`}
+            </button>
+          : <button onClick={doSwap} disabled={txBusy || !configured || !amount || amt <= 0 || insufficient || !poolExists || !amountOut}
+              className="w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50"
+              style={{ background: mode === 'buy' ? 'linear-gradient(135deg,rgba(34,197,94,0.9),rgba(34,197,94,1))' : 'linear-gradient(135deg,rgba(239,68,68,0.9),rgba(239,68,68,1))', color: '#fff', boxShadow: mode === 'buy' ? '0 4px 20px rgba(34,197,94,0.25)' : '0 4px 20px rgba(239,68,68,0.25)' }}>
+              {txBusy ? <><Loader2 size={13} className="animate-spin" />Processing…</> : mode === 'buy' ? <><Flame size={13} />Buy {tokenSymbol}</> : <><TrendingDown size={13} />Sell {tokenSymbol}</>}
+            </button>}
+        <p className="text-[8px] text-center" style={{ color: 'var(--text3)' }}>{slip}% slippage · single-hop Uniswap V3{fee !== undefined ? ` · ${fee/10000}% pool` : ''}</p>
       </div>
-
-      <div className="flex justify-center"><ArrowDown size={14} style={{ color: 'var(--text3)' }} /></div>
-
-      <div>
-        <label className="text-[10px] font-bold uppercase tracking-widest block mb-1.5" style={{ color: 'var(--text2)' }}>You receive (est., {symOut})</label>
-        <div className="flex items-center gap-2 p-3 rounded-xl" style={{ background: 'var(--surface2)', border: '1px solid var(--border2)' }}>
-          {side === 'sell'
-            ? <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black text-white flex-shrink-0" style={{ background: 'linear-gradient(135deg,#2775CA,#1a5490)' }}>$</div>
-            : (tokenLogo ? <img src={tokenLogo} className="w-7 h-7 rounded-full object-cover flex-shrink-0" /> : <div className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-black text-white flex-shrink-0" style={{ background: '#6366f1' }}>{tokenSymbol.slice(0,2)}</div>)}
-          <span className="flex-1 text-sm" style={{ color: amountOut ? 'var(--text1)' : 'var(--text3)' }}>
-            {quoting ? 'Fetching quote…' : amountOut ? formatUnits(amountOut, decOut) : '0.00'}
-          </span>
-          <span className="text-xs font-bold flex-shrink-0" style={{ color: 'var(--text2)' }}>{symOut}</span>
-        </div>
-      </div>
-
-      {configured && !poolExists && amtIn && (
-        <p className="text-xs px-1" style={{ color: 'var(--red)' }}>No direct {symIn}/{symOut} pool found on Arc yet.</p>
-      )}
-
-      <button
-        onClick={needsApproval ? doApprove : doSwap}
-        disabled={!configured || !amtIn || amountInRaw === 0n || !poolExists || writing || confirming || (!needsApproval && !amountOut)}
-        className="w-full py-3.5 rounded-2xl text-sm font-bold text-white flex items-center justify-center gap-2 disabled:opacity-40"
-        style={{ background: side === 'buy' ? 'linear-gradient(135deg,#22c55e,#16a34a)' : 'linear-gradient(135deg,#ef4444,#dc2626)' }}>
-        {writing || confirming ? <Loader2 size={15} className="animate-spin" /> : <Repeat size={15} />}
-        {writing || confirming ? 'Confirming…' : needsApproval ? `Approve ${symIn}` : side === 'buy' ? `Buy ${tokenSymbol}` : `Sell ${tokenSymbol}`}
-      </button>
-      <p className="text-[10px] text-center" style={{ color: 'var(--text3)' }}>1% slippage tolerance · single-hop Uniswap V3</p>
     </div>
   )
 }
