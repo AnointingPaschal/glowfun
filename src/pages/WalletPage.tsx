@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ConnectKitButton } from 'connectkit'
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
@@ -8,25 +8,26 @@ import { toast } from 'sonner'
 import {
   Wallet, Shield, ExternalLink, Copy, Check, AlertTriangle,
   Loader2, Send, ArrowDownLeft, Activity, BarChart3, Coins,
-  TrendingUp, DollarSign, RefreshCw, Eye, EyeOff,
+  TrendingUp, DollarSign, RefreshCw, Eye, EyeOff, PieChart,
 } from 'lucide-react'
 import { formatUsdc, formatAddress } from '@/utils/format'
-import { useTokenList } from '@/hooks/useTokenList'
-import { FACTORY_ADDRESS, USDC_ADDRESS, CHAIN_ID, EXPLORER_BASE } from '@/constants'
+import { useHeldTokens } from '@/hooks/usePortfolio'
+import { PortfolioTokenRow } from '@/components/wallet/PortfolioTokenRow'
+import { USDC_ADDRESS, CHAIN_ID, EXPLORER_BASE } from '@/constants'
 
-type WTab = 'overview'|'portfolio'|'send'|'receive'|'activity'
+type WTab = 'portfolio'|'overview'|'send'|'receive'|'activity'
 
 const TABS: { id: WTab; label: string; icon: any }[] = [
-  { id:'overview',   label:'Overview',   icon:BarChart3     },
-  { id:'portfolio',  label:'Portfolio',  icon:Coins         },
+  { id:'portfolio',  label:'Portfolio',  icon:PieChart      },
   { id:'send',       label:'Send',       icon:Send          },
   { id:'receive',    label:'Receive',    icon:ArrowDownLeft },
   { id:'activity',   label:'Activity',   icon:Activity      },
+  { id:'overview',   label:'Details',    icon:BarChart3     },
 ]
 
 export function WalletPage() {
   const { address: evmAddr, isConnected } = useAccount()
-  const [tab, setTab]         = useState<WTab>('overview')
+  const [tab, setTab]         = useState<WTab>('portfolio')
   const [hideBalance, setHide]= useState(false)
   const [toAddr, setTo]       = useState('')
   const [sendAmt, setSendAmt] = useState('')
@@ -39,7 +40,15 @@ export function WalletPage() {
   const usdcBal = (usdcRaw as bigint)??0n
   const usdcUsd = Number(usdcBal)/1e6
 
-  const { addresses: glowAddrs } = useTokenList()
+  // All platform-launched tokens this wallet actually holds (balance > 0), across every
+  // GlowFun factory version — not just a count, real balances + logos + live USD value.
+  const { held, isLoading: heldLoading, refetch: refetchHeld } = useHeldTokens()
+  const [tokenValues, setTokenValues] = useState<Record<string, number>>({})
+  const onRowValue = useCallback((address: string, usd: number) => {
+    setTokenValues((v) => (v[address.toLowerCase()] === usd ? v : { ...v, [address.toLowerCase()]: usd }))
+  }, [])
+  const tokensUsd = Object.values(tokenValues).reduce((a, b) => a + b, 0)
+  const totalUsd  = usdcUsd + tokensUsd
 
   const copy = (s: string) => { navigator.clipboard.writeText(s); setCopied(true); setTimeout(()=>setCopied(false),1500) }
 
@@ -92,12 +101,17 @@ export function WalletPage() {
             <button onClick={()=>setHide(v=>!v)} className="text-white/60">{hideBalance?<Eye size={16}/>:<EyeOff size={16}/>}</button>
           </div>
           <div className="text-4xl font-bold text-white mb-1" style={{ fontFamily:'Space Grotesk,sans-serif', letterSpacing:'-0.02em' }}>
-            {hideBalance?'••••••':`$${usdcUsd.toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2})}`}
+            {hideBalance?'••••••':`$${totalUsd.toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2})}`}
           </div>
+          {!hideBalance && held.length > 0 && (
+            <div className="text-white/50 text-[11px] mb-1">
+              {formatUsdc(usdcBal)} USDC · ${tokensUsd.toLocaleString('en',{maximumFractionDigits:2})} in {held.length} token{held.length===1?'':'s'}
+            </div>
+          )}
           <div className="text-white/60 text-xs mb-5 font-mono">{formatAddress(evmAddr??'')}</div>
           {/* Quick actions */}
           <div className="grid grid-cols-4 gap-2">
-            {([['send','Send',Send],['receive','Receive',ArrowDownLeft],['portfolio','Portfolio',BarChart3],['activity','Activity',Activity]] as const).map(([t,label,Icon])=>(
+            {([['portfolio','Portfolio',PieChart],['send','Send',Send],['receive','Receive',ArrowDownLeft],['activity','Activity',Activity]] as const).map(([t,label,Icon])=>(
               <button key={t} onClick={()=>setTab(t)}
                 className="flex flex-col items-center gap-1.5 py-2.5 rounded-xl transition-all text-white"
                 style={{ background:tab===t?'rgba(255,255,255,0.22)':'rgba(255,255,255,0.12)' }}>
@@ -111,9 +125,9 @@ export function WalletPage() {
         {/* Stats strip */}
         <div className="grid grid-cols-3 gap-2.5">
           {[
-            { label:'USDC',    value:hideBalance?'••••':formatUsdc(usdcBal), icon:DollarSign, color:'var(--green)' },
-            { label:'Tokens',  value:String(glowAddrs.length),               icon:Coins,      color:'#818cf8'      },
-            { label:'Network', value:'Arc',                                   icon:TrendingUp, color:'var(--gold)'  },
+            { label:'USDC',     value:hideBalance?'••••':formatUsdc(usdcBal), icon:DollarSign, color:'var(--green)' },
+            { label:'Holdings', value:String(held.length),                     icon:Coins,      color:'#818cf8'      },
+            { label:'Network',  value:'Arc',                                   icon:TrendingUp, color:'var(--gold)'  },
           ].map(({ label, value, icon: Icon, color }) => (
             <div key={label} className="flex items-center gap-2.5 p-3 rounded-2xl" style={{ background:'var(--surface)', border:'1px solid var(--border)' }}>
               <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background:`color-mix(in srgb,${color} 15%,transparent)` }}>
@@ -194,21 +208,39 @@ export function WalletPage() {
               {tab==='portfolio' && (
                 <div>
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-bold" style={{ color:'var(--text1)' }}>Holdings</h3>
-                    <button onClick={()=>refetchUsdc()} style={{ color:'var(--text2)' }}><RefreshCw size={13}/></button>
+                    <div>
+                      <h3 className="text-sm font-bold" style={{ color:'var(--text1)' }}>Holdings</h3>
+                      <p className="text-[10px]" style={{ color:'var(--text3)' }}>USDC + every GlowFun token you hold, across every launch</p>
+                    </div>
+                    <button onClick={()=>{ refetchUsdc(); refetchHeld() }} style={{ color:'var(--text2)' }}><RefreshCw size={13}/></button>
                   </div>
+
+                  {/* USDC — always shown, the platform's own settlement asset */}
                   <div className="flex items-center gap-3 p-3 rounded-xl mb-2" style={{ background:'var(--surface2)', border:'1px solid var(--border)' }}>
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-base" style={{ background:'rgba(59,130,246,0.12)' }}>💲</div>
-                    <div className="flex-1">
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-base flex-shrink-0" style={{ background:'rgba(59,130,246,0.12)' }}>💲</div>
+                    <div className="flex-1 min-w-0">
                       <div className="text-sm font-bold" style={{ color:'var(--text1)' }}>USDC</div>
                       <div className="text-xs" style={{ color:'var(--text2)' }}>USD Coin</div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex-shrink-0">
                       <div className="text-sm font-bold" style={{ color:'var(--text1)' }}>{hideBalance?'••••':formatUsdc(usdcBal)}</div>
-                      <div className="text-xs" style={{ color:'var(--text2)' }}>Arc Mainnet</div>
+                      <div className="text-xs" style={{ color:'var(--text2)' }}>{hideBalance?'••••':`$${usdcUsd.toLocaleString('en',{maximumFractionDigits:2})}`}</div>
                     </div>
                   </div>
-                  {glowAddrs.length===0&&<p className="text-xs text-center py-4" style={{ color:'var(--text3)' }}>No GlowFun tokens held yet</p>}
+
+                  {/* Every platform token actually held, with real logos + live value */}
+                  {held.map((h) => (
+                    <PortfolioTokenRow key={h.address} address={h.address} balance={h.balance} hideBalance={hideBalance} onValue={onRowValue} />
+                  ))}
+
+                  {heldLoading && held.length===0 && (
+                    <div className="space-y-2 mt-1">
+                      {[0,1].map(i => <div key={i} className="h-[64px] rounded-xl shimmer" style={{ border:'1px solid var(--border)' }}/>)}
+                    </div>
+                  )}
+                  {!heldLoading && held.length===0 && (
+                    <p className="text-xs text-center py-6" style={{ color:'var(--text3)' }}>No GlowFun tokens held yet — buy or launch one to see it here.</p>
+                  )}
                 </div>
               )}
 
