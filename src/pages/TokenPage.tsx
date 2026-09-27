@@ -163,7 +163,7 @@ function OrderBook({ price, state }: { price:number; state:any }) {
 }
 
 /* ── Trades tab (real on-chain TokensBought / TokensSold events) ───── */
-function TradesTab({ trades, explorer, partial, loading }: { trades:Trade[]; explorer:string; partial:boolean; loading:boolean }) {
+function TradesTab({ trades, explorer, partial, loading, error }: { trades:Trade[]; explorer:string; partial:boolean; loading:boolean; error?:string|null }) {
   const [rows, setRows] = useState(25)
   const list = useMemo(() => [...trades].reverse(), [trades])
   if (loading && !trades.length) return <div className="flex items-center justify-center py-10 gap-2" style={{color:'var(--text2)'}}><Loader2 size={14} className="animate-spin"/><span className="text-xs">Loading trades from chain…</span></div>
@@ -173,7 +173,7 @@ function TradesTab({ trades, explorer, partial, loading }: { trades:Trade[]; exp
         <span className="w-14">Type</span><span className="flex-1 text-right">USDC</span><span className="flex-1 text-right hidden sm:block">Tokens</span><span className="flex-1 text-right">Price</span><span className="w-16 text-right">Wallet</span><span className="w-12 text-right">Age</span>
       </div>
       <div className="space-y-1">
-        {list.length===0 ? <div className="py-8 text-center text-xs" style={{color:'var(--text2)'}}>No trades yet — be the first to buy</div>
+        {list.length===0 ? <div className="py-8 text-center text-xs" style={{color:error?'var(--red)':'var(--text2)'}}>{error ? `Couldn't load trades — ${error}` : 'No trades yet — be the first to buy'}</div>
           : list.slice(0, rows).map(t=>(
           <a key={`${t.tx}-${t.idx}`} href={`${explorer}/tx/${t.tx}`} target="_blank" rel="noopener" className="flex items-center text-[10px] px-3 py-2 rounded-lg no-underline transition-colors hover:brightness-125" style={{background:'var(--surface3)'}}>
             <div className="w-14 flex items-center gap-1">
@@ -286,7 +286,8 @@ function TokenomicsCard({ curve }: { curve:CurveState|null|undefined }) {
   const R = 46, C = 2*Math.PI*R
   let off = 0
   const fmtTok = (n:number) => { const v=n/1e18; return v>=1e9?`${(v/1e9).toFixed(2)}B`:v>=1e6?`${(v/1e6).toFixed(1)}M`:`${(v/1e3).toFixed(0)}K` }
-  const lockText = curve.creatorTokens === 0n ? null
+  // Lock info only exists in the two layouts we can decode; for anything else, say nothing rather than guess
+  const lockText = (curve.creatorTokens === 0n || (curve.layout !== 14 && curve.layout !== 15)) ? null
     : curve.creatorLocked ? (curve.lockExpiry > 0 ? `Locked until ${new Date(curve.lockExpiry*1000).toLocaleDateString()}` : 'Locked (vesting)')
     : 'Not locked'
   return (
@@ -730,7 +731,10 @@ export function TokenPage() {
   const [chartLoad, setCL]    = useState(false)
   const tradeRef              = useRef<HTMLDivElement>(null)
 
-  const priceUsd  = calcPrice(token)
+  const { data: quotedPriceRaw } = useReadContract({ address:FACTORY_ADDRESS, abi:FACTORY_ABI, functionName:'getTokenPrice', args:tokenAddr?[tokenAddr as `0x${string}`]:undefined, chainId:CHAIN_ID as any, query:{enabled:!!FACTORY_ADDRESS&&!!tokenAddr, refetchInterval:15_000} })
+  // Price: DexScreener/market if listed, else the curve's virtual reserves, else the factory's own getTokenPrice
+  // (uR*1e30/tR, i.e. USD*1e18) so a token-state read problem can never show "$0".
+  const priceUsd  = calcPrice(token) || (quotedPriceRaw ? Number(quotedPriceRaw as bigint) / 1e18 : 0)
   const change24h = dsData?.priceChange?.h24 ?? token?.market?.change24h
   const change1h  = dsData?.priceChange?.h1  ?? token?.market?.change1h
   const change6h  = dsData?.priceChange?.h6  ?? token?.market?.change6h
@@ -750,8 +754,8 @@ export function TokenPage() {
   const raisedUsd = gapArr ? Number(gapArr[2])/1e6 : (token ? Number(token.state?.realUsdcRaised??0n)/1e6 : 0)
   const isDesktop = useIsDesktop()
   // On-chain bonding-curve state (layout-adaptive), trade history and chart data
-  const { data: curve } = useCurveState(tokenAddr)
-  const { trades, partial: tradesPartial, isLoading: tradesLoading } = useTokenTrades(tokenAddr, (token?.createdAt || curve?.createdAt) || undefined)
+  const { data: curve, diag: curveDiag } = useCurveState(tokenAddr)
+  const { trades, partial: tradesPartial, isLoading: tradesLoading, error: tradesError, diag: tradesDiag } = useTokenTrades(tokenAddr, (token?.createdAt || curve?.createdAt) || undefined)
   const { data: v0Usdc } = useReadContract({ address:FACTORY_ADDRESS, abi:FACTORY_ABI, functionName:'initialVirtualUsdcReserves',  chainId:CHAIN_ID as any, query:{enabled:!!FACTORY_ADDRESS} })
   const { data: v0Tok  } = useReadContract({ address:FACTORY_ADDRESS, abi:FACTORY_ABI, functionName:'initialVirtualTokenReserves', chainId:CHAIN_ID as any, query:{enabled:!!FACTORY_ADDRESS} })
   const startPrice = (v0Usdc && v0Tok) ? Number(v0Usdc)*1e12/Number(v0Tok as bigint) : undefined
@@ -1067,18 +1071,22 @@ export function TokenPage() {
               </div>
               <CurveChart
                 candles={graduated && ohlcv.length>=5 ? ohlcv.map((d:any)=>({time:d.time,open:d.open,high:d.high,low:d.low,close:d.close,volume:d.volume??0})) : curveCandles}
-                kind={chartKind} height={isDesktop?440:300} loading={(tradesLoading && !trades.length) || chartLoad}/>
-              {tradesPartial && <p className="text-[9px] mt-1 text-center" style={{color:'var(--text3)'}}>Recent history only — older trades are beyond the scan window.</p>}
+                kind={chartKind} height={isDesktop?440:300} loading={(tradesLoading && !trades.length) || chartLoad}
+                emptyText={tradesError ? `Couldn't load trade history — ${tradesError}` : undefined}/>
+              {tradesError
+                ? <p className="text-[9px] mt-1 text-center" style={{color:'var(--red)'}}>Trade history is temporarily unavailable from the RPC and will retry automatically.</p>
+                : tradesPartial && <p className="text-[9px] mt-1 text-center" style={{color:'var(--text3)'}}>Recent history only — older trades are beyond the scan window.</p>}
             </div>
           )}
           {tab==='orderbook' && <OrderBook price={priceUsd} state={token.state}/>}
           {tab==='holders'   && <HoldersTab tokenAddr={tokenAddr!} creator={token.creator as string} explorer={EXPLORER_BASE}/>}
-          {tab==='txns'      && <TradesTab trades={trades} explorer={EXPLORER_BASE} partial={tradesPartial} loading={tradesLoading}/>}
+          {tab==='txns'      && <TradesTab trades={trades} explorer={EXPLORER_BASE} partial={tradesPartial} loading={tradesLoading} error={tradesError}/>}
           {tab==='comments'  && <Comments tokenAddress={tokenAddr!}/>}
         </div>
       </div>
 
       {curve && <div className="order-[75] lg:order-4"><TokenomicsCard curve={curve}/></div>}
+      {!curve && curveDiag && <div className="order-[75] lg:order-4 rounded-xl px-4 py-3 text-[10px]" style={{background:'rgba(245,158,11,0.06)',border:'1px solid rgba(245,158,11,0.18)',color:'var(--gold)'}}>Curve details unavailable: {curveDiag.error ?? 'unknown error'}</div>}
 
       {/* ── Contract details ─────────────────────────────────────── */}
       <div className="order-[80] lg:order-6 rounded-2xl overflow-hidden" style={{background:'var(--surface)',border:'1px solid var(--border)'}}>

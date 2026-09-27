@@ -1,4 +1,4 @@
-import { createConfig, http } from 'wagmi'
+import { createConfig, http, fallback } from 'wagmi'
 import { arc } from 'viem/chains'
 import { getDefaultConfig } from 'connectkit'
 
@@ -8,7 +8,12 @@ export const config = createConfig(
   getDefaultConfig({
     chains: [arc],
     transports: {
-      [arc.id]: http('https://rpc.mainnet.arc.io'),
+      // Primary RPC first; if it errors, rate-limits or rejects a wide eth_getLogs range, viem retries the
+      // next public endpoint from the chain definition instead of failing the page.
+      [arc.id]: fallback(
+        ['https://rpc.mainnet.arc.io', ...arc.rpcUrls.default.http.filter(u => u !== 'https://rpc.mainnet.arc.io')].map(u => http(u)),
+        { retryCount: 1 },
+      ),
     },
     walletConnectProjectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID ?? '',
     appName: 'GlowFun',
