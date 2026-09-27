@@ -14,11 +14,11 @@ export function SecurityPage() {
       </>}
     >
       <PerTokenTool>
-        {({ token, info, refetch }) => (
+        {({ token, info, wallet, refetch }) => (
           <div className="space-y-4">
             <MultisigPanel token={token} info={info} curve={null} refetch={refetch} />
             {(info.pausable || info.hasBlacklist) ? (
-              <ControlsPanel token={token} info={info} curve={null} refetch={refetch} />
+              <ControlsPanel token={token} info={info} curve={null} wallet={wallet} refetch={refetch} />
             ) : (
               <Note>${info.symbol || 'This token'} wasn't launched with pause or blacklist controls — there's nothing to configure here beyond the wallet-security check above.</Note>
             )}

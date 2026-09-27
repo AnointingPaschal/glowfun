@@ -11,6 +11,7 @@ import { useConfig } from '@/context/ConfigContext'
 import { useTx } from '@/hooks/useTx'
 import { useFactoryConfig } from '@/hooks/useFactoryConfig'
 import { useIsContractWallet } from '@/hooks/useWalletKind'
+import { ConfirmActionModal } from '@/components/tools/ConfirmActionModal'
 import { DEAD, useTokenTools } from '@/hooks/useTokenTools'
 import ImageUpload from '@/components/ImageUpload'
 import { parseTokens } from '@/utils/format'
@@ -70,26 +71,13 @@ export const Row = ({ k, v }: { k: string; v: ReactNode }) => (
   </div>
 )
 
-/**
- * Extra friction on a high-impact, single-key action: the caller must type an
- * exact phrase before the button unlocks. This is NOT cryptographic multisig
- * (nothing here requires a second signer) — it just makes a single misclick
- * or a compromised session harder to turn into an irreversible action. Real
- * multi-party protection means the creator wallet itself is a multisig (see
- * the Security tool page).
- */
-function TypeToConfirm({ phrase, value, onChange }: { phrase: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <input className={inputCls} style={inputSt} placeholder={`Type ${phrase} to confirm`} value={value} onChange={e => onChange(e.target.value)} />
-  )
-}
 
 /* ── Burn (any holder) ─────────────────────────────────────────────────── */
-export function BurnPanel({ token, info, refetch }: PanelProps) {
+export function BurnPanel({ token, info, wallet, refetch }: PanelProps) {
   const { CHAIN_ID } = useConfig()
   const [amt, setAmt] = useState('')
-  const [ok, setOk] = useState(false)
-  const { send, busy } = useTx(() => { setAmt(''); setOk(false); void refetch() })
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const { send, busy } = useTx(() => { setAmt(''); setConfirmOpen(false); void refetch() })
   const amount = parseTokens(amt)
   const invalid = amount <= 0n || amount > info.balance
   const go = () => send(
@@ -98,6 +86,7 @@ export function BurnPanel({ token, info, refetch }: PanelProps) {
       : { address: token, abi: GLOW_TOKEN_ABI, functionName: 'transfer', args: [DEAD, amount], chainId: CHAIN_ID },
     info.burnable ? `Burned ${amt} ${info.symbol}` : `Sent ${amt} ${info.symbol} to the dead address`)
   const pick = (pct: number) => setAmt((Number((info.balance * BigInt(pct)) / 100n) / 1e18).toString())
+  const symbol = info.symbol || 'TOKEN'
   return (
     <ToolShell icon={Flame} title="Token burner" badge={info.burnable ? 'Burnable' : 'Dead-address burn'} tone="#ef4444">
       <Row k="Your balance" v={`${fmtTokens(info.balance)} ${info.symbol}`} />
@@ -105,10 +94,16 @@ export function BurnPanel({ token, info, refetch }: PanelProps) {
       {info.burnable
         ? <Note>Burning permanently destroys tokens and <b>reduces total supply</b>.</Note>
         : <Note>This token isn't burnable on-chain, so tokens are sent to the dead address <code>0x…dEaD</code>: they're gone for good, but total supply stays the same.</Note>}
-      <input className={inputCls} style={inputSt} placeholder={`Amount of ${info.symbol || 'tokens'}`} inputMode="decimal" value={amt} onChange={e => setAmt(e.target.value)} />
+      <input className={inputCls} style={inputSt} placeholder={`Amount of ${symbol}`} inputMode="decimal" value={amt} onChange={e => setAmt(e.target.value)} />
       <div className="flex gap-1.5">{[25, 50, 100].map(p => <button key={p} onClick={() => pick(p)} className="flex-1 py-1.5 rounded-lg text-[10px] font-bold" style={{ background: 'var(--surface2)', color: 'var(--text2)', border: '1px solid var(--border)' }}>{p === 100 ? 'MAX' : `${p}%`}</button>)}</div>
-      <label className="flex items-center gap-2 text-[11px]" style={{ color: 'var(--text2)' }}><input type="checkbox" checked={ok} onChange={e => setOk(e.target.checked)} />I understand this can't be undone</label>
-      <Btn tone="danger" onClick={go} busy={busy} disabled={invalid || !ok}>{amount > info.balance ? 'Amount exceeds balance' : `Burn ${amt || ''} ${info.symbol}`}</Btn>
+      <Btn tone="danger" onClick={() => setConfirmOpen(true)} disabled={invalid}>{amount > info.balance ? 'Amount exceeds balance' : `Burn ${amt || ''} ${symbol}`}</Btn>
+      <ConfirmActionModal
+        open={confirmOpen} onClose={() => setConfirmOpen(false)} onConfirm={go} busy={busy} wallet={wallet}
+        tone="#ef4444" icon={Flame} title={`Burn ${symbol}`} phrase={`BURN ${symbol}`}
+        confirmLabel={`Burn ${amt || ''} ${symbol}`}
+        summary={<>You're about to {info.burnable ? 'permanently destroy' : 'permanently send to the dead address'} <b>{amt || '0'} {symbol}</b> from <b>{info.name || symbol}</b> ({token.slice(0, 6)}…{token.slice(-4)}).</>}
+        warning="There is no undo. No admin, including the creator, can reverse a burn or recover the tokens."
+      />
     </ToolShell>
   )
 }
@@ -118,13 +113,15 @@ export function MintPanel({ token, info, wallet, refetch }: PanelProps) {
   const { CHAIN_ID } = useConfig()
   const [to, setTo] = useState(wallet ?? '')
   const [amt, setAmt] = useState('')
-  const [confirm, setConfirm] = useState('')
-  const { send, busy } = useTx(() => { setAmt(''); setConfirm(''); void refetch() })
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const { send, busy } = useTx(() => { setAmt(''); setConfirmOpen(false); void refetch() })
   const amount = parseTokens(amt)
   const remaining = info.maxSupply > info.totalSupply ? info.maxSupply - info.totalSupply : 0n
   const newSupply = info.totalSupply + amount
   const dilutionPct = info.totalSupply > 0n && amount > 0n ? Number((amount * 10000n) / info.totalSupply) / 100 : 0
-  const invalid = !isAddr(to) || amount <= 0n || amount > remaining || confirm.trim().toUpperCase() !== 'MINT'
+  const invalid = !isAddr(to) || amount <= 0n || amount > remaining
+  const symbol = info.symbol || 'TOKEN'
+  const go = () => send({ address: token, abi: GLOW_TOKEN_ABI, functionName: 'mint', args: [to as `0x${string}`, amount], chainId: CHAIN_ID }, `Minted ${amt} ${symbol}`)
   return (
     <ToolShell icon={PlusCircle} title="Minter" badge="Creator" tone="#6366f1">
       <Row k="Total supply" v={fmtTokens(info.totalSupply)} />
@@ -132,14 +129,20 @@ export function MintPanel({ token, info, wallet, refetch }: PanelProps) {
       <Row k="Mintable remaining" v={fmtTokens(remaining)} />
       {remaining === 0n && <Note warn>The supply cap has been reached: no more tokens can be minted.</Note>}
       <input className={inputCls} style={inputSt} placeholder="Recipient address (0x…)" value={to} onChange={e => setTo(e.target.value.trim())} />
-      <input className={inputCls} style={inputSt} placeholder={`Amount of ${info.symbol || 'tokens'}`} inputMode="decimal" value={amt} onChange={e => setAmt(e.target.value)} />
+      <input className={inputCls} style={inputSt} placeholder={`Amount of ${symbol}`} inputMode="decimal" value={amt} onChange={e => setAmt(e.target.value)} />
       {amount > 0n && amount <= remaining && (
         <Note warn={dilutionPct > 5}>New supply would be <b>{fmtTokens(newSupply)}</b>, a <b>{dilutionPct.toFixed(2)}%</b> increase — every existing holder's share is diluted by that much.</Note>
       )}
-      <TypeToConfirm phrase="MINT" value={confirm} onChange={setConfirm} />
-      <Btn onClick={() => send({ address: token, abi: GLOW_TOKEN_ABI, functionName: 'mint', args: [to as `0x${string}`, amount], chainId: CHAIN_ID }, `Minted ${amt} ${info.symbol}`)} busy={busy} disabled={invalid}>
-        {amount > remaining ? 'Above the cap' : `Mint ${amt || ''} ${info.symbol}`}
+      <Btn onClick={() => setConfirmOpen(true)} disabled={invalid}>
+        {amount > remaining ? 'Above the cap' : `Mint ${amt || ''} ${symbol}`}
       </Btn>
+      <ConfirmActionModal
+        open={confirmOpen} onClose={() => setConfirmOpen(false)} onConfirm={go} busy={busy} wallet={wallet}
+        tone="#6366f1" icon={PlusCircle} title={`Mint ${symbol}`} phrase={`MINT ${symbol}`}
+        confirmLabel={`Mint ${amt || ''} ${symbol}`}
+        summary={<>You're about to mint <b>{amt || '0'} {symbol}</b> to <b>{to.slice(0, 6)}…{to.slice(-4)}</b>, a <b>{dilutionPct.toFixed(2)}%</b> increase to total supply.</>}
+        warning="Every existing holder is diluted by this amount. There's no on-chain notice sent to them — communicate it yourself if it's expected."
+      />
     </ToolShell>
   )
 }
@@ -275,34 +278,45 @@ export function LpPanel({ token, info, curve, wallet, refetch }: PanelProps) {
 }
 
 /* ── Pause & blacklist (tokens launched with those features) ─────────────── */
-export function ControlsPanel({ token, info, refetch }: PanelProps) {
+export function ControlsPanel({ token, info, wallet, refetch }: PanelProps) {
   const { CHAIN_ID } = useConfig()
-  const { send, busy } = useTx(() => void refetch())
+  const { send, busy } = useTx(() => { setPauseOpen(false); setBlOpen(false); void refetch() })
   const [who, setWho] = useState('')
-  const [pauseConfirm, setPauseConfirm] = useState('')
-  const [blConfirm, setBlConfirm] = useState('')
+  const [pauseOpen, setPauseOpen] = useState(false)
+  const [blOpen, setBlOpen] = useState(false)
   const valid = isAddr(who)
+  const symbol = info.symbol || 'TOKEN'
   const { data: isBl } = useReadContract({ address: token, abi: GLOW_TOKEN_ABI, functionName: 'blacklisted', args: [valid ? (who as `0x${string}`) : (ZERO as `0x${string}`)], chainId: CHAIN_ID as any, query: { enabled: valid && info.hasBlacklist } })
+  const doPause = () => send({ address: token, abi: GLOW_TOKEN_ABI, functionName: 'setTokenPaused', args: [!info.paused], chainId: CHAIN_ID }, info.paused ? 'Token resumed' : 'Token paused')
+  const doBlacklist = () => send({ address: token, abi: GLOW_TOKEN_ABI, functionName: 'setBlacklisted', args: [who, true], chainId: CHAIN_ID }, 'Wallet blacklisted')
   return (
     <ToolShell icon={ShieldAlert} title="Compliance controls" badge="Creator" tone="#f59e0b">
       {info.pausable && (<>
         <Row k="Trading status" v={info.paused ? 'Paused' : 'Active'} />
         {!info.paused && <Note warn>Pausing stops every holder from transferring or trading this token, instantly and for everyone, until you resume it.</Note>}
-        {!info.paused && <TypeToConfirm phrase="PAUSE" value={pauseConfirm} onChange={setPauseConfirm} />}
-        <Btn tone={info.paused ? 'primary' : 'danger'} busy={busy} disabled={!info.paused && pauseConfirm.trim().toUpperCase() !== 'PAUSE'}
-          onClick={() => { send({ address: token, abi: GLOW_TOKEN_ABI, functionName: 'setTokenPaused', args: [!info.paused], chainId: CHAIN_ID }, info.paused ? 'Token resumed' : 'Token paused'); setPauseConfirm('') }}>
+        <Btn tone={info.paused ? 'primary' : 'danger'} busy={busy} onClick={() => info.paused ? doPause() : setPauseOpen(true)}>
           {info.paused ? 'Resume transfers' : 'Pause all transfers'}
         </Btn>
+        <ConfirmActionModal
+          open={pauseOpen} onClose={() => setPauseOpen(false)} onConfirm={doPause} busy={busy} wallet={wallet}
+          tone="#f59e0b" icon={ShieldAlert} title={`Pause ${symbol}`} phrase="PAUSE" confirmLabel="Pause all transfers"
+          summary={<>You're about to stop every holder from transferring or trading <b>{symbol}</b>, instantly, until you resume it.</>}
+          warning="This affects every holder immediately, including anyone mid-trade."
+        />
       </>)}
       {info.hasBlacklist && (<>
         <input className={inputCls} style={inputSt} placeholder="Wallet address to restrict (0x…)" value={who} onChange={e => setWho(e.target.value.trim())} />
         {valid && <Note>{isBl ? 'This wallet is currently blacklisted.' : 'This wallet is not blacklisted.'}</Note>}
-        {valid && !isBl && <TypeToConfirm phrase="BLOCK" value={blConfirm} onChange={setBlConfirm} />}
         <div className="flex gap-2">
-          <Btn tone="danger" busy={busy} disabled={!valid || !!isBl || blConfirm.trim().toUpperCase() !== 'BLOCK'}
-            onClick={() => { send({ address: token, abi: GLOW_TOKEN_ABI, functionName: 'setBlacklisted', args: [who, true], chainId: CHAIN_ID }, 'Wallet blacklisted'); setBlConfirm('') }}>Blacklist</Btn>
+          <Btn tone="danger" busy={busy} disabled={!valid || !!isBl} onClick={() => setBlOpen(true)}>Blacklist</Btn>
           <Btn tone="ghost" busy={busy} disabled={!valid || !isBl} onClick={() => send({ address: token, abi: GLOW_TOKEN_ABI, functionName: 'setBlacklisted', args: [who, false], chainId: CHAIN_ID }, 'Wallet un-blacklisted')}>Remove</Btn>
         </div>
+        <ConfirmActionModal
+          open={blOpen} onClose={() => setBlOpen(false)} onConfirm={doBlacklist} busy={busy} wallet={wallet}
+          tone="#f59e0b" icon={ShieldAlert} title="Blacklist a wallet" phrase="BLOCK" confirmLabel="Blacklist wallet"
+          summary={<>You're about to block <b>{who || '0x…'}</b> from transferring or receiving <b>{symbol}</b>.</>}
+          warning="Reversible (use Remove), but the wallet is cut off from the token the moment you confirm."
+        />
       </>)}
       {!info.pausable && !info.hasBlacklist && <Note>This token wasn't launched with pause or blacklist controls, so there's nothing to configure here.</Note>}
     </ToolShell>
