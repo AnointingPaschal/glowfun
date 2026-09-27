@@ -7,10 +7,12 @@ import { toast } from 'sonner'
 import { QRCodeSVG } from 'qrcode.react'
 import {
   ChevronLeft, Send, ArrowDownLeft, Repeat, Link2, Copy, Check,
-  ExternalLink, AlertTriangle, Loader2, Construction,
+  ExternalLink, AlertTriangle, Loader2,
 } from 'lucide-react'
 import { getWalletAsset } from '@/constants/walletAssets'
 import { AssetLogo } from '@/components/wallet/AssetLogo'
+import { SwapPanel } from '@/components/wallet/SwapPanel'
+import { BridgePanel } from '@/components/wallet/BridgePanel'
 import { CHAIN_ID, EXPLORER_BASE } from '@/constants'
 import { formatAddress } from '@/utils/format'
 
@@ -21,19 +23,6 @@ const ACTIONS: { id: Action; label: string; icon: any }[] = [
   { id: 'swap',    label: 'Swap',    icon: Repeat },
   { id: 'bridge',  label: 'Bridge',  icon: Link2 },
 ]
-
-/** "Not built yet" panel used for Swap/Bridge — honest placeholder rather than a fake flow. */
-function ComingSoon({ what, why }: { what: string; why: string }) {
-  return (
-    <div className="text-center py-8 px-4">
-      <div className="w-12 h-12 rounded-2xl mx-auto mb-3 flex items-center justify-center" style={{ background: 'rgba(245,158,11,0.1)' }}>
-        <Construction size={20} style={{ color: 'var(--gold)' }} />
-      </div>
-      <h3 className="text-sm font-bold mb-1" style={{ color: 'var(--text1)' }}>{what} isn't built into GlowFun yet</h3>
-      <p className="text-xs max-w-xs mx-auto" style={{ color: 'var(--text2)' }}>{why}</p>
-    </div>
-  )
-}
 
 export function AssetDetailPage() {
   const { slug } = useParams<{ slug: string }>()
@@ -173,13 +162,17 @@ export function AssetDetailPage() {
             )}
 
             {action === 'swap' && (
-              <ComingSoon what="Swapping"
-                why={`GlowFun doesn't have a built-in DEX route for ${asset.symbol} yet. GlowFun-launched tokens can already be bought/sold on their own bonding curve from that token's page.`} />
+              <div>
+                <h3 className="text-sm font-bold mb-4" style={{ color: 'var(--text1)' }}>Swap {asset.symbol}</h3>
+                <SwapPanel asset={asset} wallet={wallet} balance={balance} />
+              </div>
             )}
 
             {action === 'bridge' && (
-              <ComingSoon what="Bridging"
-                why={`Moving ${asset.symbol} to or from another chain isn't wired into GlowFun yet — check Arc's own docs for the official bridging path in the meantime.`} />
+              <div>
+                <h3 className="text-sm font-bold mb-4" style={{ color: 'var(--text1)' }}>Bridge {asset.symbol}</h3>
+                <BridgePanel asset={asset} wallet={wallet} />
+              </div>
             )}
           </div>
         </motion.div>

@@ -349,4 +349,6 @@ export const FACTORY_ABI = [
   { name: 'pendingGraduationCreator', type: 'function', stateMutability: 'view', inputs: [{ name: '', type: 'address' }], outputs: [{ type: 'address' }] },
   { name: 'lpLockDuration',         type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
   { name: 'nonfungiblePositionMgr', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
+  { name: 'uniswapV3Factory', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
+  { name: 'defaultPoolFee', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint24' }] },
 ] as const
