@@ -431,10 +431,17 @@ async function discoverViaBoostsProfiles(): Promise<string[]> {
 
 /* ── METHOD 3: GeckoTerminal ──────────────────────────────────────────── */
 async function fetchGeckoTerminalPools(): Promise<Token[]> {
+  // GeckoTerminal's own chain-wide pool listing — the actual fix for "only shows a
+  // handful of tokens": a keyword search (DexScreener's /search) can only ever find
+  // pools whose name happens to match one of the guessed query terms, so anything
+  // named something we didn't think to search for was silently invisible. Paginating
+  // /networks/arc/pools instead enumerates every pool GeckoTerminal has indexed for
+  // the chain, regardless of name — up to its public page limit (20/page, ~10 pages).
+  const POOL_PAGES = 10
   const endpoints = [
     'https://api.geckoterminal.com/api/v2/networks/arc/trending_pools',
     'https://api.geckoterminal.com/api/v2/networks/arc/new_pools',
-    'https://api.geckoterminal.com/api/v2/networks/arc/pools?page=1',
+    ...Array.from({ length: POOL_PAGES }, (_, i) => `https://api.geckoterminal.com/api/v2/networks/arc/pools?page=${i + 1}`),
   ]
   const usdc = USDC_ARC.toLowerCase()
   const out: Token[] = []
