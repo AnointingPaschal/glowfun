@@ -27,6 +27,29 @@ const USDC_ARC            = '0x3600000000000000000000000000000000000000'
 // keccak256("PoolCreated(address,address,uint24,int24,address)")
 const POOL_CREATED_TOPIC  = '0x783cca1c0412dd0d695e784568c96da2e9c22ff989357a2e8b1d9b2b4e6b7118'
 
+// ── GlowFun's own factories — bonding-curve tokens live here BEFORE they
+// graduate to a Uniswap pool, so they have no PoolCreated event and never turn
+// up in DexScreener search/boosts/profiles. Reading them straight from the
+// factory contracts is the only way to show a GlowFun token that hasn't
+// graduated yet, so this is queried directly rather than relying on discovery.
+const GLOWFUN_FACTORIES: { address: string; version: 1 | 2 | 3 }[] = [
+  { address: '0x96f460a73fCcF8301Aa3E14B1d5c684b7f714cb3', version: 1 },
+  { address: '0x12FBDe4338D9f78DF4d3c24d42F4AA00A98741DA', version: 2 },
+  { address: '0xf54c92d87B271Ca707C89ED0c929bb51139a407d', version: 3 },
+]
+// Selectors verified with viem's toFunctionSelector() against each signature —
+// same values already relied on in functions/api/factory-tokens.ts.
+const GF_SEL = {
+  allTokens:           '0x6ff97f1d', // allTokens() -> address[]                V1
+  launchedTokensCount: '0xfa9e0e92', // launchedTokensCount() -> uint256        V2/V3
+  launchedTokens:      '0x10f2b141', // launchedTokens(uint256) -> address
+  tokenStates:         '0x89cb096a', // tokenStates(address) -> struct
+  getTokenPrice:       '0xd02641a0', // getTokenPrice(address) -> uint256
+  name:                '0x06fdde03', // name() -> string
+  symbol:              '0x95d89b41', // symbol() -> string
+  imageUri:            '0x0bf82da4', // imageUri() -> string
+}
+
 /* ── D1 setup ─────────────────────────────────────────────────────────── */
 const CREATE_SQL = `
   CREATE TABLE IF NOT EXISTS arc_tokens (
@@ -194,6 +217,150 @@ async function fetchNewPoolsFromChain(blocksBack=1000): Promise<{tokenAddr:strin
   } catch(e){console.error('[RPC]',e);return[]}
 }
 
+/* ── GlowFun on-chain discovery — direct from the factory contracts ─────
+ * Covers every launched token, graduated or not, independent of whether
+ * DexScreener has indexed a pool for it. This is what makes "GlowFun only"
+ * and the overall token count honest instead of empty/undercounted.       */
+async function gfRpcBatch(calls: object[]): Promise<any[]> {
+  if (!calls.length) return []
+  try {
+    const r = await fetch(ARC_RPC, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(calls), signal: AbortSignal.timeout(15_000),
+    })
+    return await r.json()
+  } catch { return [] }
+}
+function gfStrip(hex: string): string { return (hex ?? '').startsWith('0x') ? hex.slice(2) : (hex ?? '') }
+function gfSlot(hex: string, i: number): string { const s = gfStrip(hex); return s.slice(i * 64, i * 64 + 64) }
+function gfUintAt(hex: string, i: number): bigint { const s = gfSlot(hex, i); return s ? BigInt('0x' + s) : 0n }
+function gfBoolAt(hex: string, i: number): boolean { return gfUintAt(hex, i) === 1n }
+function gfDecAddr(hex: string): string {
+  const s = gfStrip(hex)
+  if (s.length < 64) return ''
+  const a = '0x' + s.slice(24, 64).toLowerCase()
+  return a === '0x' + '0'.repeat(40) ? '' : a
+}
+function gfDecAddrArray(hex: string): string[] {
+  try {
+    const h = gfStrip(hex)
+    if (h.length < 128) return []
+    const arrStart = parseInt(h.slice(0, 64), 16) * 2
+    const len = parseInt(h.slice(arrStart, arrStart + 64), 16)
+    const out: string[] = []
+    for (let i = 0; i < len; i++) {
+      const slot = h.slice(arrStart + 64 + i * 64, arrStart + 64 + (i + 1) * 64)
+      const a = '0x' + slot.slice(24).toLowerCase()
+      if (slot.length === 64 && a !== '0x' + '0'.repeat(40)) out.push(a)
+    }
+    return out
+  } catch { return [] }
+}
+function gfDecStr(hex: string): string {
+  try {
+    const h = gfStrip(hex)
+    if (h.length < 128) return ''
+    const off = parseInt(h.slice(0, 64), 16) * 2
+    const len = parseInt(h.slice(off, off + 64), 16) * 2
+    if (!len) return ''
+    const bytes = h.slice(off + 64, off + 64 + len)
+    let out = ''
+    for (let i = 0; i < bytes.length; i += 2) out += String.fromCharCode(parseInt(bytes.slice(i, i + 2), 16))
+    return out.replace(/\0/g, '')
+  } catch { return '' }
+}
+function gfResolveIpfs(uri: string): string {
+  if (!uri) return ''
+  if (uri.startsWith('ipfs://')) return `https://w3s.link/ipfs/${uri.slice(7)}`
+  return uri
+}
+
+async function gfGetTokenAddresses(factory: string, version: 1 | 2 | 3): Promise<string[]> {
+  if (version === 1) {
+    const [res] = await gfRpcBatch([{ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: factory, data: GF_SEL.allTokens }, 'latest'] }])
+    return gfDecAddrArray(res?.result ?? '0x')
+  }
+  const [countRes] = await gfRpcBatch([{ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: factory, data: GF_SEL.launchedTokensCount }, 'latest'] }])
+  const count = parseInt(countRes?.result ?? '0x0', 16)
+  if (!count) return []
+  const addrs: string[] = []
+  const BATCH = 25
+  for (let start = 0; start < count; start += BATCH) {
+    const calls = []
+    for (let i = start; i < Math.min(start + BATCH, count); i++) {
+      calls.push({ jsonrpc: '2.0', id: i, method: 'eth_call', params: [{ to: factory, data: GF_SEL.launchedTokens + i.toString(16).padStart(64, '0') }, 'latest'] })
+    }
+    const results = await gfRpcBatch(calls)
+    for (const r of results) { const a = gfDecAddr(r?.result ?? ''); if (a) addrs.push(a) }
+  }
+  return addrs
+}
+
+async function fetchGlowFunTokens(): Promise<Token[]> {
+  const out: Token[] = []
+  const seen = new Set<string>()
+  const now = Math.floor(Date.now() / 1000)
+
+  for (const f of GLOWFUN_FACTORIES) {
+    let addrs: string[] = []
+    try { addrs = await gfGetTokenAddresses(f.address, f.version) } catch { continue }
+    if (!addrs.length) continue
+
+    const BATCH = 15
+    for (let start = 0; start < addrs.length; start += BATCH) {
+      const chunk = addrs.slice(start, start + BATCH)
+      const calls = chunk.flatMap((addr, i) => [
+        { jsonrpc: '2.0', id: i * 5,     method: 'eth_call', params: [{ to: addr,     data: GF_SEL.name },     'latest'] },
+        { jsonrpc: '2.0', id: i * 5 + 1, method: 'eth_call', params: [{ to: addr,     data: GF_SEL.symbol },   'latest'] },
+        { jsonrpc: '2.0', id: i * 5 + 2, method: 'eth_call', params: [{ to: addr,     data: GF_SEL.imageUri }, 'latest'] },
+        { jsonrpc: '2.0', id: i * 5 + 3, method: 'eth_call', params: [{ to: f.address, data: GF_SEL.tokenStates + '000000000000000000000000' + addr.slice(2).toLowerCase() }, 'latest'] },
+        { jsonrpc: '2.0', id: i * 5 + 4, method: 'eth_call', params: [{ to: f.address, data: GF_SEL.getTokenPrice + '000000000000000000000000' + addr.slice(2).toLowerCase() }, 'latest'] },
+      ])
+      const raw = await gfRpcBatch(calls)
+      const map = new Map(raw.map((r: any) => [r.id, r.result ?? '0x']))
+
+      for (let i = 0; i < chunk.length; i++) {
+        const addr = chunk[i].toLowerCase()
+        if (seen.has(addr)) continue
+        try {
+          const name    = gfDecStr(map.get(i * 5)     ?? '0x') || addr.slice(0, 8)
+          const symbol  = gfDecStr(map.get(i * 5 + 1) ?? '0x') || '???'
+          const logoRaw = gfDecStr(map.get(i * 5 + 2) ?? '0x')
+          const st      = map.get(i * 5 + 3) ?? '0x'
+          const priceRaw= gfUintAt(map.get(i * 5 + 4) ?? '0x', 0)
+
+          const virtualTokenReserves = gfUintAt(st, 2)
+          const realUsdcRaised       = gfUintAt(st, 3)
+          const graduated            = gfBoolAt(st, 5)
+          const createdAt            = gfUintAt(st, 6)
+          const totalSupply          = gfUintAt(st, 10)
+          if (virtualTokenReserves === 0n) continue // token slot not populated (shouldn't happen for a real launch)
+
+          const priceUsd = Number(priceRaw) / 1e42
+          if (!priceUsd || !Number.isFinite(priceUsd)) continue
+
+          seen.add(addr)
+          out.push({
+            address: addr, pairAddress: '', name, symbol,
+            logoUrl: gfResolveIpfs(logoRaw), bannerUrl: '',
+            priceUsd,
+            change5m: undefined, change1h: undefined, change6h: undefined, change24h: undefined,
+            liqUsd: Number(realUsdcRaised) / 1e6,
+            volUsd: 0,
+            mcapUsd: priceUsd * (Number(totalSupply) / 1e18),
+            ageSec: createdAt > 0n ? Math.max(0, now - Number(createdAt)) : 0,
+            buys24h: 0, sells24h: 0, txns5m: 0, vol5m: 0,
+            dexId: graduated ? 'glowfun-graduated' : 'glowfun',
+            updatedAt: now,
+          })
+        } catch { /* skip a token that fails to decode rather than dropping the whole batch */ }
+      }
+    }
+  }
+  console.log(`[GlowFun] ${out.length} on-chain tokens across ${GLOWFUN_FACTORIES.length} factories`)
+  return out
+}
+
 /* ── METHOD 2: DexScreener ────────────────────────────────────────────── */
 async function fetchDSByPairs(pairAddrs:string[]): Promise<any[]> {
   // /latest/dex/pairs/arc/{addresses} — exact pair lookup (30 per req)
@@ -278,15 +445,17 @@ async function fetchAllArcTokens(): Promise<Token[]> {
   // Can't pass env here so we'll handle in the route handler
 
   // Run all discovery methods in parallel
-  const [onChain, boostAddrs, searchPairs] = await Promise.allSettled([
+  const [onChain, boostAddrs, searchPairs, glowFunTokens] = await Promise.allSettled([
     fetchNewPoolsFromChain(2000),     // Last ~2000 blocks (~70 min on Arc)
     discoverViaBoostsProfiles(),
     discoverViaSearches(),
+    fetchGlowFunTokens(),             // every GlowFun-launched token, direct from the factories
   ])
 
   const chainData  = onChain.status==='fulfilled'      ? onChain.value    : []
   const boosts     = boostAddrs.status==='fulfilled'   ? boostAddrs.value : []
   const fromSearch = searchPairs.status==='fulfilled'  ? searchPairs.value : []
+  const glowTokens = glowFunTokens.status==='fulfilled' ? glowFunTokens.value : []
 
   // Fetch DexScreener data for on-chain discovered pairs (pair address → rich data)
   const pairAddrs   = chainData.map(c=>c.poolAddr).filter(Boolean)
@@ -303,15 +472,21 @@ async function fetchAllArcTokens(): Promise<Token[]> {
     ...(tokensData.status==='fulfilled' ? tokensData.value : []),
   ]
 
-  // Merge — deduplicate by token address, keep highest volume
+  // Merge — GlowFun's own tokens are seeded first (this is the only place a
+  // pre-graduation bonding-curve token comes from, so it must never be
+  // dropped), then DexScreener/on-chain-pool data is layered on top: once a
+  // token graduates and trades on a real pool, that live pool data is more
+  // accurate than the frozen bonding-curve price and wins.
   const map = new Map<string,Token>()
+  for (const t of glowTokens) map.set(t.address, t)
   for (const p of allPairs) {
     const t = pairToToken(p); if (!t) continue
     const ex = map.get(t.address)
-    if (!ex||t.volUsd>=ex.volUsd) map.set(t.address,t)
+    const exIsGlowFunSeed = ex?.dexId==='glowfun'||ex?.dexId==='glowfun-graduated'
+    if (!ex||exIsGlowFunSeed||t.volUsd>=ex.volUsd) map.set(t.address,t)
   }
 
-  console.log(`[fetch] on-chain:${chainData.length} boosts:${boosts.length} search-pairs:${fromSearch.length} total-unique:${map.size}`)
+  console.log(`[fetch] on-chain-pools:${chainData.length} boosts:${boosts.length} search-pairs:${fromSearch.length} glowfun:${glowTokens.length} total-unique:${map.size}`)
   return [...map.values()]
 }
 

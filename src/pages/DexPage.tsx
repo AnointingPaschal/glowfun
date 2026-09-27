@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  Flame, Sprout, Trophy, Search, X, ExternalLink, RefreshCw,
-  TrendingUp, TrendingDown, Activity, Droplets, Zap, Filter,
+  Flame, Sprout, Trophy, Search, X, RefreshCw,
+  TrendingUp, TrendingDown, Activity, Droplets, Zap, Filter, Eye,
 } from 'lucide-react'
 import { useArcMarket, type ArcMarketTab, type ArcMarketToken } from '@/hooks/useArcMarket'
 import { useTokenList } from '@/hooks/useTokenList'
@@ -63,33 +63,37 @@ function TokenLogo({ url, symbol, address, size = 32 }: { url: string; symbol: s
     style={{ border: '1px solid var(--border2)' }} onError={() => setBroken(true)} />
 }
 
-function pairUrl(t: ArcMarketToken) {
-  return `https://dexscreener.com/arc/${t.pairAddress || t.address}`
-}
-
-/* ── Featured banner strip ──────────────────────────────────────────── */
-function BannerStrip({ tokens }: { tokens: ArcMarketToken[] }) {
+/* ── Featured banner strip ─────────────────────────────────────────────
+ * GlowFun tokens open their internal trading page; every other Arc token
+ * is shown as a read-only preview card — nothing here ever navigates off
+ * this site. */
+function BannerStrip({ tokens, glowSet }: { tokens: ArcMarketToken[]; glowSet: Set<string> }) {
   const featured = useMemo(() => tokens.filter(t => t.bannerUrl).slice(0, 8), [tokens])
   if (!featured.length) return null
   return (
     <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-1">
-      {featured.map(t => (
-        <a key={t.address} href={pairUrl(t)} target="_blank" rel="noopener"
-          className="relative flex-shrink-0 w-64 h-28 rounded-2xl overflow-hidden no-underline group"
-          style={{ border: '1px solid var(--border)' }}>
-          <img src={t.bannerUrl} alt="" className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-105"
-            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
-          <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg,transparent 30%,rgba(0,0,0,0.85))' }} />
-          <div className="absolute bottom-0 left-0 right-0 p-3 flex items-center gap-2">
-            <TokenLogo url={t.logoUrl} symbol={t.symbol} address={t.address} size={26} />
-            <div className="min-w-0">
-              <div className="text-xs font-black text-white truncate">{t.symbol}</div>
-              <div className="text-[10px] text-white/70 truncate">{fmtPrice(t.priceUsd)}</div>
+      {featured.map(t => {
+        const isGlow = glowSet.has(t.address.toLowerCase())
+        const card = (
+          <div className="relative flex-shrink-0 w-64 h-28 rounded-2xl overflow-hidden group"
+            style={{ border: '1px solid var(--border)' }}>
+            <img src={t.bannerUrl} alt="" className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-105"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+            <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg,transparent 30%,rgba(0,0,0,0.85))' }} />
+            <div className="absolute bottom-0 left-0 right-0 p-3 flex items-center gap-2">
+              <TokenLogo url={t.logoUrl} symbol={t.symbol} address={t.address} size={26} />
+              <div className="min-w-0">
+                <div className="text-xs font-black text-white truncate">{t.symbol}</div>
+                <div className="text-[10px] text-white/70 truncate">{fmtPrice(t.priceUsd)}</div>
+              </div>
+              <ChangePill v={t.change24h} />
             </div>
-            <ChangePill v={t.change24h} />
           </div>
-        </a>
-      ))}
+        )
+        return isGlow
+          ? <Link key={t.address} to={`/token/${t.address}`} className="no-underline">{card}</Link>
+          : <div key={t.address}>{card}</div>
+      })}
     </div>
   )
 }
@@ -120,14 +124,17 @@ function Row({ t, rank, isGlow }: { t: ArcMarketToken; rank: number; isGlow: boo
       <td className="py-2.5 px-2 text-right text-[12px] whitespace-nowrap" style={{ color: 'var(--text1)' }}>{fmtUsd(t.liqUsd)}</td>
       <td className="py-2.5 px-2 text-right text-[12px] whitespace-nowrap" style={{ color: 'var(--text1)' }}>{fmtUsd(t.mcapUsd)}</td>
       <td className="py-2.5 px-2 text-right text-[11px]" style={{ color: 'var(--text2)' }}>{fmtAge(t.ageSec)}</td>
-      <td className="py-2.5 pr-3 text-right"><ExternalLink size={11} style={{ color: 'var(--text3)' }} /></td>
+      <td className="py-2.5 pr-3 text-right">
+        {isGlow
+          ? <span className="text-[9px] font-bold" style={{ color: '#818cf8' }}>Trade →</span>
+          : <Eye size={11} style={{ color: 'var(--text3)' }} />}
+      </td>
     </>
   )
-  const rowCls = "border-b transition-colors hover:bg-white/[0.03] cursor-pointer"
   const rowStyle = { borderColor: 'var(--border)' }
   return isGlow
-    ? <Link to={`/token/${t.address}`} className={`table-row no-underline ${rowCls}`} style={rowStyle as any}>{inner}</Link>
-    : <a href={pairUrl(t)} target="_blank" rel="noopener" className={`table-row no-underline ${rowCls}`} style={rowStyle as any}>{inner}</a>
+    ? <Link to={`/token/${t.address}`} className="table-row no-underline border-b transition-colors hover:bg-white/[0.03] cursor-pointer" style={rowStyle as any}>{inner}</Link>
+    : <tr className="border-b" style={rowStyle as any} title="Live data only — trading for this token isn't handled on GlowFun">{inner}</tr>
 }
 
 /* ── Mobile card ─────────────────────────────────────────────────────── */
@@ -148,7 +155,7 @@ function MobileCard({ t, isGlow }: { t: ArcMarketToken; isGlow: boolean }) {
       </div>
     </div>
   )
-  return isGlow ? <Link to={`/token/${t.address}`} className="no-underline block">{body}</Link> : <a href={pairUrl(t)} target="_blank" rel="noopener" className="no-underline block">{body}</a>
+  return isGlow ? <Link to={`/token/${t.address}`} className="no-underline block">{body}</Link> : <div>{body}</div>
 }
 
 /* ── Main ─────────────────────────────────────────────────────────────── */
@@ -181,7 +188,7 @@ export function DexPage() {
             <span className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: '#22c55e' }}>Arc Mainnet · Live</span>
           </div>
           <h1 className="text-2xl lg:text-3xl font-black" style={{ letterSpacing: '-0.03em', color: 'var(--text1)' }}>Arc DEX</h1>
-          <p className="text-xs mt-1" style={{ color: 'var(--text2)' }}>Every token trading on Arc — GlowFun-launched or not, pulled live from on-chain pools and DexScreener.</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--text2)' }}>Every token trading on Arc, live — every GlowFun launch plus everything else on the network.</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="flex items-center gap-1.5 text-[10px] font-semibold" style={{ color: 'var(--text3)' }}>
@@ -214,7 +221,7 @@ export function DexPage() {
       </div>
 
       {/* ── Featured banners ───────────────────────────────────────── */}
-      <BannerStrip tokens={tokens} />
+      <BannerStrip tokens={tokens} glowSet={glowSet} />
 
       {/* ── Controls ───────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2">
@@ -294,7 +301,7 @@ export function DexPage() {
       </div>
 
       <p className="text-[10px] text-center px-4" style={{ color: 'var(--text3)' }}>
-        Prices and volume from on-chain Arc pools and <a href="https://dexscreener.com" target="_blank" rel="noopener" style={{ color: 'var(--text2)' }}>DexScreener</a>. GlowFun-launched tokens open their full trading page here; everything else opens on DexScreener.
+        Live prices and liquidity read directly from Arc network pools. GlowFun-launched tokens open their full trading page here; every other Arc token is shown read-only.
       </p>
     </div>
   )
