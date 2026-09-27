@@ -2,7 +2,7 @@ import { ReactNode, useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { ConnectKitButton } from 'connectkit'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Flame, Rocket, Wallet, X, Zap, Code2, Menu, Wrench, ChevronRight, ShieldCheck } from 'lucide-react'
+import { Flame, Rocket, Wallet, X, Zap, Code2, Menu, Wrench, ChevronRight, ShieldCheck, LineChart } from 'lucide-react'
 import { MobileNav } from './MobileNav'
 import { ToolsMenuModal } from './tools/ToolsMenuModal'
 import { useConfig } from '@/context/ConfigContext'
@@ -12,6 +12,7 @@ const SPECTRAL = 'linear-gradient(90deg,#5fbeff,#af8ff4,#f05c6b,#ffcd83,#7ef1b3)
 
 const NAV_ITEMS = [
   { path: '/',        label: 'Tokens', icon: Flame  },
+  { path: '/dex',     label: 'DEX',     icon: LineChart },
   { path: '/launch',  label: 'Launch',  icon: Rocket },
   { path: '/wallet',  label: 'Wallet',  icon: Wallet },
   { path: '/tools',   label: 'Tools',   icon: Wrench },

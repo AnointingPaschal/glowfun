@@ -4,6 +4,7 @@ import { FeedPage } from '@/pages/FeedPage'
 import { LaunchPage } from '@/pages/LaunchPage'
 import { TokenPage } from '@/pages/TokenPage'
 import { WalletPage } from '@/pages/WalletPage'
+import { DexPage } from '@/pages/DexPage'
 import { AssetDetailPage } from '@/pages/wallet/AssetDetailPage'
 import { SecurityCenterPage } from '@/pages/SecurityCenterPage'
 import { AdminPage } from '@/pages/AdminPage'
@@ -26,8 +27,8 @@ export default function App() {
         <Route path="/"              element={<FeedPage />} />
         <Route path="/feed"          element={<Navigate to="/" replace />} />
         <Route path="/trending"      element={<Navigate to="/" replace />} />
-        <Route path="/dex"           element={<Navigate to="/" replace />} />
-        <Route path="/dex/:address"  element={<Navigate to="/" replace />} />
+        <Route path="/dex"           element={<DexPage />} />
+        <Route path="/dex/:address"  element={<Navigate to="/dex" replace />} />
         <Route path="/token/:address" element={<TokenPage />} />
         <Route path="/launch"        element={<LaunchPage />} />
         <Route path="/wallet"        element={<WalletPage />} />

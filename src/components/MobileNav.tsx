@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Flame, Rocket, Wallet, Code2, Wrench } from 'lucide-react'
+import { Flame, Rocket, Wallet, LineChart, Wrench } from 'lucide-react'
 import { ToolsMenuModal } from './tools/ToolsMenuModal'
 
 // "Tools" is a bottom-bar icon like the others, but it doesn't navigate on
@@ -10,10 +10,10 @@ import { ToolsMenuModal } from './tools/ToolsMenuModal'
 // any of them.
 const NAV = [
   { path:'/',       label:'Tokens', icon:Flame  },
+  { path:'/dex',    label:'DEX',     icon:LineChart },
   { path:'/launch', label:'Launch',  icon:Rocket },
   { path:'/wallet', label:'Wallet',  icon:Wallet },
   { path:'/tools',  label:'Tools',   icon:Wrench, modal:true },
-  { path:'/ide',    label:'IDE',     icon:Code2  },
 ]
 
 export function MobileNav() {

@@ -35,6 +35,7 @@ const CREATE_SQL = `
     name         TEXT NOT NULL DEFAULT '',
     symbol       TEXT NOT NULL DEFAULT '',
     logo_url     TEXT DEFAULT '',
+    banner_url   TEXT DEFAULT '',
     price_usd    REAL DEFAULT 0,
     change_5m    REAL,
     change_1h    REAL,
@@ -55,9 +56,13 @@ const CREATE_SQL = `
   CREATE INDEX IF NOT EXISTS idx_arc_age  ON arc_tokens(age_sec  ASC);
   CREATE INDEX IF NOT EXISTS idx_arc_mcap ON arc_tokens(mcap_usd DESC);
 `
+// Column added after the table already existed in production — CREATE TABLE IF NOT EXISTS
+// above won't retrofit it, so add it explicitly. Errors harmlessly (caught in dbSetup) once
+// the column is already there.
+const ALTER_SQL = `ALTER TABLE arc_tokens ADD COLUMN banner_url TEXT DEFAULT '';`
 
 type Token = {
-  address:string; pairAddress:string; name:string; symbol:string; logoUrl:string
+  address:string; pairAddress:string; name:string; symbol:string; logoUrl:string; bannerUrl:string
   priceUsd:number; change5m?:number; change1h?:number; change6h?:number; change24h?:number
   liqUsd:number; volUsd:number; mcapUsd:number; ageSec:number
   buys24h:number; sells24h:number; txns5m:number; vol5m:number; dexId:string
@@ -79,7 +84,8 @@ function pairToToken(p:any): Token|null {
     pairAddress: (p.pairAddress??'').toLowerCase(),
     name:        base.name??'',
     symbol:      base.symbol??'',
-    logoUrl:     p.info?.imageUrl||p.info?.header||`https://dd.dexscreener.com/ds-data/tokens/arc/${addr}.png`,
+    logoUrl:     p.info?.imageUrl||`https://dd.dexscreener.com/ds-data/tokens/arc/${addr}.png`,
+    bannerUrl:   p.info?.header||'',
     priceUsd:    parseFloat(p.priceUsd??'0')||0,
     change5m:    p.priceChange?.m5  !=null?parseFloat(p.priceChange.m5):undefined,
     change1h:    p.priceChange?.h1  !=null?parseFloat(p.priceChange.h1):undefined,
@@ -101,7 +107,7 @@ function pairToToken(p:any): Token|null {
 function rowToToken(r:any): Token {
   return {
     address:r.address,pairAddress:r.pair_address??'',name:r.name??'',symbol:r.symbol??'',
-    logoUrl:r.logo_url??'',priceUsd:r.price_usd??0,change5m:r.change_5m??undefined,
+    logoUrl:r.logo_url??'',bannerUrl:r.banner_url??'',priceUsd:r.price_usd??0,change5m:r.change_5m??undefined,
     change1h:r.change_1h??undefined,change6h:r.change_6h??undefined,change24h:r.change_24h??undefined,
     liqUsd:r.liq_usd??0,volUsd:r.vol_usd??0,mcapUsd:r.mcap_usd??0,
     ageSec:r.age_sec??0,buys24h:r.buys_24h??0,sells24h:r.sells_24h??0,
@@ -115,6 +121,7 @@ async function dbSetup(env:Env){
   for (const s of CREATE_SQL.split(';').map(x=>x.trim()).filter(Boolean)) {
     await env.DB.exec(s+';').catch(()=>{})
   }
+  await env.DB.exec(ALTER_SQL).catch(()=>{})
 }
 
 async function dbLoad(env:Env,tab='trending',limit=500):Promise<Token[]>{
@@ -136,11 +143,11 @@ async function dbSave(tokens:Token[],env:Env){
       const batch=tokens.slice(i,i+BATCH)
       await env.DB.batch(batch.map(t=>env.DB.prepare(
         `INSERT OR REPLACE INTO arc_tokens
-          (address,pair_address,name,symbol,logo_url,price_usd,change_5m,change_1h,change_6h,change_24h,
+          (address,pair_address,name,symbol,logo_url,banner_url,price_usd,change_5m,change_1h,change_6h,change_24h,
            liq_usd,vol_usd,mcap_usd,age_sec,buys_24h,sells_24h,txns_5m,vol_5m,dex_id,updated_at)
-         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).bind(
-        t.address,t.pairAddress,t.name,t.symbol,t.logoUrl,
+        t.address,t.pairAddress,t.name,t.symbol,t.logoUrl,t.bannerUrl,
         t.priceUsd,t.change5m??null,t.change1h??null,t.change6h??null,t.change24h??null,
         t.liqUsd,t.volUsd,t.mcapUsd,t.ageSec,t.buys24h,t.sells24h,t.txns5m,t.vol5m,
         t.dexId,t.updatedAt
