@@ -5,7 +5,7 @@ import { useAccount } from 'wagmi'
 import { ToolPageShell, PerTokenTool } from '@/components/tools/ToolPageShell'
 import { ControlsPanel, Note } from '@/components/tools/panels'
 import {
-  OwnershipPanel, CreatorRolePanel, PlatformCircuitBreakerPanel, TimelockPanel,
+  OwnershipPanel, CreatorRolePanel, PlatformCircuitBreakerPanel, ActivityLogPanel, TimelockPanel,
 } from '@/components/tools/SecurityCenterPanels'
 import { useFactoryOwner } from '@/hooks/useFactoryAdmin'
 
@@ -54,6 +54,7 @@ export function SecurityPage() {
         <div className="space-y-4">
           <OwnershipPanel wallet={wallet} />
           <PlatformCircuitBreakerPanel wallet={wallet} />
+          <ActivityLogPanel />
         </div>
       )}
       {activeTab === 'timelock' && isOwner && <TimelockPanel wallet={wallet} />}
