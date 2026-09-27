@@ -25,4 +25,26 @@ export const GLOW_TOKEN_ABI = [
       { name: '_telegram', type: 'string' },
       { name: '_website', type: 'string' },
     ], outputs: [] },
+  // ── Token features (set at launch, immutable) ──────────────────────────────
+  { name: 'mintable',     type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'bool' }] },
+  { name: 'burnable',     type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'bool' }] },
+  { name: 'pausable',     type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'bool' }] },
+  { name: 'hasBlacklist', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'bool' }] },
+  { name: 'maxSupply',    type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { name: 'tokenPaused',  type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'bool' }] },
+  { name: 'blacklisted',  type: 'function', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'bool' }] },
+  // ── Vesting ────────────────────────────────────────────────────────────────
+  { name: 'vestingStart',    type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { name: 'vestingDuration', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { name: 'vestingCliff',    type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { name: 'vestingTotal',    type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { name: 'vestingReleased', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { name: 'vestedAmount',    type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  // ── Actions ────────────────────────────────────────────────────────────────
+  { name: 'mint',          type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'to', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [] },
+  { name: 'burn',          type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'amount', type: 'uint256' }], outputs: [] },
+  { name: 'burnFrom',      type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'account', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [] },
+  { name: 'setTokenPaused', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: '_paused', type: 'bool' }], outputs: [] },
+  { name: 'setBlacklisted', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'account', type: 'address' }, { name: 'status', type: 'bool' }], outputs: [] },
+  { name: 'releaseVested',  type: 'function', stateMutability: 'nonpayable', inputs: [], outputs: [] },
 ] as const

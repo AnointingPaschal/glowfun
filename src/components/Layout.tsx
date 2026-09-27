@@ -1,10 +1,11 @@
-import { ReactNode, useState } from 'react'
+import { ReactNode, useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { ConnectKitButton } from 'connectkit'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Flame, Rocket, Wallet, X, Zap, Code2, Menu } from 'lucide-react'
+import { Flame, Rocket, Wallet, X, Zap, Code2, Menu, Wrench } from 'lucide-react'
 import { MobileNav } from './MobileNav'
 import { useConfig } from '@/context/ConfigContext'
+import { captureReferral } from '@/utils/referral'
 
 const SPECTRAL = 'linear-gradient(90deg,#5fbeff,#af8ff4,#f05c6b,#ffcd83,#7ef1b3)'
 
@@ -12,6 +13,7 @@ const NAV_ITEMS = [
   { path: '/',        label: 'Tokens', icon: Flame  },
   { path: '/launch',  label: 'Launch',  icon: Rocket },
   { path: '/wallet',  label: 'Wallet',  icon: Wallet },
+  { path: '/tools',   label: 'Tools',   icon: Wrench },
   { path: '/ide',     label: 'IDE',     icon: Code2  },
 ]
 
@@ -19,6 +21,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const loc = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
   const isIDE = loc.pathname === '/ide'
+  useEffect(() => { captureReferral() }, [loc.search])   // remember ?ref=0x… so buys credit the referrer
   const { SITE_TITLE, SITE_LOGO } = useConfig()
   const siteName = SITE_TITLE || 'GlowFun'
 

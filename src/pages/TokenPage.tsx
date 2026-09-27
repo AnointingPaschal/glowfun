@@ -11,7 +11,7 @@ import {
   Star, Zap, ChevronDown, ChevronUp, TrendingUp, TrendingDown,
   Activity, BarChart3, MessageCircle, Info, Flame, Sprout,
   List, Users, BookOpen, ArrowUpRight, ArrowDownLeft,
-  Pencil, Target, Lock, GraduationCap, PieChart, Image as ImageIcon,
+  Pencil, Target, Lock, GraduationCap, PieChart, Image as ImageIcon, Wrench,
 } from 'lucide-react'
 import { Comments } from '@/components/Comments'
 import { CurveChart, type ChartKind } from '@/components/CurveChart'
@@ -22,6 +22,7 @@ import { useTokenBanner } from '@/hooks/useTokenBanner'
 import { buildCandles, computeStats, TIMEFRAMES, fmtPrice, type Timeframe } from '@/utils/candles'
 import { saveBanner } from '@/utils/banner'
 import { changeOver } from '@/utils/priceChange'
+import { getReferrer } from '@/utils/referral'
 import { FACTORY_ABI } from '@/abi/GlowFunFactory'
 import { GLOW_TOKEN_ABI } from '@/abi/GlowToken'
 import { useConfig } from '@/context/ConfigContext'
@@ -867,7 +868,7 @@ export function TokenPage() {
     const min = (buyQuote as bigint)*BigInt(100-Math.ceil(slip))/100n
     trade(
       { address:FACTORY_ADDRESS, abi:FACTORY_ABI, functionName:'buyTokens',
-        args:[tokenAddr as `0x${string}`, min, ZERO_ADDR], chainId:CHAIN_ID as any } as any,
+        args:[tokenAddr as `0x${string}`, min, getReferrer(wallet)], chainId:CHAIN_ID as any } as any,
       { onSuccess:()=>toast.success('🚀 Buy submitted — waiting for confirmation…'), onError:(e)=>toast.error(parseOnchainError(e)) }
     )
   }
@@ -1192,6 +1193,18 @@ export function TokenPage() {
           <p className="text-[8px] text-center" style={{color:'var(--text3)'}}>{cfg.protocolFeePct}% protocol fee · {slip}% slippage · GlowFun bonding curve</p>
         </div>
       </div>
+
+      {wallet && token.creator && wallet.toLowerCase() === (token.creator as string).toLowerCase() && (
+        <Link to={`/tools?token=${tokenAddr}`} className="order-[96] lg:order-2 no-underline rounded-2xl p-4 flex items-center gap-3 transition-colors"
+          style={{background:'linear-gradient(135deg,rgba(99,102,241,0.10),rgba(139,92,246,0.06))',border:'1px solid rgba(99,102,241,0.22)'}}>
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{background:'rgba(99,102,241,0.16)'}}><Wrench size={16} style={{color:'#a5b4fc'}}/></div>
+          <div className="min-w-0">
+            <div className="text-sm font-bold" style={{color:'var(--text1)'}}>Creator tools</div>
+            <div className="text-[10px]" style={{color:'var(--text2)'}}>Mint · burn · vesting · liquidity lock · payouts · edit details</div>
+          </div>
+          <ArrowUpRight size={14} className="ml-auto flex-shrink-0" style={{color:'#a5b4fc'}}/>
+        </Link>
+      )}
 
       {curve && <div className="order-[95] lg:order-2"><BondingCurveCard curve={curve} threshold={tokenThresholdUsd} raisedUsd={raisedUsd} price={priceUsd} symbol={token.symbol}/></div>}
 

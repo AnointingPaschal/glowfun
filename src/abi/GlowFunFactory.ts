@@ -325,4 +325,12 @@ export const FACTORY_ABI = [
   { name: 'boostTiers', type: 'function', stateMutability: 'view',
     inputs: [{ name: 'index', type: 'uint256' }],
     outputs: [{ name: 'boostBps', type: 'uint256' }, { name: 'feeBps', type: 'uint256' }, { name: 'label', type: 'string' }] },
+  // ── Liquidity lock (graduated tokens) ─────────────────────────────────────
+  { name: 'claimLpPosition',        type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'token', type: 'address' }], outputs: [] },
+  { name: 'pendingLpNftId',         type: 'function', stateMutability: 'view', inputs: [{ name: '', type: 'address' }], outputs: [{ type: 'uint256' }] },
+  { name: 'pendingLpNftOwner',      type: 'function', stateMutability: 'view', inputs: [{ name: '', type: 'address' }], outputs: [{ type: 'address' }] },
+  { name: 'pendingLpUnlockTime',    type: 'function', stateMutability: 'view', inputs: [{ name: '', type: 'address' }], outputs: [{ type: 'uint256' }] },
+  { name: 'pendingGraduationCreator', type: 'function', stateMutability: 'view', inputs: [{ name: '', type: 'address' }], outputs: [{ type: 'address' }] },
+  { name: 'lpLockDuration',         type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { name: 'nonfungiblePositionMgr', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
 ] as const
