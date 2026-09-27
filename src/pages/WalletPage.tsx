@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ConnectKitButton } from 'connectkit'
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
@@ -8,12 +9,13 @@ import { toast } from 'sonner'
 import {
   Wallet, Shield, ExternalLink, Copy, Check, AlertTriangle,
   Loader2, Send, ArrowDownLeft, Activity, BarChart3,
-  RefreshCw, Eye, EyeOff, PieChart,
+  RefreshCw, Eye, EyeOff, PieChart, ChevronRight,
 } from 'lucide-react'
 import { formatUsdc, formatAddress } from '@/utils/format'
 import { useHeldTokens } from '@/hooks/usePortfolio'
 import { PortfolioTokenRow } from '@/components/wallet/PortfolioTokenRow'
 import { AssetLogo } from '@/components/wallet/AssetLogo'
+import { WALLET_ASSETS } from '@/constants/walletAssets'
 import { USDC_ADDRESS, EURC_ADDRESS, USYC_ADDRESS, CIRBTC_ADDRESS, CHAIN_ID, EXPLORER_BASE } from '@/constants'
 
 /** Format a raw balance for a non-USDC Circle asset — arbitrary decimals, no $ assumption. */
@@ -195,58 +197,30 @@ export function WalletPage() {
                     <button onClick={()=>{ refetchUsdc(); refetchHeld() }} style={{ color:'var(--text2)' }}><RefreshCw size={13}/></button>
                   </div>
 
-                  {/* USDC — always shown, the platform's own settlement asset */}
-                  <div className="flex items-center gap-3 p-3 rounded-xl mb-2" style={{ background:'var(--surface2)', border:'1px solid var(--border)' }}>
-                    <AssetLogo symbol="USDC" size={40} />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-bold" style={{ color:'var(--text1)' }}>USDC</div>
-                      <div className="text-xs" style={{ color:'var(--text2)' }}>USD Coin</div>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <div className="text-sm font-bold" style={{ color:'var(--text1)' }}>{hideBalance?'••••':formatUsdc(usdcBal)}</div>
-                      <div className="text-xs" style={{ color:'var(--text2)' }}>{hideBalance?'••••':`$${usdcUsd.toLocaleString('en',{maximumFractionDigits:2})}`}</div>
-                    </div>
-                  </div>
-
-                  {/* Other Circle-issued assets — shown only if actually held, since most
-                      wallets won't hold these. No live FX/BTC price feed here, so these show
-                      their own-unit balance rather than a guessed $ figure. */}
-                  {eurcBal > 0n && (
-                    <div className="flex items-center gap-3 p-3 rounded-xl mb-2" style={{ background:'var(--surface2)', border:'1px solid var(--border)' }}>
-                      <AssetLogo symbol="EURC" size={40} />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-bold" style={{ color:'var(--text1)' }}>EURC</div>
-                        <div className="text-xs" style={{ color:'var(--text2)' }}>Euro Coin</div>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <div className="text-sm font-bold" style={{ color:'var(--text1)' }}>{hideBalance?'••••':`€${fmtAsset(eurcBal,6)}`}</div>
-                      </div>
-                    </div>
-                  )}
-                  {usycBal > 0n && (
-                    <div className="flex items-center gap-3 p-3 rounded-xl mb-2" style={{ background:'var(--surface2)', border:'1px solid var(--border)' }}>
-                      <AssetLogo symbol="USYC" size={40} />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-bold" style={{ color:'var(--text1)' }}>USYC</div>
-                        <div className="text-xs" style={{ color:'var(--text2)' }}>Tokenized money-market fund shares</div>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <div className="text-sm font-bold" style={{ color:'var(--text1)' }}>{hideBalance?'••••':fmtAsset(usycBal,6)}</div>
-                      </div>
-                    </div>
-                  )}
-                  {cirbtcBal > 0n && (
-                    <div className="flex items-center gap-3 p-3 rounded-xl mb-2" style={{ background:'var(--surface2)', border:'1px solid var(--border)' }}>
-                      <AssetLogo symbol="cirBTC" size={40} />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-bold" style={{ color:'var(--text1)' }}>cirBTC</div>
-                        <div className="text-xs" style={{ color:'var(--text2)' }}>Circle wrapped Bitcoin</div>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <div className="text-sm font-bold" style={{ color:'var(--text1)' }}>{hideBalance?'••••':fmtAsset(cirbtcBal,8)}</div>
-                      </div>
-                    </div>
-                  )}
+                  {/* Default wallet assets — USDC, EURC, USYC, cirBTC. Always shown, balance
+                      or not, unlike GlowFun tokens below (which only appear once held). */}
+                  {WALLET_ASSETS.map((a) => {
+                    const bal = a.symbol==='USDC' ? usdcBal : a.symbol==='EURC' ? eurcBal : a.symbol==='USYC' ? usycBal : cirbtcBal
+                    const usd = a.symbol==='USDC' ? usdcUsd : null
+                    return (
+                      <Link key={a.slug} to={`/wallet/asset/${a.slug}`}
+                        className="flex items-center gap-3 p-3 rounded-xl mb-2 no-underline transition-colors"
+                        style={{ background:'var(--surface2)', border:'1px solid var(--border)' }}>
+                        <AssetLogo symbol={a.symbol} size={40} src={a.logo} />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-bold" style={{ color:'var(--text1)' }}>{a.symbol}</div>
+                          <div className="text-xs truncate" style={{ color:'var(--text2)' }}>{a.name}</div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <div className="text-sm font-bold" style={{ color:'var(--text1)' }}>
+                            {hideBalance?'••••':`${a.unitPrefix??''}${a.symbol==='USDC'?formatUsdc(usdcBal):fmtAsset(bal,a.decimals)}`}
+                          </div>
+                          {usd!==null && <div className="text-xs" style={{ color:'var(--text2)' }}>{hideBalance?'••••':`$${usd.toLocaleString('en',{maximumFractionDigits:2})}`}</div>}
+                        </div>
+                        <ChevronRight size={14} style={{ color:'var(--text3)' }}/>
+                      </Link>
+                    )
+                  })}
 
                   {/* Every platform token actually held, with real logos + live value */}
                   {held.map((h) => (
@@ -257,9 +231,6 @@ export function WalletPage() {
                     <div className="space-y-2 mt-1">
                       {[0,1].map(i => <div key={i} className="h-[64px] rounded-xl shimmer" style={{ border:'1px solid var(--border)' }}/>)}
                     </div>
-                  )}
-                  {!heldLoading && held.length===0 && eurcBal===0n && usycBal===0n && cirbtcBal===0n && (
-                    <p className="text-xs text-center py-6" style={{ color:'var(--text3)' }}>No GlowFun tokens held yet — buy or launch one to see it here.</p>
                   )}
                 </div>
               )}

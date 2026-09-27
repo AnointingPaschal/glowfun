@@ -4,6 +4,7 @@ import { FeedPage } from '@/pages/FeedPage'
 import { LaunchPage } from '@/pages/LaunchPage'
 import { TokenPage } from '@/pages/TokenPage'
 import { WalletPage } from '@/pages/WalletPage'
+import { AssetDetailPage } from '@/pages/wallet/AssetDetailPage'
 import { SecurityCenterPage } from '@/pages/SecurityCenterPage'
 import { AdminPage } from '@/pages/AdminPage'
 import { IDEPage } from '@/pages/IDEPage'
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="/token/:address" element={<TokenPage />} />
         <Route path="/launch"        element={<LaunchPage />} />
         <Route path="/wallet"        element={<WalletPage />} />
+        <Route path="/wallet/asset/:slug" element={<AssetDetailPage />} />
         <Route path="/security"      element={<SecurityCenterPage />} />
         <Route path="/admin"         element={<AdminPage />} />
         <Route path="/ide"           element={<IDEPage />} />
