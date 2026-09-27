@@ -2,7 +2,7 @@ import { ReactNode, useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { ConnectKitButton } from 'connectkit'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Flame, Rocket, Wallet, X, Zap, Code2, Menu, Wrench, ChevronRight } from 'lucide-react'
+import { Flame, Rocket, Wallet, X, Zap, Code2, Menu, Wrench, ChevronRight, ShieldCheck } from 'lucide-react'
 import { MobileNav } from './MobileNav'
 import { ToolsMenuModal } from './tools/ToolsMenuModal'
 import { useConfig } from '@/context/ConfigContext'
@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { path: '/launch',  label: 'Launch',  icon: Rocket },
   { path: '/wallet',  label: 'Wallet',  icon: Wallet },
   { path: '/tools',   label: 'Tools',   icon: Wrench },
+  { path: '/security',label: 'Security',icon: ShieldCheck },
   { path: '/ide',     label: 'IDE',     icon: Code2  },
 ]
 

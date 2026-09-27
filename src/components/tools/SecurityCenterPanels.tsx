@@ -50,7 +50,7 @@ function RoleTransferForm({
 }
 
 /* ── Factory ownership (platform-wide) ────────────────────────────────────── */
-export function OwnershipPanel({ wallet }: { wallet?: `0x${string}` }) {
+export function OwnershipPanel({ wallet, showTransferForm = true }: { wallet?: `0x${string}`; showTransferForm?: boolean }) {
   const { FACTORY_ADDRESS, CHAIN_ID } = useConfig()
   const { owner, isOwner, isLoading: ownerLoading, refetch } = useFactoryOwner(wallet)
   const { isContract, isLoading } = useIsContractWallet(owner !== ZERO ? owner : undefined)
@@ -60,23 +60,26 @@ export function OwnershipPanel({ wallet }: { wallet?: `0x${string}` }) {
       badge={ownerLoading ? undefined : isContract ? 'Multisig-capable' : isContract === false ? 'Single key' : undefined}
       tone={isContract ? '#22c55e' : '#f59e0b'}>
       <Row k="Factory owner" v={<span className="font-mono text-[10px]">{owner.slice(0, 8)}…{owner.slice(-6)}</span>} />
-      <Note>This one address controls every platform-wide admin function on the whole factory: fees, thresholds, boost tiers, Uniswap pool config, emergency withdrawals, force-graduate, and the platform-wide pause below. It's OpenZeppelin's standard <code>Ownable</code>, so moving it is a single <code>transferOwnership</code> call — no redeploy needed.</Note>
+      <Note>This one address controls every platform-wide admin function on the whole factory: fees, thresholds, boost tiers, Uniswap pool config, emergency withdrawals, force-graduate, and the platform-wide pause. It's OpenZeppelin's standard <code>Ownable</code>, so moving it is a single <code>transferOwnership</code> call — no redeploy needed.</Note>
       {isLoading ? <Note>Checking whether the owner is a wallet or a contract…</Note>
         : isContract ? <Note>Owner is a <b>contract</b> — consistent with a Safe. If it's a Safe with a threshold above 1, every function above already requires that many approvals.</Note>
         : isContract === false ? <Note warn>Owner is a single-key wallet (EOA). Whoever holds that one private key controls every function above, alone.</Note> : null}
-      {isOwner ? (
+      {showTransferForm && (isOwner ? (
         <RoleTransferForm tone="#ef4444" phrase="TRANSFER OWNERSHIP" confirmLabel="Transfer ownership" title="Transfer factory ownership"
           wallet={wallet} busy={busy}
           onSend={(addr) => send({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'transferOwnership', args: [addr], chainId: CHAIN_ID }, 'Factory ownership transferred')}
           warningExtra="This hands over every onlyOwner function on the whole platform, for every token, permanently. If the new address is wrong or you don't control its keys, platform admin is gone for good — there is no recovery function. Verify the address through a second channel first."
         />
-      ) : wallet && <Note>Only the current owner ({owner.slice(0, 6)}…{owner.slice(-4)}) can transfer this role — connect that wallet to act.</Note>}
+      ) : wallet && <Note>Only the current owner ({owner.slice(0, 6)}…{owner.slice(-4)}) can transfer this role — connect that wallet to act.</Note>)}
     </ToolShell>
   )
 }
 
-/* ── Per-token creator role(s) — replaces the old read-only MultisigPanel ─── */
-export function CreatorRolePanel({ token, info, wallet, refetch }: PanelProps) {
+/* ── Per-token creator role(s) — replaces the old read-only MultisigPanel ───
+   `showTransferForm` defaults to true for the admin-facing Tools/Security page;
+   the public, holder-facing Security Center passes false so it stays read-only
+   for everyone, regardless of which wallet is connected. */
+export function CreatorRolePanel({ token, info, wallet, refetch, showTransferForm = true }: PanelProps & { showTransferForm?: boolean }) {
   const { FACTORY_ADDRESS, CHAIN_ID } = useConfig()
   const tokenCreatorKind = useIsContractWallet(info.creator !== ZERO ? info.creator : undefined)
   const factoryCreatorKind = useIsContractWallet(info.factoryCreator !== ZERO ? info.factoryCreator : undefined)
@@ -95,19 +98,19 @@ export function CreatorRolePanel({ token, info, wallet, refetch }: PanelProps) {
 
       <div className="pt-2 mt-1" style={{ borderTop: '1px solid var(--border)' }}>
         <Row k="Factory creator record (mutable)" v={<span className="font-mono text-[10px]">{info.factoryCreator.slice(0, 8)}…{info.factoryCreator.slice(-6)}</span>} />
-        <Note>{sameAddr ? "The factory's own creator record currently matches the immutable one above." : "Different from the immutable creator above — it's already been redirected."} It gates <b>metadata edits, unlocking your allocation, force-graduating, and any unclaimed graduation bonus</b> — and unlike the immutable field, it <b>can be moved right now</b>, for this already-launched token, via <code>transferCreatorRole</code>.</Note>
+        <Note>{sameAddr ? "The factory's own creator record currently matches the immutable one above." : "Different from the immutable creator above — it's already been redirected."} It gates <b>metadata edits, unlocking the creator's allocation, force-graduating, and any unclaimed graduation bonus</b> — and unlike the immutable field, it <b>can be moved</b>, for this already-launched token, via <code>transferCreatorRole</code>.</Note>
         {factoryCreatorKind.isLoading ? null
           : factoryCreatorKind.isContract ? <Note>Factory-recorded creator is a contract — those actions are already Safe-gated.</Note>
           : factoryCreatorKind.isContract === false ? <Note warn>Factory-recorded creator is a single key too.</Note> : null}
       </div>
 
-      {info.isFactoryCreator ? (
+      {showTransferForm && (info.isFactoryCreator ? (
         <RoleTransferForm tone="#f59e0b" phrase={`TRANSFER ${symbol}`} confirmLabel="Transfer creator role" title={`Move ${symbol}'s creator role`}
           wallet={wallet} busy={busy}
           onSend={(addr) => send({ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: 'transferCreatorRole', args: [token, addr], chainId: CHAIN_ID }, 'Creator role transferred')}
           warningExtra="Moves metadata/unlock/force-graduate rights, and any unclaimed graduation bonus, to the new address. Mint, pause and blacklist are unaffected — those stay with the original wallet forever."
         />
-      ) : wallet && <Note>Only the factory-recorded creator ({info.factoryCreator.slice(0, 6)}…{info.factoryCreator.slice(-4)}) can transfer this role.</Note>}
+      ) : wallet && <Note>Only the factory-recorded creator ({info.factoryCreator.slice(0, 6)}…{info.factoryCreator.slice(-4)}) can transfer this role.</Note>)}
     </ToolShell>
   )
 }
