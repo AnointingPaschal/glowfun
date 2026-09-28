@@ -598,43 +598,57 @@ function sortTokens(tokens:Token[],tab:string):Token[]{
 /* ── METHOD 6 (optional): Apify's DexScreener scraper actor ──────────────
  * Off by default — only runs if APIFY_API_TOKEN is set as a Cloudflare Pages
  * environment variable/secret (Pages dashboard → Settings → Environment
- * variables). This is a paid third-party service, billed per run on your own
- * Apify account, so it's opt-in rather than always-on. Uses Apify's
- * "run-sync-get-dataset-items" endpoint so a single fetch both runs the actor
- * and returns its output — no separate poll-for-completion step needed. If
- * the token isn't set, or the actor/run fails or times out, this silently
- * contributes nothing rather than breaking discovery — the other five
- * methods above already cover the common case.
+ * variables, server-side only — see note below). This is a paid third-party
+ * service, billed per run on your own Apify account, so it's opt-in rather
+ * than always-on. Uses Apify's "run-sync-get-dataset-items" endpoint so a
+ * single fetch both runs the actor and returns its output.
+ *
+ * IMPORTANT: this must only ever be called from here (a Cloudflare Function,
+ * server-side) — never from browser code. The token authorizes billable runs
+ * on your Apify account; shipping it in frontend JS puts it in the public
+ * bundle for anyone to read and run up your bill. It's also only invoked from
+ * the existing background-refresh path (every few minutes, shared across all
+ * visitors via the KV/D1 cache), not per-request or per-poll — an actor run
+ * is real browser-based scraping, not a cheap API call, so hitting it every
+ * few seconds per visitor (as opposed to once per refresh cycle for everyone)
+ * would burn through Apify usage fast.
+ *
+ * The actor's dataset items turned out to be plain DexScreener pair objects
+ * (baseToken.address, priceUsd, priceChange.{m5,h1,h6,h24}, volume, liquidity,
+ * fdv/marketCap, pairCreatedAt, info.{imageUrl,header}) — the exact shape
+ * pairToToken() already parses elsewhere in this file — so real price/
+ * liquidity/volume comes straight from the actor's own scrape, same as any
+ * other DexScreener-sourced pair, rather than a separate lookup.
  */
 const APIFY_ACTOR_ID = 'GWfH8uzlNFz2fEjKj'
-async function fetchApifyTokens(env?: Env): Promise<string[]> {
+async function fetchApifyTokens(env?: Env): Promise<Token[]> {
   const token = env?.APIFY_API_TOKEN
   if (!token) return []
-  try {
-    const r = await fetch(`https://api.apify.com/v2/acts/${APIFY_ACTOR_ID}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chain: 'arc', mode: 'latestListings', maxItems: 200 }),
-      signal: AbortSignal.timeout(25_000),
-    })
-    if (!r.ok) return []
-    const items: any = await r.json()
-    // The actor's exact field names for chain/address aren't independently confirmed here
-    // (this environment can't reach api.apify.com to test against a real run), so this
-    // walks the response generically rather than assuming one specific shape.
-    const addrs = new Set<string>()
-    const collect = (node: any, depth = 0) => {
-      if (!node || depth > 4) return
-      if (Array.isArray(node)) { for (const x of node) collect(x, depth + 1); return }
-      if (typeof node !== 'object') return
-      const chainId = node.chain ?? node.chainId ?? ''
-      const addr = node.tokenAddress ?? node.address ?? node.baseToken?.address ?? ''
-      if (chainId && addr && isArc(String(chainId))) addrs.add(String(addr).toLowerCase())
-      for (const v of Object.values(node)) collect(v, depth + 1)
+  const runMode = async (mode: string): Promise<any[]> => {
+    try {
+      const r = await fetch(`https://api.apify.com/v2/acts/${APIFY_ACTOR_ID}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chain: 'arc', mode, maxItems: 100 }),
+        signal: AbortSignal.timeout(25_000),
+      })
+      if (!r.ok) return []
+      const d = await r.json()
+      return Array.isArray(d) ? d : []
+    } catch { return [] }
+  }
+  const results = await Promise.allSettled(['trending', 'latestListings', 'topGainers'].map(runMode))
+  const out: Token[] = []
+  for (const r of results) {
+    if (r.status !== 'fulfilled') continue
+    for (const item of r.value) {
+      // The actor filters by the `chain` input already, but pairToToken() requires
+      // p.chainId to confirm it's Arc — default it in since we only ever request 'arc'.
+      const t = pairToToken({ ...item, chainId: item.chainId ?? 'arc' })
+      if (t) out.push(t)
     }
-    collect(items)
-    return [...addrs]
-  } catch { return [] }
+  }
+  return out
 }
 
 async function fetchAllArcTokens(env?: Env): Promise<Token[]> {
@@ -657,11 +671,11 @@ async function fetchAllArcTokens(env?: Env): Promise<Token[]> {
   const fromSearch = searchPairs.status==='fulfilled'  ? searchPairs.value : []
   const glowTokens = glowFunTokens.status==='fulfilled' ? glowFunTokens.value : []
   const geckoOnly  = geckoTokens.status==='fulfilled'  ? geckoTokens.value : []
-  const apifyOnly  = apifyAddrs.status==='fulfilled'   ? apifyAddrs.value : []
+  const apifyTokens= apifyAddrs.status==='fulfilled'   ? apifyAddrs.value : []
 
   // Fetch DexScreener data for on-chain discovered pairs (pair address → rich data)
   const pairAddrs   = chainData.map(c=>c.poolAddr).filter(Boolean)
-  const tokenAddrs  = [...new Set([...chainData.map(c=>c.tokenAddr),...boosts,...apifyOnly])].filter(Boolean)
+  const tokenAddrs  = [...new Set([...chainData.map(c=>c.tokenAddr),...boosts])].filter(Boolean)
 
   const [pairsData, tokensData] = await Promise.allSettled([
     fetchDSByPairs(pairAddrs),    // exact pair lookup — most accurate
@@ -688,6 +702,12 @@ async function fetchAllArcTokens(env?: Env): Promise<Token[]> {
     const exIsGlowFunSeed = ex?.dexId==='glowfun'||ex?.dexId==='glowfun-graduated'
     if (!ex||exIsGlowFunSeed||t.volUsd>=ex.volUsd) map.set(t.address,t)
   }
+  // Apify's scrape (only runs if APIFY_API_TOKEN is set) — same merge rule as GeckoTerminal.
+  for (const t of apifyTokens) {
+    const ex = map.get(t.address)
+    const exIsGlowFunSeed = ex?.dexId==='glowfun'||ex?.dexId==='glowfun-graduated'
+    if (!ex||exIsGlowFunSeed||t.volUsd>=ex.volUsd) map.set(t.address,t)
+  }
   for (const p of allPairs) {
     const t = pairToToken(p); if (!t) continue
     const ex = map.get(t.address)
@@ -695,7 +715,7 @@ async function fetchAllArcTokens(env?: Env): Promise<Token[]> {
     if (!ex||exIsGlowFunSeed||t.volUsd>=ex.volUsd) map.set(t.address,t)
   }
 
-  console.log(`[fetch] on-chain-pools:${chainData.length} boosts:${boosts.length} search-pairs:${fromSearch.length} glowfun:${glowTokens.length} geckoterminal:${geckoOnly.length} total-unique:${map.size}`)
+  console.log(`[fetch] on-chain-pools:${chainData.length} boosts:${boosts.length} search-pairs:${fromSearch.length} glowfun:${glowTokens.length} geckoterminal:${geckoOnly.length} apify:${apifyTokens.length} total-unique:${map.size}`)
   return [...map.values()]
 }
 
