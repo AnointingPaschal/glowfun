@@ -1,146 +1,130 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-
-export type ArcMarketTab = 'trending' | 'new' | 'top';
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 export interface ArcMarketToken {
-  address: string;
-  name: string;
-  symbol: string;
-  logoUrl: string;
-  bannerUrl?: string;
-  priceUsd: number;
-  change5m?: number;
-  change1h?: number;
-  change6h?: number;
-  change24h?: number;
-  vol5m?: number;
-  volUsd: number;
-  liqUsd: number;
-  mcapUsd: number;
-  ageSec: number;
+  address: string
+  pairAddress: string
+  name: string
+  symbol: string
+  logoUrl: string
+  bannerUrl: string
+  priceUsd: number
+  change5m?: number
+  change1h?: number
+  change6h?: number
+  change24h?: number
+  liqUsd: number
+  volUsd: number
+  mcapUsd: number
+  ageSec: number
+  buys24h: number
+  sells24h: number
+  txns5m: number
+  vol5m: number
+  dexId: string
+  updatedAt: number
 }
 
-// Apify Configuration
-const APIFY_TOKEN = 'apify_api_QV9EugCcPDiQa9b24nHTvSmxbMzLgi3rgwjG';
-const ACTOR_ID = 'GWfH8uzlNFz2fEjKj';
+export type ArcMarketTab = 'trending' | 'new' | 'top'
 
-export function useArcMarket(tab: ArcMarketTab, search: string) {
-  const [tokens, setTokens] = useState<ArcMarketToken[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [lastFetched, setLastFetched] = useState<number | null>(null);
-  
-  const isFetchingRef = useRef(false);
-  const timeoutRef = useRef<NodeJS.Timeout>();
+interface ArcMarketResponse {
+  success: boolean
+  data: {
+    tokens: ArcMarketToken[]
+    total: number
+    page: number
+    limit: number
+    stats: { vol5m: number; txns: number }
+    newestAgeSec: number
+    fetchedAt: number
+  }
+}
 
-  const stats = {
-    vol5m: tokens.reduce((sum, t) => sum + (t.vol5m || 0), 0),
-    txns: tokens.length * 142, // Estimate based on typical pair activity
-  };
+/**
+ * Live feed of every token trading on Arc — GlowFun-launched or not — backed by
+ * functions/api/market.ts (on-chain PoolCreated discovery + DexScreener search/boosts/
+ * profiles, cached in D1 + KV). Polls on an interval so the page stays "live" without the
+ * person needing to refresh; a manual refresh always forces a fresh fetch regardless of the
+ * poll clock.
+ */
+export function useArcMarket(tab: ArcMarketTab, query: string, pollMs = 20_000) {
+  const [tokens, setTokens] = useState<ArcMarketToken[]>([])
+  const [stats, setStats] = useState({ vol5m: 0, txns: 0 })
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [lastFetched, setLastFetched] = useState<number | null>(null)
+  const reqId = useRef(0)
 
-  const fetchApifyData = useCallback(async () => {
-    if (isFetchingRef.current) return;
-    isFetchingRef.current = true;
-    
-    // Only set loading to true if we don't have tokens yet (prevents screen flashing during polling)
-    if (tokens.length === 0) setLoading(true);
-
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const id = ++reqId.current
+    if (!opts?.silent) setLoading(true)
     try {
-      // Map UI tabs to Apify Actor Modes
-      let mode = 'trending';
-      if (tab === 'new') mode = 'latestListings';
-      if (tab === 'top') mode = 'topGainers';
-
-      const response = await fetch(
-        `https://api.apify.com/v2/acts/${ACTOR_ID}/run-sync-get-dataset-items?token=${APIFY_TOKEN}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            chain: 'arc',
-            mode: mode,
-            maxItems: 50,
-          }),
-        }
-      );
-
-      if (!response.ok) throw new Error(`Apify returned ${response.status}`);
-
-      const data = await response.json();
-
-      // Format Apify output to match ArcMarketToken interface
-      const mappedTokens: ArcMarketToken[] = data.map((item: any) => {
-        const pairCreatedAt = item.pairCreatedAt || Date.now();
-        const ageSec = Math.floor((Date.now() - pairCreatedAt) / 1000);
-
-        return {
-          address: item.baseToken?.address || item.pairAddress,
-          name: item.baseToken?.name || 'Unknown',
-          symbol: item.baseToken?.symbol || '???',
-          logoUrl: item.info?.imageUrl || '',
-          bannerUrl: item.info?.header || '',
-          priceUsd: parseFloat(item.priceUsd || '0'),
-          change5m: parseFloat(item.priceChange?.m5 || '0'),
-          change1h: parseFloat(item.priceChange?.h1 || '0'),
-          change6h: parseFloat(item.priceChange?.h6 || '0'),
-          change24h: parseFloat(item.priceChange?.h24 || '0'),
-          vol5m: parseFloat(item.volume?.m5 || '0'),
-          volUsd: parseFloat(item.volume?.h24 || '0'),
-          liqUsd: parseFloat(item.liquidity?.usd || '0'),
-          mcapUsd: parseFloat(item.fdv || item.marketCap || '0'),
-          ageSec: ageSec,
-        };
-      });
-
-      // Handle Search filtering
-      const filtered = search
-        ? mappedTokens.filter(
-            (t) =>
-              t.name.toLowerCase().includes(search.toLowerCase()) ||
-              t.symbol.toLowerCase().includes(search.toLowerCase()) ||
-              t.address.toLowerCase() === search.toLowerCase()
-          )
-        : mappedTokens;
-
-      setTokens(filtered);
-      setError(null);
-      setLastFetched(Date.now());
-    } catch (err: any) {
-      console.error('Failed to fetch from Apify:', err);
-      setError(err.message || 'Apify Fetch Error');
+      const params = new URLSearchParams({ tab, limit: '150' })
+      if (query.trim()) params.set('q', query.trim())
+      const r = await fetch(`/api/market?${params}`, { signal: AbortSignal.timeout(15_000) })
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      const d = await r.json() as ArcMarketResponse
+      if (id !== reqId.current) return // a newer request already landed
+      if (!d.success) throw new Error('API returned an error')
+      setTokens(d.data.tokens ?? [])
+      setStats(d.data.stats ?? { vol5m: 0, txns: 0 })
+      setTotal(d.data.total ?? 0)
+      setLastFetched(Date.now())
+      setError(null)
+    } catch (e: any) {
+      if (id !== reqId.current) return
+      setError(e?.message ?? 'Failed to load market data')
     } finally {
-      setLoading(false);
-      isFetchingRef.current = false;
-      
-      // Schedule the next fetch 3 seconds after this one finishes
-      timeoutRef.current = setTimeout(fetchApifyData, 3000);
+      if (id === reqId.current) setLoading(false)
     }
-  }, [tab, search, tokens.length]);
+  }, [tab, query])
 
   useEffect(() => {
-    // Clear interval and immediately fetch new data when tab/search changes
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    fetchApifyData();
+    load()
+    const iv = setInterval(() => load({ silent: true }), pollMs)
+    return () => clearInterval(iv)
+  }, [load, pollMs])
 
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, [tab, search]);
+  return { tokens, stats, total, loading, error, lastFetched, refresh: () => load() }
+}
 
-  const refresh = () => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    fetchApifyData();
-  };
+/**
+ * Live data for a single Arc token by address — powers the external token
+ * detail page. Backed by /api/market?address=, which checks D1 first and
+ * falls back to a live DexScreener/GlowFun-factory lookup for a token that
+ * hasn't been indexed yet.
+ */
+export function useArcToken(address: string | undefined, pollMs = 10_000) {
+  const [token, setToken] = useState<ArcMarketToken | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const reqId = useRef(0)
 
-  return {
-    tokens,
-    stats,
-    total: tokens.length,
-    loading,
-    error,
-    lastFetched,
-    refresh,
-  };
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!address) { setLoading(false); return }
+    const id = ++reqId.current
+    if (!opts?.silent) setLoading(true)
+    try {
+      const r = await fetch(`/api/market?address=${address.toLowerCase()}`, { signal: AbortSignal.timeout(15_000) })
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      const d = await r.json() as { success: boolean; data: { token: ArcMarketToken | null } }
+      if (id !== reqId.current) return
+      if (!d.success) throw new Error('API returned an error')
+      setToken(d.data.token ?? null)
+      setError(null)
+    } catch (e: any) {
+      if (id !== reqId.current) return
+      setError(e?.message ?? 'Failed to load token data')
+    } finally {
+      if (id === reqId.current) setLoading(false)
+    }
+  }, [address])
+
+  useEffect(() => {
+    load()
+    const iv = setInterval(() => load({ silent: true }), pollMs)
+    return () => clearInterval(iv)
+  }, [load, pollMs])
+
+  return { token, loading, error, refresh: () => load() }
 }
