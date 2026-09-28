@@ -63,10 +63,7 @@ function TokenLogo({ url, symbol, address, size = 32 }: { url: string; symbol: s
     style={{ border: '1px solid var(--border2)' }} onError={() => setBroken(true)} />
 }
 
-/* ── Featured banner strip ─────────────────────────────────────────────
- * GlowFun tokens open their internal trading page; every other Arc token
- * opens its own live trade page here too — nothing ever navigates off
- * this site. */
+/* ── Featured banner strip ───────────────────────────────────────────── */
 function BannerStrip({ tokens, glowSet }: { tokens: ArcMarketToken[]; glowSet: Set<string> }) {
   const featured = useMemo(() => tokens.filter(t => t.bannerUrl).slice(0, 8), [tokens])
   if (!featured.length) return null
@@ -127,9 +124,8 @@ function Row({ t, rank, isGlow }: { t: ArcMarketToken; rank: number; isGlow: boo
       </td>
     </>
   )
-  const rowStyle = { borderColor: 'var(--border)' }
   return (
-    <Link to={isGlow ? `/token/${t.address}` : `/dex/${t.address}`} className="table-row no-underline border-b transition-colors hover:bg-white/[0.03] cursor-pointer" style={rowStyle as any}>
+    <Link to={isGlow ? `/token/${t.address}` : `/dex/${t.address}`} className="table-row no-underline border-b transition-colors hover:bg-white/[0.03] cursor-pointer" style={{ borderColor: 'var(--border)' } as any}>
       {inner}
     </Link>
   )
@@ -168,14 +164,13 @@ export function DexPage() {
   const [search, setSearch] = useState('')
   const [glowOnly, setGlowOnly] = useState(false)
   const { tokens, stats, total, loading, error, lastFetched, refresh } = useArcMarket(tab, search)
-  const { addresses: glowAddrs } = useTokenList()
+  
+  // Safe fallback if useTokenList addresses are undefined initially
+  const { addresses: glowAddrs = [] } = useTokenList()
   const glowSet = useMemo(() => new Set(glowAddrs.map(a => a.toLowerCase())), [glowAddrs])
 
   const displayed = useMemo(() => {
     const list = glowOnly ? tokens.filter(t => glowSet.has(t.address.toLowerCase())) : tokens
-    // Keep the backend's real ranking (volume/mcap/age) as the primary order —
-    // only break ties (mostly a pile of 0-volume tokens) by preferring the
-    // ones with a real logo, so the page doesn't open on a wall of monograms.
     const metric = (t: ArcMarketToken) => tab === 'top' ? t.mcapUsd : tab === 'new' ? -(t.ageSec || 0) : (t.vol5m || t.volUsd || 0)
     return [...list].sort((a, b) => {
       const diff = metric(b) - metric(a)
@@ -186,7 +181,7 @@ export function DexPage() {
 
   return (
     <div className="space-y-5">
-      {/* ── Header ─────────────────────────────────────────────────── */}
+      {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 mb-1.5">
@@ -207,7 +202,7 @@ export function DexPage() {
         </div>
       </div>
 
-      {/* ── Global stats ───────────────────────────────────────────── */}
+      {/* Global stats */}
       <div className="grid grid-cols-3 gap-2.5">
         {[
           { label: 'Tokens tracked', value: total.toLocaleString(), icon: Activity, color: '#818cf8' },
@@ -226,10 +221,10 @@ export function DexPage() {
         ))}
       </div>
 
-      {/* ── Featured banners ───────────────────────────────────────── */}
+      {/* Featured banners */}
       <BannerStrip tokens={tokens} glowSet={glowSet} />
 
-      {/* ── Controls ───────────────────────────────────────────────── */}
+      {/* Controls */}
       <div className="flex flex-wrap items-center gap-2">
         {TABS.map(({ id, label, icon: Icon, color }) => {
           const active = tab === id
@@ -252,17 +247,17 @@ export function DexPage() {
         </div>
       </div>
 
-      {/* ── Error banner ───────────────────────────────────────────── */}
+      {/* Error banner */}
       {error && (
         <div className="flex items-center gap-2 p-3 rounded-xl text-xs" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.18)', color: 'var(--red)' }}>
           Couldn't refresh market data ({error}) — showing the last known data.
         </div>
       )}
 
-      {/* ── Table (desktop) ────────────────────────────────────────── */}
+      {/* Table (desktop) */}
       <div className="hidden lg:block rounded-2xl overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
         {loading && !displayed.length ? (
-          <div className="p-4 space-y-2">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-11 rounded-xl shimmer" />)}</div>
+          <div className="p-4 space-y-2">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-11 rounded-xl bg-white/5 animate-pulse" />)}</div>
         ) : displayed.length === 0 ? (
           <div className="text-center py-16">
             <Search size={22} className="mx-auto mb-2" style={{ color: 'var(--text3)' }} />
@@ -293,10 +288,10 @@ export function DexPage() {
         )}
       </div>
 
-      {/* ── Cards (mobile) ─────────────────────────────────────────── */}
+      {/* Cards (mobile) */}
       <div className="lg:hidden space-y-2">
         {loading && !displayed.length ? (
-          Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-16 rounded-xl shimmer" />)
+          Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-16 rounded-xl bg-white/5 animate-pulse" />)
         ) : displayed.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-sm" style={{ color: 'var(--text2)' }}>No tokens match{search ? ` "${search}"` : ''}.</p>
